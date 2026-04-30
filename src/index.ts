@@ -9,6 +9,7 @@ import { updateCommand } from "./commands/update.js";
 import { setupCommand } from "./commands/setup.js";
 import { routeCommand } from "./commands/route.js";
 import { tokensCommand } from "./commands/tokens.js";
+import { optimizeCommand } from "./commands/optimize.js";
 
 const program = new Command();
 
@@ -25,5 +26,6 @@ program.addCommand(updateCommand);
 program.addCommand(setupCommand);
 program.addCommand(routeCommand);
 program.addCommand(tokensCommand);
+program.addCommand(optimizeCommand);
 
 program.parse(process.argv);
