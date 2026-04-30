@@ -12,6 +12,7 @@ import { tokensCommand } from "./commands/tokens.js";
 import { optimizeCommand } from "./commands/optimize.js";
 import { agentCommand } from "./commands/agent.js";
 import { promptsCommand } from "./commands/prompts.js";
+import { pluginCommand } from "./commands/plugin.js";
 
 const program = new Command();
 
@@ -31,5 +32,6 @@ program.addCommand(tokensCommand);
 program.addCommand(optimizeCommand);
 program.addCommand(agentCommand);
 program.addCommand(promptsCommand);
+program.addCommand(pluginCommand);
 
 program.parse(process.argv);
