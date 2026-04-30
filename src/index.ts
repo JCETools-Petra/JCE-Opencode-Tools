@@ -5,6 +5,8 @@ import { validateCommand } from "./commands/validate.js";
 import { useCommand } from "./commands/use.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { uninstallCommand } from "./commands/uninstall.js";
+import { updateCommand } from "./commands/update.js";
+import { setupCommand } from "./commands/setup.js";
 
 const program = new Command();
 
@@ -17,5 +19,7 @@ program.addCommand(validateCommand);
 program.addCommand(useCommand);
 program.addCommand(doctorCommand);
 program.addCommand(uninstallCommand);
+program.addCommand(updateCommand);
+program.addCommand(setupCommand);
 
 program.parse(process.argv);
