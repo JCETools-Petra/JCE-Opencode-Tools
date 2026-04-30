@@ -1,4 +1,4 @@
-﻿# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════
 # OpenCode JCE — Windows Installer (PowerShell)
 # One command to install everything you need for OpenCode CLI
 # Requires: PowerShell 5.1+
@@ -289,10 +289,10 @@ function Write-Summary {
         Write-Host "║ ✅ OpenCode CLI   — already present      ║" -ForegroundColor Green
     }
 
-    Write-Host "║ ✅ 14 AI Agents   — configured           ║" -ForegroundColor Green
-    Write-Host "║ ✅ 8 Profiles     — ready                ║" -ForegroundColor Green
-    Write-Host "║ ✅ MCP Tools      — configured           ║" -ForegroundColor Green
-    Write-Host "║ ✅ LSP Settings   — configured           ║" -ForegroundColor Green
+    Write-Host "║ ✅ 30 AI Agents   — configured           ║" -ForegroundColor Green
+    Write-Host "║ ✅ 20 Profiles    — ready                ║" -ForegroundColor Green
+    Write-Host "║ ✅ 6 MCP Tools    — configured           ║" -ForegroundColor Green
+    Write-Host "║ ✅ 10 LSP Servers — configured           ║" -ForegroundColor Green
     Write-Host "╠══════════════════════════════════════════╣" -ForegroundColor Green
     Write-Host "║                                          ║" -ForegroundColor Green
     Write-Host "║  Get started:  opencode                  ║" -ForegroundColor Green
