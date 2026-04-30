@@ -155,6 +155,27 @@ function Deploy-Config {
 
     Write-Ok "Configuration deployed to: $ConfigDir"
 
+    # Install opencode-suite CLI globally
+    Write-Info "Installing opencode-suite CLI..."
+    try {
+        Push-Location $TempDir
+        bun install
+        bun install -g .
+        Pop-Location
+
+        # Refresh PATH
+        $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
+        if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
+
+        if (Test-Command "opencode-suite") {
+            Write-Ok "opencode-suite CLI installed globally"
+        } else {
+            Write-Warn "opencode-suite CLI installed but may not be in PATH. Restart PowerShell."
+        }
+    } catch {
+        Write-Warn "Could not install opencode-suite CLI: $_"
+    }
+
     # Cleanup
     Remove-Item $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 }

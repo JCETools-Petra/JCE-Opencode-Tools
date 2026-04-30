@@ -202,6 +202,15 @@ deploy_config() {
 
     success "Configuration deployed to: ${CONFIG_DIR}"
 
+    # Install opencode-suite CLI globally
+    info "Installing opencode-suite CLI..."
+    (cd "$TEMP_DIR" && bun install && bun install -g .)
+    if command -v opencode-suite &>/dev/null; then
+        success "opencode-suite CLI installed globally"
+    else
+        warn "opencode-suite CLI installed but may not be in PATH. Restart your terminal."
+    fi
+
     # Cleanup
     rm -rf "$TEMP_DIR"
 }
