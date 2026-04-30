@@ -1,9 +1,0 @@
-Opencode Suite isinya:
-
-✅ Installer otomatis — satu perintah di terminal, semua terpasang sendiri (Git, Bun, OpenCode CLI, semua tools). Kalau ada yang udah terpasang, otomatis di-skip
-✅ 14 AI agent dengan peran masing-masing: ada yang jago debug, ada yang khusus riset dokumentasi, ada yang review kode, ada security auditor — semua udah terkonfigurasi
-✅ 8 profil siap pilih — mau pakai Codex 5.3, Sonnet 4.6, atau versi hybrid yang hemat quota? Tinggal pilih pas setup
-✅ LSP otomatis — autocomplete dan error highlighting untuk Python, TypeScript, Rust, Docker, SQL, dll langsung jalan
-✅ MCP tools — agent bisa cari dokumentasi library dan search kode GitHub secara real-time
-✅ Proteksi akun — ada plugin khusus yang handle autentikasi, udah dioptimasi biar stabil
-✅ Fitur hemat token buat semua model

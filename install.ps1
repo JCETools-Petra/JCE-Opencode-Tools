@@ -1,7 +1,7 @@
-﻿#Requires -Version 5.1
-# ═══════════════════════════════════════════════════════════════
+﻿# ═══════════════════════════════════════════════════════════════
 # OpenCode JCE — Windows Installer (PowerShell)
 # One command to install everything you need for OpenCode CLI
+# Requires: PowerShell 5.1+
 # ═══════════════════════════════════════════════════════════════
 
 $ErrorActionPreference = "Stop"
@@ -126,21 +126,33 @@ function Deploy-Config {
 
     # Clone config repo
     if (Test-Path $TempDir) { Remove-Item $TempDir -Recurse -Force }
-    try {
-        git clone --depth 1 $RepoUrl $TempDir 2>$null
-    } catch {
+    Write-Info "Downloading configuration from GitHub..."
+    $cloneResult = git clone --depth 1 $RepoUrl $TempDir 2>&1
+    if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to clone config repository. Check your internet connection."
     }
 
     # Ensure config directory exists
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $ConfigDir "profiles") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $ConfigDir "prompts") -Force | Out-Null
 
     # Merge configuration (preserves existing settings)
     Write-Info "Merging configuration (preserving existing settings)..."
     $mergeScript = Join-Path $TempDir "scripts\merge-config.ts"
     $sourceConfig = Join-Path $TempDir "config"
-    bun run $mergeScript $sourceConfig $ConfigDir
+
+    if (Test-Path $mergeScript) {
+        try {
+            bun run $mergeScript $sourceConfig $ConfigDir
+        } catch {
+            Write-Warn "Merge script failed, falling back to safe copy..."
+            Deploy-ConfigFallback $sourceConfig $ConfigDir
+        }
+    } else {
+        Write-Warn "Merge script not found, using safe copy..."
+        Deploy-ConfigFallback $sourceConfig $ConfigDir
+    }
 
     Write-Ok "Configuration deployed to: $ConfigDir"
 
@@ -148,11 +160,12 @@ function Deploy-Config {
     Write-Info "Installing opencode-jce CLI..."
     try {
         Push-Location $TempDir
-        bun install
-        bun install -g .
+        bun install 2>$null
+        bun install -g . 2>$null
         Pop-Location
 
         # Refresh PATH
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
         if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
 
@@ -162,11 +175,52 @@ function Deploy-Config {
             Write-Warn "opencode-jce CLI installed but may not be in PATH. Restart PowerShell."
         }
     } catch {
-        Write-Warn "Could not install opencode-jce CLI: $_"
+        Write-Warn "Could not install opencode-jce CLI globally: $_"
     }
 
     # Cleanup
     Remove-Item $TempDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Deploy-ConfigFallback($sourceDir, $targetDir) {
+    # Safe copy: only copy files that don't already exist
+    $files = @("agents.json", "mcp.json", "lsp.json", "fallback.json")
+    foreach ($file in $files) {
+        $src = Join-Path $sourceDir $file
+        $dst = Join-Path $targetDir $file
+        if ((Test-Path $src) -and !(Test-Path $dst)) {
+            Copy-Item $src $dst
+            Write-Ok "  Created: $file"
+        } elseif ((Test-Path $src) -and (Test-Path $dst)) {
+            Write-Skip "  Exists, preserved: $file"
+        }
+    }
+
+    # Copy profiles that don't exist
+    $srcProfiles = Join-Path $sourceDir "profiles"
+    $dstProfiles = Join-Path $targetDir "profiles"
+    if (Test-Path $srcProfiles) {
+        Get-ChildItem $srcProfiles -Filter "*.json" | ForEach-Object {
+            $dst = Join-Path $dstProfiles $_.Name
+            if (!(Test-Path $dst)) {
+                Copy-Item $_.FullName $dst
+            }
+        }
+        Write-Ok "  Profiles copied"
+    }
+
+    # Copy prompts that don't exist
+    $srcPrompts = Join-Path $sourceDir "prompts"
+    $dstPrompts = Join-Path $targetDir "prompts"
+    if (Test-Path $srcPrompts) {
+        Get-ChildItem $srcPrompts | ForEach-Object {
+            $dst = Join-Path $dstPrompts $_.Name
+            if (!(Test-Path $dst)) {
+                Copy-Item $_.FullName $dst
+            }
+        }
+        Write-Ok "  Prompts copied"
+    }
 }
 
 function Setup-ApiKeys {
