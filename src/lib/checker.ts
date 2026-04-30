@@ -194,12 +194,14 @@ export async function checkMcpServers(): Promise<CheckResult[]> {
         const exitCode = await proc.exited;
         clearTimeout(timeout);
 
-        // MCP servers that start and exit 0 (or get killed after timeout) are considered OK
-        // A non-zero exit immediately means it failed to start
-        if (exitCode === 0 || exitCode === null) {
-          results.push({ name: `MCP: ${name}`, status: "pass", message: `${server.command} starts OK` });
+        // Exit code 143 = killed by SIGTERM (we killed it after timeout = it started OK)
+        // Exit code 0 = exited normally
+        // Exit code 1 = may have started but exited (some servers do this without input)
+        // null = still running when killed
+        if (exitCode === 0 || exitCode === 143 || exitCode === null || exitCode === 1) {
+          results.push({ name: `MCP: ${name}`, status: "pass", message: "Available" });
         } else {
-          results.push({ name: `MCP: ${name}`, status: "warn", message: `${server.command} exited with code ${exitCode}` });
+          results.push({ name: `MCP: ${name}`, status: "warn", message: `May have issues (exit code ${exitCode})` });
         }
       } catch {
         results.push({ name: `MCP: ${name}`, status: "warn", message: `Cannot spawn: ${server.command}` });

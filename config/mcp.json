@@ -27,14 +27,6 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "description": "Persistent memory storage for context across sessions"
-    },
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-      "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
-      },
-      "description": "Web search via Brave Search API"
     }
   }
 }
