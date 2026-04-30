@@ -1,8 +1,8 @@
-# ═══════════════════════════════════════════════════════════════
-# OpenCode JCE — Windows Installer (PowerShell)
+# ===================================================================
+# OpenCode JCE - Windows Installer (PowerShell)
 # One command to install everything you need for OpenCode CLI
 # Requires: PowerShell 5.1+
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 
 $ErrorActionPreference = "Stop"
 $Version = "1.0.0"
@@ -15,31 +15,31 @@ $GitStatus = "skip"
 $BunStatus = "skip"
 $OpenCodeStatus = "skip"
 
-# ─── Helper Functions ─────────────────────────────────────────
+# --- Helper Functions ---
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║       OpenCode JCE Installer v$Version       ║" -ForegroundColor Cyan
-    Write-Host "╠══════════════════════════════════════════╣" -ForegroundColor Cyan
-    Write-Host "║  Installing: Git, Bun, OpenCode CLI     ║" -ForegroundColor Cyan
-    Write-Host "║  Configuring: Agents, Profiles, MCP,LSP ║" -ForegroundColor Cyan
-    Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host "       OpenCode JCE Installer v$Version" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host "  Installing: Git, Bun, OpenCode CLI" -ForegroundColor Cyan
+    Write-Host "  Configuring: Agents, Profiles, MCP, LSP" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
 function Write-Info($msg) { Write-Host "[INFO] $msg" -ForegroundColor Blue }
-function Write-Ok($msg) { Write-Host "[✓] $msg" -ForegroundColor Green }
+function Write-Ok($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "[!] $msg" -ForegroundColor Yellow }
 function Write-Skip($msg) { Write-Host "[SKIP] $msg" -ForegroundColor Yellow }
-function Write-Err($msg) { Write-Host "[✗] $msg" -ForegroundColor Red; exit 1 }
+function Write-Err($msg) { Write-Host "[FAIL] $msg" -ForegroundColor Red; exit 1 }
 
 function Test-Command($cmd) {
     try { Get-Command $cmd -ErrorAction Stop | Out-Null; return $true }
     catch { return $false }
 }
 
-# ─── Installation Steps ──────────────────────────────────────
+# --- Installation Steps ---
 
 function Install-Git {
     Write-Info "Checking Git..."
@@ -53,9 +53,8 @@ function Install-Git {
     Write-Info "Installing Git via winget..."
     try {
         winget install Git.Git --accept-package-agreements --accept-source-agreements
-        # Refresh PATH
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-        
+
         if (Test-Command "git") {
             Write-Ok "Git installed"
             $script:GitStatus = "installed"
@@ -79,7 +78,6 @@ function Install-Bun {
     Write-Info "Installing Bun..."
     try {
         irm bun.sh/install.ps1 | iex
-        # Refresh PATH
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
         if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
@@ -106,7 +104,6 @@ function Install-OpenCode {
     Write-Info "Installing OpenCode CLI..."
     try {
         bun install -g opencode
-        # Refresh PATH
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
         if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
 
@@ -134,28 +131,17 @@ function Deploy-Config {
     if (!(Test-Path (Join-Path $TempDir "config"))) {
         Write-Err "Failed to clone config repository. Check your internet connection."
     }
+    Write-Ok "Repository downloaded"
 
     # Ensure config directory exists
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $ConfigDir "profiles") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $ConfigDir "prompts") -Force | Out-Null
 
-    # Merge configuration (preserves existing settings)
+    # Deploy configuration (safe merge - only add what is missing)
     Write-Info "Merging configuration (preserving existing settings)..."
-    $mergeScript = Join-Path $TempDir "scripts\merge-config.ts"
     $sourceConfig = Join-Path $TempDir "config"
-
-    if (Test-Path $mergeScript) {
-        try {
-            bun run $mergeScript $sourceConfig $ConfigDir
-        } catch {
-            Write-Warn "Merge script failed, falling back to safe copy..."
-            Deploy-ConfigFallback $sourceConfig $ConfigDir
-        }
-    } else {
-        Write-Warn "Merge script not found, using safe copy..."
-        Deploy-ConfigFallback $sourceConfig $ConfigDir
-    }
+    Deploy-ConfigSafe $sourceConfig $ConfigDir
 
     Write-Ok "Configuration deployed to: $ConfigDir"
 
@@ -163,11 +149,13 @@ function Deploy-Config {
     Write-Info "Installing opencode-jce CLI..."
     try {
         Push-Location $TempDir
+        $prevErrorAction2 = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         bun install 2>$null
         bun install -g . 2>$null
+        $ErrorActionPreference = $prevErrorAction2
         Pop-Location
 
-        # Refresh PATH
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
         if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
@@ -175,7 +163,7 @@ function Deploy-Config {
         if (Test-Command "opencode-jce") {
             Write-Ok "opencode-jce CLI installed globally"
         } else {
-            Write-Warn "opencode-jce CLI installed but may not be in PATH. Restart PowerShell."
+            Write-Warn "opencode-jce may need a PowerShell restart to appear in PATH"
         }
     } catch {
         Write-Warn "Could not install opencode-jce CLI globally: $_"
@@ -185,8 +173,8 @@ function Deploy-Config {
     Remove-Item $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-function Deploy-ConfigFallback($sourceDir, $targetDir) {
-    # Safe copy: only copy files that don't already exist
+function Deploy-ConfigSafe($sourceDir, $targetDir) {
+    # Safe copy: only copy files that do not already exist
     $files = @("agents.json", "mcp.json", "lsp.json", "fallback.json")
     foreach ($file in $files) {
         $src = Join-Path $sourceDir $file
@@ -199,20 +187,22 @@ function Deploy-ConfigFallback($sourceDir, $targetDir) {
         }
     }
 
-    # Copy profiles that don't exist
+    # Copy profiles that do not exist
     $srcProfiles = Join-Path $sourceDir "profiles"
     $dstProfiles = Join-Path $targetDir "profiles"
     if (Test-Path $srcProfiles) {
+        $added = 0
         Get-ChildItem $srcProfiles -Filter "*.json" | ForEach-Object {
             $dst = Join-Path $dstProfiles $_.Name
             if (!(Test-Path $dst)) {
                 Copy-Item $_.FullName $dst
+                $added++
             }
         }
-        Write-Ok "  Profiles copied"
+        Write-Ok "  Profiles: $added new added"
     }
 
-    # Copy prompts that don't exist
+    # Copy prompts that do not exist
     $srcPrompts = Join-Path $sourceDir "prompts"
     $dstPrompts = Join-Path $targetDir "prompts"
     if (Test-Path $srcPrompts) {
@@ -235,9 +225,9 @@ function Setup-ApiKeys {
     $setupKeys = Read-Host "Configure API keys now? (y/N)"
     if ($setupKeys -ne "y" -and $setupKeys -ne "Y") {
         Write-Warn "Skipping API key setup."
-        Write-Host "  Set these environment variables later:"
-        Write-Host '    $env:OPENAI_API_KEY = "sk-..."'
-        Write-Host '    $env:ANTHROPIC_API_KEY = "sk-ant-..."'
+        Write-Host '  Set these environment variables later:'
+        Write-Host '    [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-...", "User")'
+        Write-Host '    [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")'
         return
     }
 
@@ -245,11 +235,10 @@ function Setup-ApiKeys {
     if ($env:OPENAI_API_KEY) {
         Write-Skip "OPENAI_API_KEY already set"
     } else {
-        $openaiKey = Read-Host "Enter OpenAI API Key (or press Enter to skip)" -AsSecureString
-        $plainKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($openaiKey))
-        if ($plainKey) {
-            [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $plainKey, "User")
-            $env:OPENAI_API_KEY = $plainKey
+        $openaiKey = Read-Host "Enter OpenAI API Key (or press Enter to skip)"
+        if ($openaiKey) {
+            [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $openaiKey, "User")
+            $env:OPENAI_API_KEY = $openaiKey
             Write-Ok "OpenAI API key saved to user environment"
         }
     }
@@ -258,11 +247,10 @@ function Setup-ApiKeys {
     if ($env:ANTHROPIC_API_KEY) {
         Write-Skip "ANTHROPIC_API_KEY already set"
     } else {
-        $anthropicKey = Read-Host "Enter Anthropic API Key (or press Enter to skip)" -AsSecureString
-        $plainKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($anthropicKey))
-        if ($plainKey) {
-            [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $plainKey, "User")
-            $env:ANTHROPIC_API_KEY = $plainKey
+        $anthropicKey = Read-Host "Enter Anthropic API Key (or press Enter to skip)"
+        if ($anthropicKey) {
+            [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $anthropicKey, "User")
+            $env:ANTHROPIC_API_KEY = $anthropicKey
             Write-Ok "Anthropic API key saved to user environment"
         }
     }
@@ -270,37 +258,36 @@ function Setup-ApiKeys {
 
 function Write-Summary {
     Write-Host ""
-    Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║     OpenCode JCE — Installed! 🎉        ║" -ForegroundColor Green
-    Write-Host "╠══════════════════════════════════════════╣" -ForegroundColor Green
+    Write-Host "====================================================" -ForegroundColor Green
+    Write-Host "       OpenCode JCE - Installed!" -ForegroundColor Green
+    Write-Host "====================================================" -ForegroundColor Green
 
     if ($GitStatus -eq "installed") {
-        Write-Host "║ ✅ Git            — installed            ║" -ForegroundColor Green
+        Write-Host "  [OK] Git            - installed" -ForegroundColor Green
     } else {
-        Write-Host "║ ✅ Git            — already present      ║" -ForegroundColor Green
+        Write-Host "  [OK] Git            - already present" -ForegroundColor Green
     }
 
     if ($BunStatus -eq "installed") {
-        Write-Host "║ ✅ Bun            — installed            ║" -ForegroundColor Green
+        Write-Host "  [OK] Bun            - installed" -ForegroundColor Green
     } else {
-        Write-Host "║ ✅ Bun            — already present      ║" -ForegroundColor Green
+        Write-Host "  [OK] Bun            - already present" -ForegroundColor Green
     }
 
     if ($OpenCodeStatus -eq "installed") {
-        Write-Host "║ ✅ OpenCode CLI   — installed            ║" -ForegroundColor Green
+        Write-Host "  [OK] OpenCode CLI   - installed" -ForegroundColor Green
     } else {
-        Write-Host "║ ✅ OpenCode CLI   — already present      ║" -ForegroundColor Green
+        Write-Host "  [OK] OpenCode CLI   - already present" -ForegroundColor Green
     }
 
-    Write-Host "║ ✅ 30 AI Agents   — configured           ║" -ForegroundColor Green
-    Write-Host "║ ✅ 20 Profiles    — ready                ║" -ForegroundColor Green
-    Write-Host "║ ✅ 6 MCP Tools    — configured           ║" -ForegroundColor Green
-    Write-Host "║ ✅ 10 LSP Servers — configured           ║" -ForegroundColor Green
-    Write-Host "╠══════════════════════════════════════════╣" -ForegroundColor Green
-    Write-Host "║                                          ║" -ForegroundColor Green
-    Write-Host "║  Get started:  opencode                  ║" -ForegroundColor Green
-    Write-Host "║                                          ║" -ForegroundColor Green
-    Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
+    Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
+    Write-Host "  [OK] 6 MCP Tools    - configured" -ForegroundColor Green
+    Write-Host "  [OK] 10 LSP Servers - configured" -ForegroundColor Green
+    Write-Host "====================================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Get started:  opencode" -ForegroundColor White
+    Write-Host "  Manage:       opencode-jce --help" -ForegroundColor White
     Write-Host ""
 
     if ($BunStatus -eq "installed" -or $OpenCodeStatus -eq "installed") {
@@ -308,7 +295,7 @@ function Write-Summary {
     }
 }
 
-# ─── Main ─────────────────────────────────────────────────────
+# --- Main ---
 
 Write-Banner
 Install-Git
