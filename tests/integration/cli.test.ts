@@ -16,6 +16,7 @@ describe("CLI Commands", () => {
     expect(result).toContain("agent");
     expect(result).toContain("prompts");
     expect(result).toContain("plugin");
+    expect(result).toContain("team");
   });
 
   test("--version shows version", async () => {
