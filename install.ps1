@@ -152,18 +152,39 @@ function Deploy-Config {
         $prevErrorAction2 = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         bun install 2>$null
-        bun install -g . 2>$null
         $ErrorActionPreference = $prevErrorAction2
         Pop-Location
 
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        # Create .cmd wrapper in bun bin directory
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
-        if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
+        if (!(Test-Path $bunPath)) { New-Item -ItemType Directory -Path $bunPath -Force | Out-Null }
+        $indexPath = Join-Path $TempDir "src\index.ts"
+        $installDir = Join-Path $ConfigDir "cli"
+        
+        # Copy CLI source to persistent location
+        if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        Copy-Item (Join-Path $TempDir "src") (Join-Path $installDir "src") -Recurse
+        Copy-Item (Join-Path $TempDir "schemas") (Join-Path $installDir "schemas") -Recurse
+        Copy-Item (Join-Path $TempDir "package.json") $installDir
+        Copy-Item (Join-Path $TempDir "tsconfig.json") $installDir
+        Copy-Item (Join-Path $TempDir "node_modules") (Join-Path $installDir "node_modules") -Recurse
+
+        # Create .cmd wrapper
+        $cmdContent = "@echo off`r`nbun run `"$installDir\src\index.ts`" %*"
+        Set-Content -Path (Join-Path $bunPath "opencode-jce.cmd") -Value $cmdContent -Encoding ASCII
+
+        # Add bun bin to PATH if not already there
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -notlike "*\.bun\bin*") {
+            [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$bunPath", "User")
+        }
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
         if (Test-Command "opencode-jce") {
             Write-Ok "opencode-jce CLI installed globally"
         } else {
-            Write-Warn "opencode-jce may need a PowerShell restart to appear in PATH"
+            Write-Warn "opencode-jce installed. Restart PowerShell to use it."
         }
     } catch {
         Write-Warn "Could not install opencode-jce CLI globally: $_"
