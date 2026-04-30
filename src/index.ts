@@ -7,6 +7,7 @@ import { doctorCommand } from "./commands/doctor.js";
 import { uninstallCommand } from "./commands/uninstall.js";
 import { updateCommand } from "./commands/update.js";
 import { setupCommand } from "./commands/setup.js";
+import { routeCommand } from "./commands/route.js";
 
 const program = new Command();
 
@@ -21,5 +22,6 @@ program.addCommand(doctorCommand);
 program.addCommand(uninstallCommand);
 program.addCommand(updateCommand);
 program.addCommand(setupCommand);
+program.addCommand(routeCommand);
 
 program.parse(process.argv);
