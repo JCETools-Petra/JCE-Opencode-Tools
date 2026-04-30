@@ -1,0 +1,39 @@
+{
+  "lsp": {
+    "python": {
+      "server": "pyright",
+      "command": "pyright-langserver",
+      "args": ["--stdio"],
+      "filetypes": ["python"],
+      "installCommand": "npm install -g pyright"
+    },
+    "typescript": {
+      "server": "typescript-language-server",
+      "command": "typescript-language-server",
+      "args": ["--stdio"],
+      "filetypes": ["typescript", "javascript", "typescriptreact", "javascriptreact"],
+      "installCommand": "npm install -g typescript-language-server typescript"
+    },
+    "rust": {
+      "server": "rust-analyzer",
+      "command": "rust-analyzer",
+      "args": [],
+      "filetypes": ["rust"],
+      "installCommand": "rustup component add rust-analyzer"
+    },
+    "docker": {
+      "server": "dockerfile-language-server",
+      "command": "docker-langserver",
+      "args": ["--stdio"],
+      "filetypes": ["dockerfile"],
+      "installCommand": "npm install -g dockerfile-language-server-nodejs"
+    },
+    "sql": {
+      "server": "sql-language-server",
+      "command": "sql-language-server",
+      "args": ["up", "--method", "stdio"],
+      "filetypes": ["sql"],
+      "installCommand": "npm install -g sql-language-server"
+    }
+  }
+}
