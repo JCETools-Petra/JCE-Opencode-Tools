@@ -10,6 +10,7 @@ import { setupCommand } from "./commands/setup.js";
 import { routeCommand } from "./commands/route.js";
 import { tokensCommand } from "./commands/tokens.js";
 import { optimizeCommand } from "./commands/optimize.js";
+import { agentCommand } from "./commands/agent.js";
 
 const program = new Command();
 
@@ -27,5 +28,6 @@ program.addCommand(setupCommand);
 program.addCommand(routeCommand);
 program.addCommand(tokensCommand);
 program.addCommand(optimizeCommand);
+program.addCommand(agentCommand);
 
 program.parse(process.argv);
