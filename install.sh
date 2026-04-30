@@ -183,22 +183,13 @@ deploy_config() {
     git clone --depth 1 "$REPO_URL" "$TEMP_DIR" 2>/dev/null || \
         error "Failed to clone config repository. Check your internet connection."
 
-    # Backup existing config
-    if [ -d "$CONFIG_DIR" ] && [ "$(ls -A "$CONFIG_DIR" 2>/dev/null)" ]; then
-        local backup="${CONFIG_DIR}.bak.$(date +%Y%m%d%H%M%S)"
-        warn "Existing config found. Backing up to: ${backup}"
-        mv "$CONFIG_DIR" "$backup"
-    fi
-
-    # Create config directory
+    # Ensure config directory exists
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$CONFIG_DIR/profiles"
 
-    # Copy config files
-    cp "$TEMP_DIR/config/agents.json" "$CONFIG_DIR/"
-    cp "$TEMP_DIR/config/mcp.json" "$CONFIG_DIR/"
-    cp "$TEMP_DIR/config/lsp.json" "$CONFIG_DIR/"
-    cp "$TEMP_DIR/config/profiles/"*.json "$CONFIG_DIR/profiles/"
+    # Merge configuration (preserves existing settings)
+    info "Merging configuration (preserving existing settings)..."
+    bun run "$TEMP_DIR/scripts/merge-config.ts" "$TEMP_DIR/config" "$CONFIG_DIR"
 
     success "Configuration deployed to: ${CONFIG_DIR}"
 

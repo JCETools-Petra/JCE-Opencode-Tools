@@ -132,26 +132,15 @@ function Deploy-Config {
         Write-Err "Failed to clone config repository. Check your internet connection."
     }
 
-    # Backup existing config
-    if (Test-Path $ConfigDir) {
-        $items = Get-ChildItem $ConfigDir -ErrorAction SilentlyContinue
-        if ($items.Count -gt 0) {
-            $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-            $backup = "${ConfigDir}.bak.${timestamp}"
-            Write-Warn "Existing config found. Backing up to: $backup"
-            Move-Item $ConfigDir $backup
-        }
-    }
-
-    # Create config directory
+    # Ensure config directory exists
     New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $ConfigDir "profiles") -Force | Out-Null
 
-    # Copy config files
-    Copy-Item (Join-Path $TempDir "config\agents.json") $ConfigDir
-    Copy-Item (Join-Path $TempDir "config\mcp.json") $ConfigDir
-    Copy-Item (Join-Path $TempDir "config\lsp.json") $ConfigDir
-    Copy-Item (Join-Path $TempDir "config\profiles\*") (Join-Path $ConfigDir "profiles")
+    # Merge configuration (preserves existing settings)
+    Write-Info "Merging configuration (preserving existing settings)..."
+    $mergeScript = Join-Path $TempDir "scripts\merge-config.ts"
+    $sourceConfig = Join-Path $TempDir "config"
+    bun run $mergeScript $sourceConfig $ConfigDir
 
     Write-Ok "Configuration deployed to: $ConfigDir"
 
