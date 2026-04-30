@@ -127,8 +127,11 @@ function Deploy-Config {
     # Clone config repo
     if (Test-Path $TempDir) { Remove-Item $TempDir -Recurse -Force }
     Write-Info "Downloading configuration from GitHub..."
-    $cloneResult = git clone --depth 1 $RepoUrl $TempDir 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $prevErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    git clone --depth 1 $RepoUrl $TempDir 2>$null
+    $ErrorActionPreference = $prevErrorAction
+    if (!(Test-Path (Join-Path $TempDir "config"))) {
         Write-Err "Failed to clone config repository. Check your internet connection."
     }
 
