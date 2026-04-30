@@ -34,6 +34,41 @@
       "args": ["up", "--method", "stdio"],
       "filetypes": ["sql"],
       "installCommand": "npm install -g sql-language-server"
+    },
+    "go": {
+      "server": "gopls",
+      "command": "gopls",
+      "args": ["serve"],
+      "filetypes": ["go"],
+      "installCommand": "go install golang.org/x/tools/gopls@latest"
+    },
+    "java": {
+      "server": "jdtls",
+      "command": "jdtls",
+      "args": [],
+      "filetypes": ["java"],
+      "installCommand": "brew install jdtls"
+    },
+    "cpp": {
+      "server": "clangd",
+      "command": "clangd",
+      "args": ["--background-index"],
+      "filetypes": ["c", "cpp", "objc"],
+      "installCommand": "apt install clangd || brew install llvm"
+    },
+    "php": {
+      "server": "intelephense",
+      "command": "intelephense",
+      "args": ["--stdio"],
+      "filetypes": ["php"],
+      "installCommand": "npm install -g intelephense"
+    },
+    "ruby": {
+      "server": "solargraph",
+      "command": "solargraph",
+      "args": ["stdio"],
+      "filetypes": ["ruby"],
+      "installCommand": "gem install solargraph"
     }
   }
 }
