@@ -8,6 +8,7 @@ import { uninstallCommand } from "./commands/uninstall.js";
 import { updateCommand } from "./commands/update.js";
 import { setupCommand } from "./commands/setup.js";
 import { routeCommand } from "./commands/route.js";
+import { tokensCommand } from "./commands/tokens.js";
 
 const program = new Command();
 
@@ -23,5 +24,6 @@ program.addCommand(uninstallCommand);
 program.addCommand(updateCommand);
 program.addCommand(setupCommand);
 program.addCommand(routeCommand);
+program.addCommand(tokensCommand);
 
 program.parse(process.argv);
