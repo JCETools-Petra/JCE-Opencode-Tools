@@ -1,21 +1,21 @@
-# OpenCode Suite
+# OpenCode JCE
 
 > One command. Full setup. Zero hassle.
 
-OpenCode Suite gives you a complete, optimized OpenCode CLI environment in a single terminal command. It installs all required tools and configures 14 AI agents, 8 model profiles, MCP tools, and LSP settings automatically.
+OpenCode JCE gives you a complete, optimized OpenCode CLI environment in a single terminal command. It installs all required tools and configures 14 AI agents, 8 model profiles, MCP tools, and LSP settings automatically.
 
 ## Quick Install
 
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/USERNAME/opencode-suite/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/USERNAME/opencode-suite/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/install.ps1 | iex
 ```
 
 ## What Gets Installed

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Creates an offline bundle with all dependencies
-BUNDLE_DIR="opencode-suite-offline"
+BUNDLE_DIR="opencode-jce-offline"
 VERSION=$(bun -e "console.log(require('./package.json').version)")
 
 echo "Creating offline bundle v${VERSION}..."
@@ -24,7 +24,7 @@ cp -r node_modules/ "$BUNDLE_DIR/node_modules/"
 cat > "$BUNDLE_DIR/install-offline.sh" << 'INSTALLER'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "Installing OpenCode Suite (offline)..."
+echo "Installing OpenCode JCE (offline)..."
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 mkdir -p "$CONFIG_DIR/profiles"
@@ -37,7 +37,7 @@ cp config/profiles/*.json "$CONFIG_DIR/profiles/"
 # Install CLI globally (requires bun)
 if command -v bun &>/dev/null; then
     bun install -g .
-    echo "✅ OpenCode Suite installed!"
+    echo "✅ OpenCode JCE installed!"
 else
     echo "⚠️  Bun not found. Install Bun first, then run: bun install -g ."
 fi
@@ -45,10 +45,10 @@ INSTALLER
 chmod +x "$BUNDLE_DIR/install-offline.sh"
 
 # Create tarball
-tar -czf "opencode-suite-offline-v${VERSION}.tar.gz" "$BUNDLE_DIR"
+tar -czf "opencode-jce-offline-v${VERSION}.tar.gz" "$BUNDLE_DIR"
 rm -rf "$BUNDLE_DIR"
 
-echo "✅ Bundle created: opencode-suite-offline-v${VERSION}.tar.gz"
+echo "✅ Bundle created: opencode-jce-offline-v${VERSION}.tar.gz"
 echo "   Transfer to target machine and run:"
-echo "   tar -xzf opencode-suite-offline-v${VERSION}.tar.gz"
-echo "   cd opencode-suite-offline && ./install-offline.sh"
+echo "   tar -xzf opencode-jce-offline-v${VERSION}.tar.gz"
+echo "   cd opencode-jce-offline && ./install-offline.sh"

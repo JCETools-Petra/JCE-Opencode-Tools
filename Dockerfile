@@ -21,5 +21,5 @@ RUN mkdir -p /root/.config/opencode/profiles && \
     cp config/lsp.json /root/.config/opencode/ && \
     cp config/profiles/*.json /root/.config/opencode/profiles/
 
-ENTRYPOINT ["opencode-suite"]
+ENTRYPOINT ["opencode-jce"]
 CMD ["--help"]

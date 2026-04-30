@@ -2,7 +2,7 @@ import chalk from "chalk";
 
 export function banner(): void {
   console.log(chalk.cyan("╔══════════════════════════════════════════╗"));
-  console.log(chalk.cyan("║         OpenCode Suite CLI v1.1.0        ║"));
+  console.log(chalk.cyan("║         OpenCode JCE CLI v1.1.0          ║"));
   console.log(chalk.cyan("╚══════════════════════════════════════════╝"));
   console.log();
 }

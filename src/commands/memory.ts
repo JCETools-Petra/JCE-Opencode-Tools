@@ -35,7 +35,7 @@ const listCommand = new Command("list")
 
     if (entries.length === 0) {
       info("No memories stored" + (opts.category ? ` for category: ${opts.category}` : "") + ".");
-      info("Store a memory with: opencode-suite memory set <key> <value>");
+      info("Store a memory with: opencode-jce memory set <key> <value>");
       process.exit(EXIT_SUCCESS);
     }
 
@@ -157,7 +157,7 @@ const clearCommand = new Command("clear")
 
     if (!opts.confirm) {
       warn("This will delete ALL memories for the current project.");
-      warn("Run with --confirm to proceed: opencode-suite memory clear --confirm");
+      warn("Run with --confirm to proceed: opencode-jce memory clear --confirm");
       process.exit(EXIT_ERROR);
     }
 

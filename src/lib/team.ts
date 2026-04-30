@@ -74,7 +74,7 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
   const teamConfig = await loadTeamConfig();
 
   if (!teamConfig) {
-    return { success: false, error: "Team sync not initialized. Run: opencode-suite team init <git-url>" };
+    return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
   }
 
   const configDir = getConfigDir();
@@ -177,7 +177,7 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
   const teamConfig = await loadTeamConfig();
 
   if (!teamConfig) {
-    return { success: false, error: "Team sync not initialized. Run: opencode-suite team init <git-url>" };
+    return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
   }
 
   const configDir = getConfigDir();

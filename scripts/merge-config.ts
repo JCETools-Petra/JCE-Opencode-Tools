@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Merges OpenCode Suite config with existing config.
+ * Merges OpenCode JCE config with existing config.
  * Strategy: ADD what's missing, DON'T TOUCH what exists.
  *
  * Usage: bun run scripts/merge-config.ts <source-dir> <target-dir>
- *   source-dir: directory containing new config files (e.g., /tmp/opencode-suite/config)
+ *   source-dir: directory containing new config files (e.g., /tmp/opencode-jce/config)
  *   target-dir: user's config directory (e.g., ~/.config/opencode)
  */
 
@@ -19,7 +19,7 @@ import {
 } from "fs";
 import { join, basename } from "path";
 
-const sourceDir = process.argv[2]; // e.g., /tmp/opencode-suite/config
+const sourceDir = process.argv[2]; // e.g., /tmp/opencode-jce/config
 const targetDir = process.argv[3]; // e.g., ~/.config/opencode
 
 if (!sourceDir || !targetDir) {

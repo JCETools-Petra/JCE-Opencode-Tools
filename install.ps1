@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
 # ═══════════════════════════════════════════════════════════════
-# OpenCode Suite — Windows Installer (PowerShell)
+# OpenCode JCE — Windows Installer (PowerShell)
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
 $ErrorActionPreference = "Stop"
 $Version = "1.0.0"
-$RepoUrl = "https://github.com/USERNAME/opencode-suite.git"
-$TempDir = Join-Path $env:TEMP "opencode-suite-install"
+$RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
+$TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $ConfigDir = Join-Path $env:APPDATA "opencode"
 
 # Status tracking
@@ -20,7 +20,7 @@ $OpenCodeStatus = "skip"
 function Write-Banner {
     Write-Host ""
     Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║       OpenCode Suite Installer v$Version     ║" -ForegroundColor Cyan
+    Write-Host "║       OpenCode JCE Installer v$Version       ║" -ForegroundColor Cyan
     Write-Host "╠══════════════════════════════════════════╣" -ForegroundColor Cyan
     Write-Host "║  Installing: Git, Bun, OpenCode CLI     ║" -ForegroundColor Cyan
     Write-Host "║  Configuring: Agents, Profiles, MCP,LSP ║" -ForegroundColor Cyan
@@ -144,8 +144,8 @@ function Deploy-Config {
 
     Write-Ok "Configuration deployed to: $ConfigDir"
 
-    # Install opencode-suite CLI globally
-    Write-Info "Installing opencode-suite CLI..."
+    # Install opencode-jce CLI globally
+    Write-Info "Installing opencode-jce CLI..."
     try {
         Push-Location $TempDir
         bun install
@@ -156,13 +156,13 @@ function Deploy-Config {
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
         if (Test-Path $bunPath) { $env:Path += ";$bunPath" }
 
-        if (Test-Command "opencode-suite") {
-            Write-Ok "opencode-suite CLI installed globally"
+        if (Test-Command "opencode-jce") {
+            Write-Ok "opencode-jce CLI installed globally"
         } else {
-            Write-Warn "opencode-suite CLI installed but may not be in PATH. Restart PowerShell."
+            Write-Warn "opencode-jce CLI installed but may not be in PATH. Restart PowerShell."
         }
     } catch {
-        Write-Warn "Could not install opencode-suite CLI: $_"
+        Write-Warn "Could not install opencode-jce CLI: $_"
     }
 
     # Cleanup
@@ -214,7 +214,7 @@ function Setup-ApiKeys {
 function Write-Summary {
     Write-Host ""
     Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║     OpenCode Suite — Installed! 🎉      ║" -ForegroundColor Green
+    Write-Host "║     OpenCode JCE — Installed! 🎉        ║" -ForegroundColor Green
     Write-Host "╠══════════════════════════════════════════╣" -ForegroundColor Green
 
     if ($GitStatus -eq "installed") {

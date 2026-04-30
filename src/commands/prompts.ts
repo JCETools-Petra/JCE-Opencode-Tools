@@ -33,7 +33,7 @@ const listCommand = new Command("list")
 
     console.log();
     info(`Total: ${templates.length} template(s)`);
-    info("Usage: opencode-suite prompts apply <template> <agent-id>");
+    info("Usage: opencode-jce prompts apply <template> <agent-id>");
     logCommandSuccess("prompts list", `count=${templates.length}`);
     process.exit(EXIT_SUCCESS);
   });

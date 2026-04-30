@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════
-# OpenCode Suite — Installer
+# OpenCode JCE — Installer
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
 VERSION="1.0.0"
-REPO_URL="https://github.com/USERNAME/opencode-suite.git"
-TEMP_DIR="/tmp/opencode-suite-install"
+REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
+TEMP_DIR="/tmp/opencode-jce-install"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 
 # Colors
@@ -30,7 +30,7 @@ OPENCODE_STATUS="skip"
 print_banner() {
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════╗"
-    echo "║       OpenCode Suite Installer v${VERSION}     ║"
+    echo "║       OpenCode JCE Installer v${VERSION}       ║"
     echo "╠══════════════════════════════════════════╣"
     echo "║  Installing: Git, Bun, OpenCode CLI     ║"
     echo "║  Configuring: Agents, Profiles, MCP,LSP ║"
@@ -51,7 +51,7 @@ detect_os() {
         MINGW*|MSYS*|CYGWIN*) 
             echo -e "${YELLOW}Detected Windows via Git Bash/MSYS.${NC}"
             echo "Please use PowerShell instead:"
-            echo -e "${CYAN}  irm https://raw.githubusercontent.com/USERNAME/opencode-suite/main/install.ps1 | iex${NC}"
+            echo -e "${CYAN}  irm https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/install.ps1 | iex${NC}"
             exit 0
             ;;
         *) error "Unsupported OS: $(uname -s)";;
@@ -193,13 +193,13 @@ deploy_config() {
 
     success "Configuration deployed to: ${CONFIG_DIR}"
 
-    # Install opencode-suite CLI globally
-    info "Installing opencode-suite CLI..."
+    # Install opencode-jce CLI globally
+    info "Installing opencode-jce CLI..."
     (cd "$TEMP_DIR" && bun install && bun install -g .)
-    if command -v opencode-suite &>/dev/null; then
-        success "opencode-suite CLI installed globally"
+    if command -v opencode-jce &>/dev/null; then
+        success "opencode-jce CLI installed globally"
     else
-        warn "opencode-suite CLI installed but may not be in PATH. Restart your terminal."
+        warn "opencode-jce CLI installed but may not be in PATH. Restart your terminal."
     fi
 
     # Cleanup
@@ -264,7 +264,7 @@ print_summary() {
     echo ""
     echo -e "${GREEN}"
     echo "╔══════════════════════════════════════════╗"
-    echo "║     OpenCode Suite — Installed! 🎉      ║"
+    echo "║     OpenCode JCE — Installed! 🎉        ║"
     echo "╠══════════════════════════════════════════╣"
 
     if [ "$GIT_STATUS" = "installed" ]; then

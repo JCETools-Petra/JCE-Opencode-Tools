@@ -99,7 +99,7 @@ const listCommand = new Command("list")
     console.log();
 
     if (agents.length === 0) {
-      info("No agents configured. Use: opencode-suite agent create");
+      info("No agents configured. Use: opencode-jce agent create");
       process.exit(EXIT_SUCCESS);
     }
 

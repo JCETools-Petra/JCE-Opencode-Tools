@@ -143,7 +143,7 @@ export function analyzeCostOptimizations(
           currentProfile: currentProfile.id,
           suggestedProfile: "auto (smart routing)",
           estimatedSavings: "~20-50% cheaper",
-          reason: `All ${entries.length} requests use the same model. Enable smart routing ('opencode-suite route') to automatically select cheaper models for simple tasks.`,
+          reason: `All ${entries.length} requests use the same model. Enable smart routing ('opencode-jce route') to automatically select cheaper models for simple tasks.`,
         });
       }
     }

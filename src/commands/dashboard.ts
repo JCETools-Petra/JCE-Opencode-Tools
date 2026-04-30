@@ -52,7 +52,7 @@ function renderDashboard(summary: AnalyticsSummary, periodLabel: string): void {
 
   // Top border
   console.log(chalk.cyan(`╔${border}╗`));
-  console.log(chalk.cyan(`║`) + centerText("OpenCode Suite — Dashboard", innerWidth) + chalk.cyan(`║`));
+  console.log(chalk.cyan(`║`) + centerText("OpenCode JCE — Dashboard", innerWidth) + chalk.cyan(`║`));
   console.log(chalk.cyan(`╠${border}╣`));
 
   // Summary section
@@ -159,7 +159,7 @@ export const dashboardCommand = new Command("dashboard")
       console.log();
       info("No usage data available for the selected period.");
       info("Usage is tracked automatically when making API requests.");
-      info("Try: opencode-suite dashboard --period week");
+      info("Try: opencode-jce dashboard --period week");
       process.exit(EXIT_SUCCESS);
     }
 

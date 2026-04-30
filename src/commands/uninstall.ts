@@ -41,10 +41,10 @@ async function runCommand(command: string, args: string[]): Promise<boolean> {
 }
 
 export const uninstallCommand = new Command("uninstall")
-  .description("Remove OpenCode Suite configuration and optionally the CLI tools")
+  .description("Remove OpenCode JCE configuration and optionally the CLI tools")
   .option("--force", "Skip confirmation prompts")
   .action(async (options: { force?: boolean }) => {
-    heading("OpenCode Suite — Uninstaller");
+    heading("OpenCode JCE — Uninstaller");
 
     const configDir = getConfigDir();
 
@@ -62,7 +62,7 @@ export const uninstallCommand = new Command("uninstall")
     // Confirm
     if (!options.force) {
       const confirmed = await askConfirmation(
-        "  This will remove all OpenCode Suite configuration. Continue? (y/N): "
+        "  This will remove all OpenCode JCE configuration. Continue? (y/N): "
       );
       if (!confirmed) {
         info("Uninstall cancelled.");
@@ -96,21 +96,21 @@ export const uninstallCommand = new Command("uninstall")
       process.exit(EXIT_ERROR);
     }
 
-    // Optionally remove opencode-suite CLI
+    // Optionally remove opencode-jce CLI
     console.log();
     let removedSuiteCli = false;
     if (!options.force) {
       const removeSuite = await askConfirmation(
-        "  Also uninstall opencode-suite CLI? (y/N): "
+        "  Also uninstall opencode-jce CLI? (y/N): "
       );
       if (removeSuite) {
-        info("Removing opencode-suite...");
-        const ok = await runCommand("bun", ["remove", "-g", "opencode-suite"]);
+        info("Removing opencode-jce...");
+        const ok = await runCommand("bun", ["remove", "-g", "opencode-jce"]);
         if (ok) {
-          success("opencode-suite CLI removed.");
+          success("opencode-jce CLI removed.");
           removedSuiteCli = true;
         } else {
-          warn("Could not remove opencode-suite (may not be globally installed).");
+          warn("Could not remove opencode-jce (may not be globally installed).");
         }
       }
     }
@@ -138,7 +138,7 @@ export const uninstallCommand = new Command("uninstall")
     heading("Uninstall Summary");
     success(`Config backed up to: ${backupDir}`);
     success("Config directory removed.");
-    if (removedSuiteCli) success("opencode-suite CLI removed.");
+    if (removedSuiteCli) success("opencode-jce CLI removed.");
     if (removedOpencode) success("OpenCode CLI removed.");
     info("Git and Bun were NOT removed (used by other tools).");
     console.log();

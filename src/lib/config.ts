@@ -4,7 +4,7 @@ import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 
 /**
- * Returns the cross-platform config directory for OpenCode Suite.
+ * Returns the cross-platform config directory for OpenCode JCE.
  * - Linux/macOS: $XDG_CONFIG_HOME/opencode or ~/.config/opencode
  * - Windows: %APPDATA%\opencode
  */

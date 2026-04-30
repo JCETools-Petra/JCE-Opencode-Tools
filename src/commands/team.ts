@@ -30,8 +30,8 @@ const initCommand = new Command("init")
     info(`  Branch: ${opts.branch}`);
     console.log();
     info("Next steps:");
-    info("  Push your config:  opencode-suite team push");
-    info("  Pull team config:  opencode-suite team pull");
+    info("  Push your config:  opencode-jce team push");
+    info("  Pull team config:  opencode-jce team pull");
     logCommandSuccess("team init", `url=${gitUrl} branch=${opts.branch}`);
     process.exit(EXIT_SUCCESS);
   });
@@ -91,7 +91,7 @@ const statusCommand = new Command("status")
 
     if (!status.initialized) {
       info("Team sync is not initialized.");
-      info("Run: opencode-suite team init <git-url>");
+      info("Run: opencode-jce team init <git-url>");
       process.exit(EXIT_SUCCESS);
     }
 

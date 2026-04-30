@@ -17,7 +17,7 @@ export function getLogsDir(): string {
  * Get the path to the main log file.
  */
 export function getLogFilePath(): string {
-  return join(getLogsDir(), "opencode-suite.log");
+  return join(getLogsDir(), "opencode-jce.log");
 }
 
 /**

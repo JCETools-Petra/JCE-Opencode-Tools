@@ -76,8 +76,8 @@ export const optimizeCommand = new Command("optimize")
     // Summary
     console.log("─".repeat(50));
     warn(`Found ${suggestions.length} optimization${suggestions.length > 1 ? "s" : ""} that could reduce costs.`);
-    info("Use 'opencode-suite use <profile-id>' to switch profiles.");
-    info("Use 'opencode-suite route <prompt>' for automatic routing.");
+    info("Use 'opencode-jce use <profile-id>' to switch profiles.");
+    info("Use 'opencode-jce route <prompt>' for automatic routing.");
     console.log();
 
     logCommandSuccess("optimize", `suggestions=${suggestions.length}`);

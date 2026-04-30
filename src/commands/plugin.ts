@@ -44,7 +44,7 @@ const listCommand = new Command("list")
 
     if (plugins.length === 0) {
       info("No plugins installed.");
-      info("Usage: opencode-suite plugin install <github-url>");
+      info("Usage: opencode-jce plugin install <github-url>");
       process.exit(EXIT_SUCCESS);
     }
 

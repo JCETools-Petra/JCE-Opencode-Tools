@@ -115,7 +115,7 @@ async function configureApiKeys(rl: ReturnType<typeof createInterface>): Promise
       await mkdir(configDir, { recursive: true });
     }
 
-    const envLines: string[] = ["# OpenCode Suite API Keys", "# Source this file or add to your shell profile", ""];
+    const envLines: string[] = ["# OpenCode JCE API Keys", "# Source this file or add to your shell profile", ""];
     if (openai) envLines.push(`export OPENAI_API_KEY="${openai}"`);
     if (anthropic) envLines.push(`export ANTHROPIC_API_KEY="${anthropic}"`);
     envLines.push("");
@@ -191,7 +191,7 @@ export const setupCommand = new Command("setup")
     logCommandStart("setup");
     banner();
 
-    console.log(chalk.bold("  Welcome to the OpenCode Suite Setup Wizard!"));
+    console.log(chalk.bold("  Welcome to the OpenCode JCE Setup Wizard!"));
     console.log("  This will guide you through configuring your environment.");
     console.log();
 
@@ -236,9 +236,9 @@ export const setupCommand = new Command("setup")
 
       console.log();
       info("Next steps:");
-      info("  • Run `opencode-suite doctor` to verify your setup");
-      info("  • Run `opencode-suite use <profile>` to switch profiles");
-      info("  • Run `opencode-suite validate` to check config files");
+      info("  • Run `opencode-jce doctor` to verify your setup");
+      info("  • Run `opencode-jce use <profile>` to switch profiles");
+      info("  • Run `opencode-jce validate` to check config files");
       console.log();
 
       logCommandSuccess("setup", `profile=${defaultProfile || "none"}, lsp=${enabledLsp.length}`);

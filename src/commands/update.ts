@@ -16,7 +16,7 @@ import {
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 
-const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/JoshuaWink/opencode-suite/main";
+const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main";
 
 interface RemotePackageJson {
   version: string;
@@ -147,7 +147,7 @@ export const updateCommand = new Command("update")
     // Check-only mode
     if (options.check) {
       if (comparison > 0) {
-        info("Run `opencode-suite update` to apply the update.");
+        info("Run `opencode-jce update` to apply the update.");
       }
       logCommandSuccess("update", `check complete, latest=${latestVersion}`);
       process.exit(EXIT_SUCCESS);
@@ -203,7 +203,7 @@ export const updateCommand = new Command("update")
     heading("Update Complete");
     success(`Version: ${localVersion} → ${latestVersion || localVersion}`);
     success(`Config files updated: ${updatedCount}`);
-    info("Run `opencode-suite doctor` to verify your installation.");
+    info("Run `opencode-jce doctor` to verify your installation.");
 
     logCommandSuccess("update", `updated to ${latestVersion}, ${updatedCount} files`);
     process.exit(EXIT_SUCCESS);

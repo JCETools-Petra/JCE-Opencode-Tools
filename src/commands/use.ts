@@ -62,7 +62,7 @@ async function showProfileList(): Promise<void> {
   }
 
   console.log();
-  info("Usage: opencode-suite use <profile-id>");
+  info("Usage: opencode-jce use <profile-id>");
   process.exit(EXIT_SUCCESS);
 }
 
@@ -70,7 +70,7 @@ async function showCurrentProfile(): Promise<void> {
   const activeId = await getActiveProfileId();
 
   if (!activeId) {
-    info("No active profile set. Use: opencode-suite use <profile-id>");
+    info("No active profile set. Use: opencode-jce use <profile-id>");
     process.exit(EXIT_SUCCESS);
   }
 

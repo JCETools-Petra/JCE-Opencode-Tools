@@ -28,7 +28,7 @@ function printResults(results: CheckResult[]): void {
 }
 
 export const doctorCommand = new Command("doctor")
-  .description("Run a full health check of the OpenCode Suite installation")
+  .description("Run a full health check of the OpenCode JCE installation")
   .action(async () => {
     banner();
 

@@ -20,8 +20,8 @@ import { dashboardCommand } from "./commands/dashboard.js";
 const program = new Command();
 
 program
-  .name("opencode-suite")
-  .description("OpenCode Suite — CLI management tool")
+  .name("opencode-jce")
+  .description("OpenCode JCE — CLI management tool")
   .version("1.1.0");
 
 program.addCommand(validateCommand);
