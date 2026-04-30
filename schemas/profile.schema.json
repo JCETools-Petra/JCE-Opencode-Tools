@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Profile Configuration",
   "type": "object",
-  "required": ["id", "name", "description", "provider", "model", "maxTokens", "temperature", "apiKeyEnv", "tokenSaving"],
+  "required": ["id", "name", "description", "provider", "tokenSaving"],
   "properties": {
     "id": {
       "type": "string",
@@ -18,7 +18,7 @@
     },
     "provider": {
       "type": "string",
-      "enum": ["openai", "anthropic", "ollama", "auto"]
+      "enum": ["openai", "anthropic", "ollama", "auto", "google", "deepseek", "xai", "mistral"]
     },
     "model": {
       "type": "string",
@@ -34,8 +34,17 @@
       "maximum": 2
     },
     "apiKeyEnv": {
-      "type": "string",
-      "minLength": 1
+      "type": ["string", "array", "null"]
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "simple": { "type": "object" },
+        "complex": { "type": "object" }
+      }
     },
     "tokenSaving": {
       "type": "object",
@@ -54,9 +63,7 @@
         "skipSystemPromptRepetition": {
           "type": "boolean"
         }
-      },
-      "additionalProperties": false
+      }
     }
-  },
-  "additionalProperties": false
+  }
 }

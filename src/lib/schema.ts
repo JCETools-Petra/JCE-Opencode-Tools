@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
-const ajv = new Ajv({ allErrors: true });
+const ajv = new Ajv({ allErrors: true, strict: false });
 
 /**
  * Get the path to the schemas directory (relative to the repo root).

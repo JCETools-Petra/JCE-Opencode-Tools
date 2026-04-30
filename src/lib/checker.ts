@@ -98,34 +98,6 @@ export async function checkApiKeys(): Promise<CheckResult[]> {
   } else {
     results.push({ name: "Anthropic API Key", status: "pass", message: "Set in environment" });
   }
-    } catch {
-      results.push({ name: "OpenAI API Key", status: "warn", message: "Key set but could not reach API" });
-    }
-  }
-
-  // Anthropic
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) {
-    results.push({ name: "Anthropic API Key", status: "warn", message: "ANTHROPIC_API_KEY not configured" });
-  } else {
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/models", {
-        method: "GET",
-        headers: {
-          "x-api-key": anthropicKey,
-          "anthropic-version": "2023-06-01",
-        },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (response.ok) {
-        results.push({ name: "Anthropic API Key", status: "pass", message: "Valid — API accessible" });
-      } else {
-        results.push({ name: "Anthropic API Key", status: "warn", message: "Key set but API returned error (may be invalid)" });
-      }
-    } catch {
-      results.push({ name: "Anthropic API Key", status: "warn", message: "Key set but could not reach API" });
-    }
-  }
 
   return results;
 }
