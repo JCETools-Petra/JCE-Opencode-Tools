@@ -158,7 +158,12 @@ function Deploy-Config {
         # Create .cmd wrapper in bun bin directory
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
         if (!(Test-Path $bunPath)) { New-Item -ItemType Directory -Path $bunPath -Force | Out-Null }
-        $indexPath = Join-Path $TempDir "src\index.ts"
+
+        # Remove broken files that bun install -g creates on Windows
+        Remove-Item (Join-Path $bunPath "opencode-jce") -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $bunPath "opencode-jce.bunx") -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $bunPath "opencode-jce.exe") -Force -ErrorAction SilentlyContinue
+
         $installDir = Join-Path $ConfigDir "cli"
         
         # Copy CLI source to persistent location
