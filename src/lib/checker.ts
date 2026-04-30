@@ -77,6 +77,8 @@ export async function checkTools(): Promise<CheckResult[]> {
 }
 
 // ─── API Key Checks ──────────────────────────────────────────
+// API keys are managed by OpenCode CLI directly.
+// We only do an informational check (pass/info, never warn).
 
 export async function checkApiKeys(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
@@ -84,19 +86,18 @@ export async function checkApiKeys(): Promise<CheckResult[]> {
   // OpenAI
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
-    results.push({ name: "OpenAI API Key", status: "warn", message: "OPENAI_API_KEY not configured" });
+    results.push({ name: "OpenAI API Key", status: "pass", message: "Managed by OpenCode CLI" });
   } else {
-    try {
-      const response = await fetch("https://api.openai.com/v1/models", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${openaiKey}` },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (response.ok) {
-        results.push({ name: "OpenAI API Key", status: "pass", message: "Valid — API accessible" });
-      } else {
-        results.push({ name: "OpenAI API Key", status: "warn", message: "Key set but API returned error (may be invalid)" });
-      }
+    results.push({ name: "OpenAI API Key", status: "pass", message: "Set in environment" });
+  }
+
+  // Anthropic
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) {
+    results.push({ name: "Anthropic API Key", status: "pass", message: "Managed by OpenCode CLI" });
+  } else {
+    results.push({ name: "Anthropic API Key", status: "pass", message: "Set in environment" });
+  }
     } catch {
       results.push({ name: "OpenAI API Key", status: "warn", message: "Key set but could not reach API" });
     }

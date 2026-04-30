@@ -242,45 +242,7 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
     }
 }
 
-function Setup-ApiKeys {
-    Write-Host ""
-    Write-Info "API Key Setup"
-    Write-Host "OpenCode needs API keys to connect to AI models." -ForegroundColor Cyan
-    Write-Host ""
-
-    $setupKeys = Read-Host "Configure API keys now? (y/N)"
-    if ($setupKeys -ne "y" -and $setupKeys -ne "Y") {
-        Write-Warn "Skipping API key setup."
-        Write-Host '  Set these environment variables later:'
-        Write-Host '    [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-...", "User")'
-        Write-Host '    [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")'
-        return
-    }
-
-    # OpenAI Key
-    if ($env:OPENAI_API_KEY) {
-        Write-Skip "OPENAI_API_KEY already set"
-    } else {
-        $openaiKey = Read-Host "Enter OpenAI API Key (or press Enter to skip)"
-        if ($openaiKey) {
-            [System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $openaiKey, "User")
-            $env:OPENAI_API_KEY = $openaiKey
-            Write-Ok "OpenAI API key saved to user environment"
-        }
-    }
-
-    # Anthropic Key
-    if ($env:ANTHROPIC_API_KEY) {
-        Write-Skip "ANTHROPIC_API_KEY already set"
-    } else {
-        $anthropicKey = Read-Host "Enter Anthropic API Key (or press Enter to skip)"
-        if ($anthropicKey) {
-            [System.Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $anthropicKey, "User")
-            $env:ANTHROPIC_API_KEY = $anthropicKey
-            Write-Ok "Anthropic API key saved to user environment"
-        }
-    }
-}
+# API keys are managed by OpenCode CLI directly - no need to configure here
 
 function Write-Summary {
     Write-Host ""
@@ -329,5 +291,4 @@ Install-Bun
 Install-OpenCode
 Write-Host ""
 Deploy-Config
-Setup-ApiKeys
 Write-Summary

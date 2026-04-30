@@ -206,59 +206,7 @@ deploy_config() {
     rm -rf "$TEMP_DIR"
 }
 
-setup_api_keys() {
-    echo ""
-    info "API Key Setup"
-    echo -e "${CYAN}OpenCode needs API keys to connect to AI models.${NC}"
-    echo ""
-
-    read -p "Configure API keys now? (y/N): " setup_keys
-    if [[ ! "$setup_keys" =~ ^[Yy]$ ]]; then
-        warn "Skipping API key setup."
-        echo "  Set these environment variables later:"
-        echo "    export OPENAI_API_KEY=sk-..."
-        echo "    export ANTHROPIC_API_KEY=sk-ant-..."
-        return
-    fi
-
-    # Determine shell profile
-    local shell_profile=""
-    if [ -f "$HOME/.zshrc" ]; then
-        shell_profile="$HOME/.zshrc"
-    elif [ -f "$HOME/.bashrc" ]; then
-        shell_profile="$HOME/.bashrc"
-    elif [ -f "$HOME/.profile" ]; then
-        shell_profile="$HOME/.profile"
-    else
-        shell_profile="$HOME/.bashrc"
-    fi
-
-    # OpenAI Key
-    if [ -n "${OPENAI_API_KEY:-}" ]; then
-        skip "OPENAI_API_KEY already set"
-    else
-        read -sp "Enter OpenAI API Key (or press Enter to skip): " openai_key
-        echo ""
-        if [ -n "$openai_key" ]; then
-            echo "export OPENAI_API_KEY=\"${openai_key}\"" >> "$shell_profile"
-            export OPENAI_API_KEY="$openai_key"
-            success "OpenAI API key saved to ${shell_profile}"
-        fi
-    fi
-
-    # Anthropic Key
-    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-        skip "ANTHROPIC_API_KEY already set"
-    else
-        read -sp "Enter Anthropic API Key (or press Enter to skip): " anthropic_key
-        echo ""
-        if [ -n "$anthropic_key" ]; then
-            echo "export ANTHROPIC_API_KEY=\"${anthropic_key}\"" >> "$shell_profile"
-            export ANTHROPIC_API_KEY="$anthropic_key"
-            success "Anthropic API key saved to ${shell_profile}"
-        fi
-    fi
-}
+# API keys are managed by OpenCode CLI directly - no setup needed here
 
 print_summary() {
     echo ""
@@ -316,7 +264,7 @@ main() {
     echo ""
 
     deploy_config
-    setup_api_keys
+    # API keys managed by OpenCode CLI - skipped
     print_summary
 }
 
