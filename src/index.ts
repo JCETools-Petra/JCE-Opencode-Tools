@@ -14,6 +14,8 @@ import { agentCommand } from "./commands/agent.js";
 import { promptsCommand } from "./commands/prompts.js";
 import { pluginCommand } from "./commands/plugin.js";
 import { teamCommand } from "./commands/team.js";
+import { memoryCommand } from "./commands/memory.js";
+import { dashboardCommand } from "./commands/dashboard.js";
 
 const program = new Command();
 
@@ -35,5 +37,7 @@ program.addCommand(agentCommand);
 program.addCommand(promptsCommand);
 program.addCommand(pluginCommand);
 program.addCommand(teamCommand);
+program.addCommand(memoryCommand);
+program.addCommand(dashboardCommand);
 
 program.parse(process.argv);
