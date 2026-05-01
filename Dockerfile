@@ -16,10 +16,12 @@ RUN bun install -g .
 # Set config directory
 ENV XDG_CONFIG_HOME=/root/.config
 RUN mkdir -p /root/.config/opencode/profiles && \
+    mkdir -p /root/.config/opencode/skills && \
     cp config/agents.json /root/.config/opencode/ && \
     cp config/mcp.json /root/.config/opencode/ && \
     cp config/lsp.json /root/.config/opencode/ && \
     cp config/AGENTS.md /root/.config/opencode/ && \
+    cp config/skills/*.md /root/.config/opencode/skills/ && \
     cp config/profiles/*.json /root/.config/opencode/profiles/
 
 ENTRYPOINT ["opencode-jce"]

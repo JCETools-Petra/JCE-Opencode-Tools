@@ -377,6 +377,21 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
     } else {
         Write-Skip "  AGENTS.md already exists (preserved)"
     }
+
+    # Deploy skills (modular on-demand instructions)
+    $skillsSrc = Join-Path $sourceDir "skills"
+    $skillsDst = Join-Path $targetDir "skills"
+    if (Test-Path $skillsSrc) {
+        if (-not (Test-Path $skillsDst)) { New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null }
+        foreach ($f in Get-ChildItem $skillsSrc -Filter "*.md") {
+            $dst = Join-Path $skillsDst $f.Name
+            if (-not (Test-Path $dst)) {
+                Copy-Item $f.FullName $dst
+            }
+        }
+        $count = (Get-ChildItem $skillsDst -Filter "*.md").Count
+        Write-Ok "  Skills deployed ($count files)"
+    }
 }
 
 # API keys are managed by OpenCode CLI directly - no need to configure here
@@ -616,6 +631,7 @@ function Write-Summary {
 
     Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
+    Write-Host "  [OK] 16 Skills      - on-demand workflows" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
     Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {

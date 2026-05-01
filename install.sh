@@ -200,6 +200,20 @@ deploy_config() {
         skip "AGENTS.md already exists (preserved)"
     fi
 
+    # Deploy skills (modular on-demand instructions)
+    SKILLS_SRC="$TEMP_DIR/config/skills"
+    SKILLS_DST="$CONFIG_DIR/skills"
+    if [ -d "$SKILLS_SRC" ]; then
+        mkdir -p "$SKILLS_DST"
+        for f in "$SKILLS_SRC"/*.md; do
+            fname=$(basename "$f")
+            if [ ! -f "$SKILLS_DST/$fname" ]; then
+                cp "$f" "$SKILLS_DST/$fname"
+            fi
+        done
+        success "Skills deployed ($(ls "$SKILLS_DST"/*.md 2>/dev/null | wc -l) files)"
+    fi
+
     success "Configuration deployed to: ${CONFIG_DIR}"
 
     # Install opencode-jce CLI globally
@@ -457,6 +471,7 @@ print_summary() {
 
     echo "║ ✅ 30 AI Agents   — configured           ║"
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
+    echo "║ ✅ 16 Skills      — on-demand workflows  ║"
     echo "║ ✅ 20 Profiles    — ready                ║"
     echo "║ ✅ 5 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
