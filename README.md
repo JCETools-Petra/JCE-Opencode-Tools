@@ -163,7 +163,7 @@ The `hybrid-hemat` profile automatically analyzes your prompt and routes to the 
 | 8 | C/C++ | clangd |
 | 9 | PHP | intelephense |
 | 10 | Ruby | solargraph |
-| 11 | C# | omnisharp |
+| 11 | C# | csharp-ls |
 | 12 | Bash/Shell | bash-language-server |
 | 13 | YAML | yaml-language-server |
 | 14 | HTML | vscode-html-language-server |

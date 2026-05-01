@@ -9,6 +9,8 @@ $Version = "1.1.0"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $ConfigDir = Join-Path $env:APPDATA "opencode"
+$JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
+$JceLspDir = Join-Path $env:LOCALAPPDATA "opencode-jce\lsp"
 
 # Status tracking
 $GitStatus = "skip"
@@ -35,9 +37,121 @@ function Write-Warn($msg) { Write-Host "[!] $msg" -ForegroundColor Yellow }
 function Write-Skip($msg) { Write-Host "[SKIP] $msg" -ForegroundColor Yellow }
 function Write-Err($msg) { Write-Host "[FAIL] $msg" -ForegroundColor Red; exit 1 }
 
+function Add-UserPath($dir) {
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+    $paths = @($env:Path -split ";") | Where-Object { $_ }
+    if ($paths -notcontains $dir) { $env:Path = "$dir;$env:Path" }
+
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $userPaths = @($userPath -split ";") | Where-Object { $_ }
+    if ($userPaths -notcontains $dir) {
+        $newUserPath = if ($userPath) { "$dir;$userPath" } else { $dir }
+        [System.Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+    }
+}
+
+function Get-KnownCommandPath($cmd) {
+    try { return (Get-Command $cmd -ErrorAction Stop).Source } catch {}
+
+    $candidates = @(
+        (Join-Path $env:USERPROFILE "go\bin\$cmd.exe"),
+        (Join-Path $env:USERPROFILE ".dotnet\tools\$cmd.exe"),
+        (Join-Path $JceBinDir "$cmd.cmd"),
+        (Join-Path $JceBinDir "$cmd.exe"),
+        "C:\Program Files\Go\bin\$cmd.exe",
+        "C:\Program Files\LLVM\bin\$cmd.exe"
+    )
+
+    foreach ($path in $candidates) {
+        if (Test-Path $path) { return $path }
+    }
+
+    return $null
+}
+
 function Test-Command($cmd) {
-    try { Get-Command $cmd -ErrorAction Stop | Out-Null; return $true }
-    catch { return $false }
+    return [bool](Get-KnownCommandPath $cmd)
+}
+
+function Invoke-InstallCommand($command) {
+    $prevEA = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    cmd /c "$command" 2>$null | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEA
+
+    # winget returns 43 when package is already installed and no upgrade exists.
+    if ($code -ne 0 -and $code -ne 43) { throw "Exit code $code" }
+}
+
+function Install-GoLsp {
+    if (-not (Get-KnownCommandPath "go")) {
+        Invoke-InstallCommand "winget install -e --id GoLang.Go --accept-package-agreements --accept-source-agreements"
+    }
+
+    Add-UserPath "C:\Program Files\Go\bin"
+    Add-UserPath (Join-Path $env:USERPROFILE "go\bin")
+
+    $go = Get-KnownCommandPath "go"
+    if (-not $go) { throw "Go installed but go.exe not found; restart terminal and rerun installer" }
+
+    & $go install golang.org/x/tools/gopls@latest 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "gopls install failed" }
+    if (-not (Test-Command "gopls")) { throw "gopls installed but not found on PATH" }
+}
+
+function Install-Jdtls {
+    Add-UserPath $JceBinDir
+
+    if (-not (Get-KnownCommandPath "java")) {
+        Invoke-InstallCommand "winget install -e --id EclipseAdoptium.Temurin.21.JDK --accept-package-agreements --accept-source-agreements"
+    }
+
+    $javaHome = "C:\Program Files\Eclipse Adoptium\jdk-21*\bin"
+    $javaDirs = Get-ChildItem $javaHome -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($javaDirs) { Add-UserPath $javaDirs.FullName }
+
+    if (-not (Get-KnownCommandPath "java")) { throw "Java installed but java.exe not found; restart terminal and rerun installer" }
+
+    $dest = Join-Path $JceLspDir "jdtls"
+    $launcher = Get-ChildItem (Join-Path $dest "plugins") -Filter "org.eclipse.equinox.launcher_*.jar" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $launcher) {
+        if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+        New-Item -ItemType Directory -Path $dest -Force | Out-Null
+        $archive = Join-Path $env:TEMP "jdtls-latest.tar.gz"
+        Invoke-WebRequest -Uri "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz" -OutFile $archive -UseBasicParsing
+        tar -xzf $archive -C $dest
+    }
+
+    $shim = Join-Path $JceBinDir "jdtls.cmd"
+    @'
+@echo off
+setlocal
+set JDTLS_HOME=%LOCALAPPDATA%\opencode-jce\lsp\jdtls
+for %%f in ("%JDTLS_HOME%\plugins\org.eclipse.equinox.launcher_*.jar") do set JDTLS_LAUNCHER=%%f
+java -Declipse.application=org.eclipse.jdt.ls.core.id1 -Dosgi.bundles.defaultStartLevel=4 -Declipse.product=org.eclipse.jdt.ls.core.product -Dlog.protocol=true -Dlog.level=ALL -Xmx1G --add-modules=ALL-SYSTEM --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED -jar "%JDTLS_LAUNCHER%" -configuration "%JDTLS_HOME%\config_win" -data "%USERPROFILE%\.jdtls-workspace" %*
+'@ | Set-Content -Path $shim -Encoding ASCII
+
+    if (-not (Test-Command "jdtls")) { throw "jdtls shim created but not found on PATH" }
+}
+
+function Install-Clangd {
+    Invoke-InstallCommand "winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements"
+    Add-UserPath "C:\Program Files\LLVM\bin"
+    if (-not (Test-Command "clangd")) { throw "LLVM installed but clangd.exe not found on PATH" }
+}
+
+function Install-CSharpLsp {
+    Add-UserPath (Join-Path $env:USERPROFILE ".dotnet\tools")
+    if (-not (Test-Command "csharp-ls")) {
+        try {
+            Invoke-InstallCommand "dotnet tool install -g csharp-ls --version 0.15.0"
+        } catch {
+            Invoke-InstallCommand "dotnet tool update -g csharp-ls --version 0.15.0"
+        }
+    }
+    if (-not (Test-Command "csharp-ls")) { throw "csharp-ls installed but not found on PATH" }
 }
 
 # --- Installation Steps ---
@@ -401,17 +515,22 @@ function Install-LspServers {
     foreach ($lsp in $selected) {
         Write-Host "  Installing $($lsp.Name)... " -NoNewline
         try {
-            $prevEA = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            cmd /c "$($lsp.Install)" 2>$null | Out-Null
-            # winget exit 0=success, 43=already installed (no upgrade available)
-            if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 43) { throw "Exit code $LASTEXITCODE" }
-            $ErrorActionPreference = $prevEA
+            switch ($lsp.Name) {
+                "Go" { Install-GoLsp }
+                "Java" { Install-Jdtls }
+                "C/C++" { Install-Clangd }
+                "C#" { Install-CSharpLsp }
+                default {
+                    Invoke-InstallCommand $lsp.Install
+                    if (-not (Test-Command $lsp.Cmd)) { throw "$($lsp.Cmd) not found after install" }
+                }
+            }
             Write-Host "[OK]" -ForegroundColor Green
             $installedCount++
         } catch {
             Write-Host "[FAIL]" -ForegroundColor Yellow
             Write-Warn "  Command: $($lsp.Install)"
+            Write-Warn "  Error: $($_.Exception.Message)"
             $failedCount++
         }
     }

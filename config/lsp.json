@@ -71,11 +71,11 @@
       "installCommand": "gem install solargraph"
     },
     "csharp": {
-      "server": "omnisharp",
-      "command": "OmniSharp",
-      "args": ["--languageserver"],
+      "server": "csharp-ls",
+      "command": "csharp-ls",
+      "args": [],
       "filetypes": ["csharp"],
-      "installCommand": "dotnet tool install -g omnisharp"
+      "installCommand": "dotnet tool install -g csharp-ls --version 0.15.0"
     },
     "bash": {
       "server": "bash-language-server",
