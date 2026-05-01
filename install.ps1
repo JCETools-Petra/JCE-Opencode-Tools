@@ -631,7 +631,7 @@ function Write-Summary {
 
     Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
-    Write-Host "  [OK] 16 Skills      - on-demand workflows" -ForegroundColor Green
+    Write-Host "  [OK] 35 Skills      - on-demand workflows" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
     Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {

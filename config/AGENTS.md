@@ -38,8 +38,9 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
 **You have access to specialized skill files in `~/.config/opencode/skills/`.** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
 
-### Available Skills
+### Available Skills (35 files)
 
+**Core Engineering:**
 | File | Load When |
 |------|-----------|
 | `software-engineering.md` | Coding, testing, debugging, refactoring, code review |
@@ -50,33 +51,74 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 | `developer-tooling.md` | LSP, linting, formatting, project structure, code generation |
 | `ai-optimization.md` | Token efficiency, model selection, prompt engineering |
 | `advanced-patterns.md` | SOLID, 12-Factor, performance engineering, feature flags |
-| `typescript.md` | Working with .ts, .js, .tsx, .jsx, Node.js |
-| `python.md` | Working with .py files, Django, FastAPI, Flask |
-| `rust.md` | Working with .rs files, Cargo, async Rust |
-| `go.md` | Working with .go files, Go modules |
-| `csharp.md` | Working with .cs files, .NET, ASP.NET Core |
-| `java-kotlin.md` | Working with .java, .kt files, Spring, Android |
-| `php.md` | Working with .php files, Laravel, Symfony |
-| `ruby.md` | Working with .rb files, Rails, gems |
+| `sql-database.md` | SQL queries, schema design, indexing, migrations, PostgreSQL/MySQL |
+| `tailwind.md` | Tailwind CSS, utility-first styling, responsive design |
+
+**Frontend Frameworks:**
+| File | Load When |
+|------|-----------|
+| `react.md` | React, JSX/TSX, hooks, React 19, Server Components |
+| `vue.md` | Vue 3, Composition API, Pinia, Nuxt |
+| `svelte.md` | Svelte 5, SvelteKit, runes |
+| `nextjs.md` | Next.js, App Router, Server Actions |
+| `angular.md` | Angular, signals, RxJS, standalone components |
+
+**Backend Frameworks:**
+| File | Load When |
+|------|-----------|
+| `laravel.md` | Laravel, Eloquent, Blade, Artisan |
+| `django-fastapi.md` | Django, DRF, FastAPI, Pydantic |
+| `express-nestjs.md` | Express.js, NestJS, Node.js APIs |
+| `spring-boot.md` | Spring Boot, Spring Security, JPA |
+| `rails.md` | Ruby on Rails, ActiveRecord, Hotwire |
+
+**Mobile:**
+| File | Load When |
+|------|-----------|
+| `react-native.md` | React Native, Expo, mobile apps |
+| `flutter-dart.md` | Flutter, Dart, widgets, Riverpod |
+| `swift-ios.md` | Swift, SwiftUI, iOS development |
+
+**Languages:**
+| File | Load When |
+|------|-----------|
+| `typescript.md` | .ts, .js, .tsx, .jsx, Node.js |
+| `python.md` | .py files, Python ecosystem |
+| `rust.md` | .rs files, Cargo, async Rust |
+| `go.md` | .go files, Go modules |
+| `csharp.md` | .cs files, .NET, ASP.NET Core |
+| `java-kotlin.md` | .java, .kt files, JVM |
+| `php.md` | .php files, PHP ecosystem |
+| `ruby.md` | .rb files, Ruby ecosystem |
+| `cpp.md` | .c, .cpp, .h files, CMake, modern C++ |
+| `shell-bash.md` | .sh, Bash, Makefile, shell scripts |
+| `elixir.md` | .ex, .exs files, Phoenix, LiveView |
+| `scala.md` | .scala files, Akka, Cats/ZIO |
 
 ### Routing Rules
 
 1. **Detect from context** — file extensions, frameworks mentioned, task type
-2. **Load 1-3 skills max** per task — don't load everything
+2. **Load 1-4 skills max** per task — don't load everything
 3. **Always load `software-engineering.md`** for any coding task
 4. **Language skill** — load based on file extension or language mentioned
-5. **Domain skill** — load based on task domain (security audit → security.md)
+5. **Framework skill** — load if specific framework is mentioned or detected
+6. **Domain skill** — load based on task domain (security audit → security.md)
+7. **Framework > Language** — if user says "Laravel", load `laravel.md` (includes PHP patterns)
 
 ### Examples
 
 | User says | Load |
 |-----------|------|
-| "Fix this React component" | `software-engineering.md` + `typescript.md` + `frontend.md` |
-| "Review this API for security issues" | `software-engineering.md` + `security.md` + `architecture.md` |
+| "Fix this React component" | `software-engineering.md` + `react.md` + `typescript.md` |
+| "Build a Laravel API" | `software-engineering.md` + `laravel.md` + `architecture.md` |
+| "Review this API for security" | `security.md` + `architecture.md` |
 | "Set up Docker and CI/CD" | `devops.md` |
-| "Optimize database queries" | `architecture.md` + relevant language |
-| "What's wrong with this Rust code?" | `software-engineering.md` + `rust.md` |
-| "Help me plan this microservice" | `architecture.md` + `advanced-patterns.md` |
+| "Optimize database queries" | `sql-database.md` + `architecture.md` |
+| "Build a Next.js app" | `nextjs.md` + `react.md` + `typescript.md` |
+| "Flutter mobile app" | `flutter-dart.md` + `software-engineering.md` |
+| "Fix this Rust code" | `software-engineering.md` + `rust.md` |
+| "Style with Tailwind" | `tailwind.md` + `frontend.md` |
+| "Spring Boot microservice" | `spring-boot.md` + `architecture.md` + `java-kotlin.md` |
 
 ---
 

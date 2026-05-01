@@ -471,7 +471,7 @@ print_summary() {
 
     echo "║ ✅ 30 AI Agents   — configured           ║"
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
-    echo "║ ✅ 16 Skills      — on-demand workflows  ║"
+    echo "║ ✅ 35 Skills      — on-demand workflows  ║"
     echo "║ ✅ 20 Profiles    — ready                ║"
     echo "║ ✅ 5 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
