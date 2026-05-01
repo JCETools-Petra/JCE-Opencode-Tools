@@ -6,10 +6,13 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+
+# Cleanup on exit/interrupt
+trap 'rm -rf "$TEMP_DIR" 2>/dev/null' EXIT INT TERM
 
 # Colors
 RED='\033[0;31m'
@@ -136,7 +139,7 @@ install_bun() {
     fi
 
     info "Installing Bun..."
-    curl -fsSL https://bun.sh/install | bash
+    curl -fsSL https://bun.sh/install | bash || true
 
     # Source the updated profile to get bun in PATH
     export BUN_INSTALL="${HOME}/.bun"
@@ -159,7 +162,7 @@ install_opencode() {
     fi
 
     info "Installing OpenCode CLI..."
-    bun install -g opencode
+    bun install -g opencode || true
 
     if command -v opencode &>/dev/null; then
         success "OpenCode CLI installed"
@@ -228,10 +231,10 @@ deploy_config() {
     fi
 
     # Deploy AGENTS.md (only if not already present)
-    if [ ! -f "$CONFIG_DIR/AGENTS.md" ]; then
+    if [ ! -f "$CONFIG_DIR/AGENTS.md" ] && [ -f "$TEMP_DIR/config/AGENTS.md" ]; then
         cp "$TEMP_DIR/config/AGENTS.md" "$CONFIG_DIR/AGENTS.md"
         success "AGENTS.md deployed"
-    else
+    elif [ -f "$CONFIG_DIR/AGENTS.md" ]; then
         skip "AGENTS.md already exists (preserved)"
     fi
 
@@ -241,23 +244,27 @@ deploy_config() {
     if [ -d "$SKILLS_SRC" ]; then
         mkdir -p "$SKILLS_DST"
         for f in "$SKILLS_SRC"/*.md; do
+            [ -f "$f" ] || continue
             fname=$(basename "$f")
             if [ ! -f "$SKILLS_DST/$fname" ]; then
                 cp "$f" "$SKILLS_DST/$fname"
             fi
         done
-        success "Skills deployed ($(ls "$SKILLS_DST"/*.md 2>/dev/null | wc -l) files)"
+        success "Skills deployed ($(ls "$SKILLS_DST"/*.md 2>/dev/null | wc -l | tr -d ' ') files)"
     fi
 
     success "Configuration deployed to: ${CONFIG_DIR}"
 
     # Install opencode-jce CLI globally
     info "Installing opencode-jce CLI..."
-    (cd "$TEMP_DIR" && bun install && bun install -g .)
-    if command -v opencode-jce &>/dev/null; then
-        success "opencode-jce CLI installed globally"
+    if (cd "$TEMP_DIR" && bun install && bun install -g .) 2>/dev/null; then
+        if command -v opencode-jce &>/dev/null; then
+            success "opencode-jce CLI installed globally"
+        else
+            warn "opencode-jce installed. Restart your terminal to use it."
+        fi
     else
-        warn "opencode-jce CLI installed but may not be in PATH. Restart your terminal."
+        warn "opencode-jce CLI installation failed. You can install it manually later."
     fi
 
     # Cleanup
@@ -269,6 +276,13 @@ deploy_config() {
 precache_mcp_packages() {
     echo ""
     info "Pre-downloading MCP server packages..."
+
+    if ! command -v npm &>/dev/null; then
+        warn "npm not found. MCP packages will download on first use."
+        info "Install Node.js for pre-caching: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs"
+        return
+    fi
+
     info "This ensures MCP servers start instantly in OpenCode."
     echo ""
 
@@ -515,12 +529,17 @@ merge_lsp_to_opencode_config() {
     # Read lsp.json and check each command
     # We use a simple approach: parse the command field and check if it exists
     local lsp_keys
-    lsp_keys=$(grep -o '"[^"]*":\s*{' "$lsp_json" | grep -v '"lsp"' | sed 's/"//g; s/:.*//' | tr -d ' ')
+    lsp_keys=$(grep -o '"[^"]*":\s*{' "$lsp_json" 2>/dev/null | grep -v '"lsp"' | sed 's/"//g; s/:.*//' | tr -d ' ' || true)
+
+    if [ -z "$lsp_keys" ]; then
+        info "Could not parse lsp.json. Nothing to merge."
+        return
+    fi
 
     for key in $lsp_keys; do
         # Extract the command for this LSP entry
         local cmd
-        cmd=$(sed -n "/${key}/,/}/p" "$lsp_json" | grep '"command"' | head -1 | sed 's/.*"command":\s*"//; s/".*//')
+        cmd=$(sed -n "/${key}/,/}/p" "$lsp_json" 2>/dev/null | grep '"command"' | head -1 | sed 's/.*"command":\s*"//; s/".*//' || true)
         
         if [ -n "$cmd" ] && command -v "$cmd" &>/dev/null; then
             installed_lsps+=("$key")
@@ -537,11 +556,11 @@ merge_lsp_to_opencode_config() {
     # Build LSP section for opencode.json using bun (reliable JSON manipulation)
     # If bun is available, use it for proper JSON merge
     if command -v bun &>/dev/null; then
-        bun -e "
+        OPENCODE_JSON_PATH="$opencode_json" LSP_JSON_PATH="$lsp_json" INSTALLED_LSPS="${installed_lsps[*]}" bun -e "
 import fs from 'fs';
-const path = '${opencode_json}';
-const lspPath = '${lsp_json}';
-const installed = '${installed_lsps[*]}'.split(' ').filter(Boolean);
+const path = process.env.OPENCODE_JSON_PATH;
+const lspPath = process.env.LSP_JSON_PATH;
+const installed = process.env.INSTALLED_LSPS.split(' ').filter(Boolean);
 
 // Load or create opencode.json
 let config = {};

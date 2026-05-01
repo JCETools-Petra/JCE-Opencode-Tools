@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { createInterface } from "readline";
 import { existsSync } from "fs";
-import { writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import chalk from "chalk";
 import {
@@ -154,14 +154,14 @@ async function configureLsp(rl: ReturnType<typeof createInterface>): Promise<str
 
   let lspConfig: LspConfig;
   try {
-    const content = await Bun.file(lspPath).text();
+    const content = await readFile(lspPath, "utf-8");
     lspConfig = JSON.parse(content) as LspConfig;
   } catch {
     warn("Could not parse lsp.json. Skipping LSP configuration.");
     return [];
   }
 
-  const servers = Object.entries(lspConfig.lsp);
+  const servers = Object.entries(lspConfig.lsp || {});
   if (servers.length === 0) {
     info("No LSP servers configured.");
     return [];
@@ -181,15 +181,15 @@ async function configureLsp(rl: ReturnType<typeof createInterface>): Promise<str
 
   if (enabled.length > 0) {
     // Detect which enabled servers are actually installed
-    const { execSync } = await import("child_process");
+    const { execFileSync } = await import("child_process");
     const installedCommands: string[] = [];
 
     for (const name of enabled) {
       const entry = lspConfig.lsp[name];
       if (!entry) continue;
       try {
-        const cmd = process.platform === "win32" ? `where ${entry.command}` : `which ${entry.command}`;
-        execSync(cmd, { stdio: "ignore" });
+        const whichCmd = process.platform === "win32" ? "where" : "which";
+        execFileSync(whichCmd, [entry.command], { stdio: "ignore" });
         installedCommands.push(entry.command);
       } catch {
         warn(`${name}: ${entry.command} not found in PATH. Skipping merge.`);
@@ -233,7 +233,7 @@ async function mergeLspNonInteractive(): Promise<void> {
 
   let lspConfig: LspConfig;
   try {
-    const content = await Bun.file(lspPath).text();
+    const content = await readFile(lspPath, "utf-8");
     lspConfig = JSON.parse(content) as LspConfig;
   } catch {
     error("Could not parse lsp.json.");
@@ -241,13 +241,13 @@ async function mergeLspNonInteractive(): Promise<void> {
   }
 
   // Detect which LSP commands are installed
-  const { execSync } = await import("child_process");
+  const { execFileSync } = await import("child_process");
   const installedCommands: string[] = [];
 
-  for (const [, entry] of Object.entries(lspConfig.lsp)) {
+  for (const [, entry] of Object.entries(lspConfig.lsp || {})) {
     try {
-      const cmd = process.platform === "win32" ? `where ${entry.command}` : `which ${entry.command}`;
-      execSync(cmd, { stdio: "ignore" });
+      const whichCmd = process.platform === "win32" ? "where" : "which";
+      execFileSync(whichCmd, [entry.command], { stdio: "ignore" });
       installedCommands.push(entry.command);
     } catch {
       // Command not found — skip

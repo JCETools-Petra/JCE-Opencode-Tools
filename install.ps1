@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.1.0"
+$Version = "1.2.0"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $ConfigDir = Join-Path $env:APPDATA "opencode"
@@ -118,9 +118,8 @@ function Install-Jdtls {
         Invoke-InstallCommand "winget install -e --id EclipseAdoptium.Temurin.21.JDK --accept-package-agreements --accept-source-agreements"
     }
 
-    $javaHome = "C:\Program Files\Eclipse Adoptium\jdk-21*\bin"
-    $javaDirs = Get-ChildItem $javaHome -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($javaDirs) { Add-UserPath $javaDirs.FullName }
+    $javaBin = Resolve-Path "C:\Program Files\Eclipse Adoptium\jdk-21*\bin" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($javaBin) { Add-UserPath $javaBin.Path }
 
     if (-not (Get-KnownCommandPath "java")) { throw "Java installed but java.exe not found; restart terminal and rerun installer" }
 
@@ -399,6 +398,13 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
 function Install-McpPackages {
     Write-Host ""
     Write-Info "Pre-downloading MCP server packages..."
+
+    if (-not (Test-Command "npm")) {
+        Write-Warn "npm not found. MCP packages will download on first use."
+        Write-Info "Install Node.js for pre-caching: winget install -e --id OpenJS.NodeJS.LTS"
+        return
+    }
+
     Write-Info "This ensures MCP servers start instantly in OpenCode."
     Write-Host ""
 

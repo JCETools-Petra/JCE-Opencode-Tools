@@ -57,7 +57,12 @@ const initCommand = new Command("init")
       process.exit(EXIT_ERROR);
     }
 
-    await writeFile(contextPath, CONTEXT_TEMPLATE, "utf-8");
+    try {
+      await writeFile(contextPath, CONTEXT_TEMPLATE, "utf-8");
+    } catch (err: any) {
+      error(`Failed to write ${CONTEXT_FILENAME}: ${err.message}`);
+      process.exit(EXIT_ERROR);
+    }
 
     success(`Created ${CONTEXT_FILENAME} in ${process.cwd()}`);
     console.log();

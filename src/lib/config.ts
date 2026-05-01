@@ -1,7 +1,7 @@
-import { join } from "path";
+import { join, dirname } from "path";
 import { homedir, platform } from "os";
 import { existsSync } from "fs";
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, mkdir } from "fs/promises";
 
 /**
  * Returns the cross-platform config directory for OpenCode JCE.
@@ -90,14 +90,11 @@ export function getOpenCodeConfigPath(): string {
 export async function loadOpenCodeConfig(): Promise<Record<string, any>> {
   const configPath = getOpenCodeConfigPath();
 
-  if (!existsSync(configPath)) {
-    return {};
-  }
-
-  const content = await readFile(configPath, "utf-8");
   try {
-    return JSON.parse(content);
-  } catch {
+    const content = await readFile(configPath, "utf-8");
+    return JSON.parse(content) ?? {};
+  } catch (err: any) {
+    if (err.code === "ENOENT") return {};
     throw new Error(`Invalid JSON in OpenCode config: ${configPath}`);
   }
 }
@@ -107,7 +104,8 @@ export async function loadOpenCodeConfig(): Promise<Record<string, any>> {
  */
 export async function saveOpenCodeConfig(config: Record<string, any>): Promise<void> {
   const configPath = getOpenCodeConfigPath();
-  await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
 // ─── LSP Config Mapping ─────────────────────────────────────
