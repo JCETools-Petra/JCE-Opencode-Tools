@@ -11,7 +11,7 @@
 
 **One command. Full setup. Zero hassle.**
 
-Install, configure, and manage your entire AI coding environment — 30 agents, 20 model profiles, 36 skills, 28 LSP servers, and 17 CLI commands.
+Install, configure, and manage your entire AI coding environment — 30 agents, 20 model profiles, 36 advanced skills, 8 MCP tools, 28 LSP servers, and 17 CLI commands.
 
 [Install](#-install) · [Features](#-features) · [CLI](#-cli-commands) · [Tutorial](#-installation-tutorial)
 
@@ -40,9 +40,16 @@ irm https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/ins
 
 ## Features
 
-### 30 AI Agents
+### 30 AI Agents (10 Advanced)
 
-Specialized agents with 250+ word system prompts, chain-of-thought reasoning, and structured output.
+Specialized agents with structured workflows, MCP tool integration, and context-aware behavior. The top 10 agents include step-by-step workflows, verification checklists, and project-type-specific rules.
+
+**Advanced agents** (`debugger`, `reviewer`, `security`, `architect`, `tester`, `devops`, `frontend`, `backend`, `database`, `performance`) include:
+- `workflow` — step-by-step execution plan
+- `tools` — preferred MCP tools for the task
+- `outputFormat` — structured response template
+- `contextRules` — different behavior per project type (React, Node, Python, etc.)
+- `verification` — self-check before responding
 
 <details>
 <summary>View all agents</summary>
@@ -127,9 +134,9 @@ Saves 30-60% on token costs without sacrificing quality.
 
 ---
 
-### 36 On-Demand Skills
+### 36 Advanced Skills
 
-Modular instruction files loaded only when relevant — not all at once.
+Modular instruction files loaded only when relevant. 5 key skills have been upgraded to advanced format with decision trees, verification checklists, code templates, and MCP integration.
 
 | Category | Skills |
 |----------|--------|
@@ -139,11 +146,21 @@ Modular instruction files loaded only when relevant — not all at once.
 | **Mobile** | react-native, flutter-dart, swift-ios |
 | **Languages** | typescript, python, rust, go, csharp, java-kotlin, php, ruby, cpp, shell-bash, elixir, scala |
 
-Skills are detected from context (file extensions, frameworks mentioned) and work with prompts in any language including Bahasa Indonesia.
+**Advanced skills** (`react`, `typescript`, `security`, `architecture`, `devops`) include:
+- Auto-detect triggers (file extensions, package.json keys)
+- Decision trees for common scenarios
+- Verification checklists
+- Copy-paste code templates
+- Anti-patterns table
+- MCP tool recommendations
+
+Skills are detected from context and work with prompts in any language including Bahasa Indonesia.
 
 ---
 
 ### 8 MCP Tools
+
+Pre-configured Model Context Protocol servers that extend AI capabilities beyond text generation.
 
 | Tool | Capability |
 |------|-----------|
@@ -152,9 +169,11 @@ Skills are detected from context (file extensions, frameworks mentioned) and wor
 | **Web Fetch** | Retrieve and analyze web content |
 | **Filesystem** | Read and search local files |
 | **Memory** | Persistent context across sessions |
-| **Playwright** | Browser automation — testing, scraping, screenshots |
-| **Sequential Thinking** | Structured reasoning for complex problems |
-| **PostgreSQL** | Query databases directly — schema, data, debugging |
+| **Playwright** | Browser automation — E2E testing, scraping, screenshots, PDF |
+| **Sequential Thinking** | Structured step-by-step reasoning for complex problems |
+| **PostgreSQL** | Query databases directly — schema inspection, data debugging |
+
+> Agents automatically use the right MCP tools based on their `tools` field. For example, `debugger` uses Sequential Thinking, `frontend` uses Playwright.
 
 ---
 
