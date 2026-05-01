@@ -148,7 +148,41 @@ The `hybrid-hemat` profile automatically analyzes your prompt and routes to the 
 
 ### 📝 28 LSP Servers — Autocomplete for Every Language
 
-Python • TypeScript/JavaScript • Rust • Go • Java • C/C++ • PHP • Ruby • Docker • SQL
+<details>
+<summary><b>View all 28 LSP servers</b></summary>
+
+| # | Language | Server |
+|---|---------|--------|
+| 1 | Python | pyright |
+| 2 | TypeScript/JS | typescript-language-server |
+| 3 | Rust | rust-analyzer |
+| 4 | Go | gopls |
+| 5 | Docker | dockerfile-language-server |
+| 6 | SQL | sql-language-server |
+| 7 | Java | jdtls |
+| 8 | C/C++ | clangd |
+| 9 | PHP | intelephense |
+| 10 | Ruby | solargraph |
+| 11 | C# | omnisharp |
+| 12 | Bash/Shell | bash-language-server |
+| 13 | YAML | yaml-language-server |
+| 14 | HTML | vscode-html-language-server |
+| 15 | CSS/SCSS/Less | vscode-css-language-server |
+| 16 | Kotlin | kotlin-language-server |
+| 17 | Dart/Flutter | dart language-server |
+| 18 | Lua | lua-language-server |
+| 19 | Svelte | svelte-language-server |
+| 20 | Vue | vue-language-server |
+| 21 | Terraform/HCL | terraform-ls |
+| 22 | Tailwind CSS | tailwindcss-language-server |
+| 23 | Zig | zls |
+| 24 | Markdown | marksman |
+| 25 | TOML | taplo |
+| 26 | GraphQL | graphql-lsp |
+| 27 | Elixir | elixir-ls |
+| 28 | Scala | metals |
+
+</details>
 
 ---
 
