@@ -24,6 +24,7 @@ BOLD='\033[1m'
 GIT_STATUS="skip"
 BUN_STATUS="skip"
 OPENCODE_STATUS="skip"
+LSP_INSTALLED=0
 
 # ─── Helper Functions ─────────────────────────────────────────
 
@@ -208,6 +209,143 @@ deploy_config() {
 
 # API keys are managed by OpenCode CLI directly - no setup needed here
 
+select_and_install_lsp() {
+    echo ""
+    echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║       LSP Server Installation            ║${NC}"
+    echo -e "${CYAN}╠══════════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║                                          ║${NC}"
+    echo -e "${CYAN}║  Select LSP servers to install:          ║${NC}"
+    echo -e "${CYAN}║                                          ║${NC}"
+
+    # Define LSP servers
+    local -a LSP_NAMES=("Python" "TypeScript" "Rust" "Go" "Docker" "SQL" "Java" "C/C++" "PHP" "Ruby")
+    local -a LSP_CMDS=("pyright-langserver" "typescript-language-server" "rust-analyzer" "gopls" "docker-langserver" "sql-language-server" "jdtls" "clangd" "intelephense" "solargraph")
+    local -a LSP_INSTALL=(
+        "npm install -g pyright"
+        "npm install -g typescript-language-server typescript"
+        "rustup component add rust-analyzer"
+        "go install golang.org/x/tools/gopls@latest"
+        "npm install -g dockerfile-language-server-nodejs"
+        "npm install -g sql-language-server"
+        "brew install jdtls"
+        "apt install clangd || brew install llvm"
+        "npm install -g intelephense"
+        "gem install solargraph"
+    )
+
+    # Show list with status
+    local -a ALREADY_INSTALLED=()
+    for i in "${!LSP_NAMES[@]}"; do
+        local num=$((i + 1))
+        local name="${LSP_NAMES[$i]}"
+        local cmd="${LSP_CMDS[$i]}"
+        if command -v "$cmd" &>/dev/null; then
+            echo -e "${CYAN}║${NC}  ${GREEN}[✓]${NC} ${num}. ${name}  ${BOLD}(already installed)${NC}"
+            ALREADY_INSTALLED+=("$i")
+        else
+            echo -e "${CYAN}║${NC}  [ ] ${num}. ${name}"
+        fi
+    done
+
+    echo -e "${CYAN}║                                          ║${NC}"
+    echo -e "${CYAN}║  ${BOLD}a${NC}${CYAN} = Install all    ${BOLD}s${NC}${CYAN} = Skip all          ║${NC}"
+    echo -e "${CYAN}║  Or enter numbers: ${BOLD}1,2,4${NC}${CYAN}                 ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
+    echo ""
+
+    read -rp "  Your choice: " lsp_choice
+
+    # Parse choice
+    local -a selected=()
+
+    case "$lsp_choice" in
+        [aA])
+            # Select all that are not already installed
+            for i in "${!LSP_NAMES[@]}"; do
+                local is_installed=false
+                for j in "${ALREADY_INSTALLED[@]:-}"; do
+                    if [ "$i" = "$j" ]; then
+                        is_installed=true
+                        break
+                    fi
+                done
+                if [ "$is_installed" = false ]; then
+                    selected+=("$i")
+                fi
+            done
+            ;;
+        [sS]|"")
+            info "Skipping LSP installation."
+            return
+            ;;
+        *)
+            # Parse comma-separated numbers
+            IFS=',' read -ra nums <<< "$lsp_choice"
+            for num in "${nums[@]}"; do
+                num=$(echo "$num" | tr -d ' ')
+                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#LSP_NAMES[@]}" ]; then
+                    local idx=$((num - 1))
+                    # Skip if already installed
+                    local is_installed=false
+                    for j in "${ALREADY_INSTALLED[@]:-}"; do
+                        if [ "$idx" = "$j" ]; then
+                            is_installed=true
+                            break
+                        fi
+                    done
+                    if [ "$is_installed" = false ]; then
+                        selected+=("$idx")
+                    else
+                        skip "${LSP_NAMES[$idx]} already installed, skipping."
+                    fi
+                else
+                    warn "Invalid selection: $num (skipped)"
+                fi
+            done
+            ;;
+    esac
+
+    if [ ${#selected[@]} -eq 0 ]; then
+        info "No new LSP servers to install."
+        return
+    fi
+
+    echo ""
+    info "Installing ${#selected[@]} LSP server(s)..."
+    echo ""
+
+    local installed_count=0
+    local failed_count=0
+
+    for idx in "${selected[@]}"; do
+        local name="${LSP_NAMES[$idx]}"
+        local install_cmd="${LSP_INSTALL[$idx]}"
+
+        echo -n "  Installing ${name}... "
+
+        # Run install command
+        if eval "$install_cmd" &>/dev/null 2>&1; then
+            echo -e "${GREEN}✅${NC}"
+            ((installed_count++))
+        else
+            echo -e "${YELLOW}⚠️  Failed${NC}"
+            warn "  Command: $install_cmd"
+            ((failed_count++))
+        fi
+    done
+
+    LSP_INSTALLED=$installed_count
+
+    echo ""
+    if [ "$installed_count" -gt 0 ]; then
+        success "$installed_count LSP server(s) installed successfully."
+    fi
+    if [ "$failed_count" -gt 0 ]; then
+        warn "$failed_count LSP server(s) failed to install. You can install them manually later."
+    fi
+}
+
 print_summary() {
     echo ""
     echo -e "${GREEN}"
@@ -236,7 +374,11 @@ print_summary() {
     echo "║ ✅ 14 AI Agents   — configured           ║"
     echo "║ ✅ 8 Profiles     — ready                ║"
     echo "║ ✅ MCP Tools      — configured           ║"
-    echo "║ ✅ LSP Settings   — configured           ║"
+    if [ "$LSP_INSTALLED" -gt 0 ]; then
+        echo "║ ✅ LSP Servers    — ${LSP_INSTALLED} installed             ║"
+    else
+        echo "║ ✅ LSP Settings   — configured           ║"
+    fi
     echo "╠══════════════════════════════════════════╣"
     echo "║                                          ║"
     echo "║  Get started:  opencode                  ║"
@@ -264,7 +406,7 @@ main() {
     echo ""
 
     deploy_config
-    # API keys managed by OpenCode CLI - skipped
+    select_and_install_lsp
     print_summary
 }
 

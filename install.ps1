@@ -14,6 +14,7 @@ $ConfigDir = Join-Path $env:APPDATA "opencode"
 $GitStatus = "skip"
 $BunStatus = "skip"
 $OpenCodeStatus = "skip"
+$LspInstalled = 0
 
 # --- Helper Functions ---
 
@@ -244,6 +245,123 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
 
 # API keys are managed by OpenCode CLI directly - no need to configure here
 
+function Install-LspServers {
+    Write-Host ""
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host "       LSP Server Installation" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Select LSP servers to install:" -ForegroundColor White
+    Write-Host ""
+
+    # Define LSP servers
+    $lspServers = @(
+        @{ Num=1;  Name="Python";     Cmd="pyright-langserver";           Install="npm install -g pyright" }
+        @{ Num=2;  Name="TypeScript";  Cmd="typescript-language-server";   Install="npm install -g typescript-language-server typescript" }
+        @{ Num=3;  Name="Rust";        Cmd="rust-analyzer";               Install="rustup component add rust-analyzer" }
+        @{ Num=4;  Name="Go";          Cmd="gopls";                       Install="go install golang.org/x/tools/gopls@latest" }
+        @{ Num=5;  Name="Docker";      Cmd="docker-langserver";           Install="npm install -g dockerfile-language-server-nodejs" }
+        @{ Num=6;  Name="SQL";         Cmd="sql-language-server";         Install="npm install -g sql-language-server" }
+        @{ Num=7;  Name="Java";        Cmd="jdtls";                       Install="npm install -g jdtls" }
+        @{ Num=8;  Name="C/C++";       Cmd="clangd";                      Install="winget install LLVM.LLVM --accept-package-agreements --accept-source-agreements" }
+        @{ Num=9;  Name="PHP";         Cmd="intelephense";                Install="npm install -g intelephense" }
+        @{ Num=10; Name="Ruby";        Cmd="solargraph";                  Install="gem install solargraph" }
+    )
+
+    # Show list with status
+    $alreadyInstalled = @()
+    foreach ($lsp in $lspServers) {
+        $num = "$($lsp.Num)".PadLeft(2)
+        if (Test-Command $lsp.Cmd) {
+            Write-Host "  [OK] $num. $($lsp.Name)" -ForegroundColor Green -NoNewline
+            Write-Host "  (already installed)" -ForegroundColor DarkGray
+            $alreadyInstalled += $lsp.Num
+        } else {
+            Write-Host "  [ ] $num. $($lsp.Name)" -ForegroundColor White
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  a = Install all    s = Skip all" -ForegroundColor Yellow
+    Write-Host "  Or enter numbers:  1,2,4" -ForegroundColor Yellow
+    Write-Host ""
+
+    $choice = Read-Host "  Your choice"
+
+    # Parse choice
+    $selected = @()
+
+    switch -Regex ($choice) {
+        "^[aA]$" {
+            foreach ($lsp in $lspServers) {
+                if ($alreadyInstalled -notcontains $lsp.Num) {
+                    $selected += $lsp
+                }
+            }
+        }
+        "^[sS]?$" {
+            Write-Info "Skipping LSP installation."
+            return
+        }
+        default {
+            $nums = $choice -split "," | ForEach-Object { $_.Trim() }
+            foreach ($n in $nums) {
+                if ($n -match "^\d+$") {
+                    $num = [int]$n
+                    $lsp = $lspServers | Where-Object { $_.Num -eq $num }
+                    if ($lsp) {
+                        if ($alreadyInstalled -contains $num) {
+                            Write-Skip "$($lsp.Name) already installed, skipping."
+                        } else {
+                            $selected += $lsp
+                        }
+                    } else {
+                        Write-Warn "Invalid selection: $n (skipped)"
+                    }
+                }
+            }
+        }
+    }
+
+    if ($selected.Count -eq 0) {
+        Write-Info "No new LSP servers to install."
+        return
+    }
+
+    Write-Host ""
+    Write-Info "Installing $($selected.Count) LSP server(s)..."
+    Write-Host ""
+
+    $installedCount = 0
+    $failedCount = 0
+
+    foreach ($lsp in $selected) {
+        Write-Host "  Installing $($lsp.Name)... " -NoNewline
+        try {
+            $prevEA = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            Invoke-Expression $lsp.Install 2>$null | Out-Null
+            $ErrorActionPreference = $prevEA
+            Write-Host "[OK]" -ForegroundColor Green
+            $installedCount++
+        } catch {
+            Write-Host "[FAIL]" -ForegroundColor Yellow
+            Write-Warn "  Command: $($lsp.Install)"
+            $failedCount++
+        }
+    }
+
+    $script:LspInstalled = $installedCount
+
+    Write-Host ""
+    if ($installedCount -gt 0) {
+        Write-Ok "$installedCount LSP server(s) installed successfully."
+    }
+    if ($failedCount -gt 0) {
+        Write-Warn "$failedCount LSP server(s) failed. Install them manually later."
+    }
+}
+
 function Write-Summary {
     Write-Host ""
     Write-Host "====================================================" -ForegroundColor Green
@@ -271,7 +389,11 @@ function Write-Summary {
     Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
     Write-Host "  [OK] 6 MCP Tools    - configured" -ForegroundColor Green
-    Write-Host "  [OK] 10 LSP Servers - configured" -ForegroundColor Green
+    if ($LspInstalled -gt 0) {
+        Write-Host "  [OK] LSP Servers    - $LspInstalled installed" -ForegroundColor Green
+    } else {
+        Write-Host "  [OK] 10 LSP Servers - configured" -ForegroundColor Green
+    }
     Write-Host "====================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Get started:  opencode" -ForegroundColor White
@@ -291,4 +413,5 @@ Install-Bun
 Install-OpenCode
 Write-Host ""
 Deploy-Config
+Install-LspServers
 Write-Summary

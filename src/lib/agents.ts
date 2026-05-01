@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join, dirname } from "path";
 import { existsSync, mkdirSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import { getConfigDir } from "./config.js";
@@ -32,7 +32,7 @@ export async function loadAgents(): Promise<Agent[]> {
  */
 export async function saveAgents(agents: Agent[]): Promise<void> {
   const agentsPath = getAgentsPath();
-  const dir = join(agentsPath, "..");
+  const dir = dirname(agentsPath);
 
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });

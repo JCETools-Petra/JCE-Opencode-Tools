@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join, dirname } from "path";
 import { existsSync, mkdirSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import { execSync } from "child_process";
@@ -65,7 +65,7 @@ export async function loadPluginsRegistry(): Promise<InstalledPlugin[]> {
  */
 export async function savePluginsRegistry(plugins: InstalledPlugin[]): Promise<void> {
   const registryPath = getPluginsPath();
-  const dir = join(registryPath, "..");
+  const dir = dirname(registryPath);
 
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
