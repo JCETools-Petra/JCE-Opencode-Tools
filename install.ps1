@@ -245,6 +245,51 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
 
 # API keys are managed by OpenCode CLI directly - no need to configure here
 
+function Install-McpPackages {
+    Write-Host ""
+    Write-Info "Pre-downloading MCP server packages..."
+    Write-Info "This ensures MCP servers start instantly in OpenCode."
+    Write-Host ""
+
+    $mcpPackages = @(
+        "@upstash/context7-mcp@latest",
+        "@modelcontextprotocol/server-github",
+        "@modelcontextprotocol/server-fetch",
+        "@modelcontextprotocol/server-filesystem",
+        "@modelcontextprotocol/server-memory"
+    )
+
+    $cachedCount = 0
+    $failedCount = 0
+
+    foreach ($pkg in $mcpPackages) {
+        $shortName = ($pkg -split "/")[-1]
+        Write-Host "  Caching $shortName... " -NoNewline
+
+        try {
+            $prevEA = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            # Use npm cache add to download without executing
+            npm cache add $pkg 2>$null | Out-Null
+            $ErrorActionPreference = $prevEA
+
+            Write-Host "[OK]" -ForegroundColor Green
+            $cachedCount++
+        } catch {
+            Write-Host "[WARN]" -ForegroundColor Yellow
+            $failedCount++
+        }
+    }
+
+    Write-Host ""
+    if ($cachedCount -gt 0) {
+        Write-Ok "$cachedCount MCP package(s) pre-cached."
+    }
+    if ($failedCount -gt 0) {
+        Write-Warn "$failedCount package(s) could not be cached. They will download on first use."
+    }
+}
+
 function Install-LspServers {
     Write-Host ""
     Write-Host "====================================================" -ForegroundColor Cyan
@@ -388,7 +433,7 @@ function Write-Summary {
 
     Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
-    Write-Host "  [OK] 6 MCP Tools    - configured" -ForegroundColor Green
+    Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {
         Write-Host "  [OK] LSP Servers    - $LspInstalled installed" -ForegroundColor Green
     } else {
@@ -413,5 +458,6 @@ Install-Bun
 Install-OpenCode
 Write-Host ""
 Deploy-Config
+Install-McpPackages
 Install-LspServers
 Write-Summary

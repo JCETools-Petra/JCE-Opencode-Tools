@@ -209,6 +209,47 @@ deploy_config() {
 
 # API keys are managed by OpenCode CLI directly - no setup needed here
 
+precache_mcp_packages() {
+    echo ""
+    info "Pre-downloading MCP server packages..."
+    info "This ensures MCP servers start instantly in OpenCode."
+    echo ""
+
+    # List of MCP packages to pre-cache (npm package names)
+    local -a MCP_PACKAGES=(
+        "@upstash/context7-mcp@latest"
+        "@modelcontextprotocol/server-github"
+        "@modelcontextprotocol/server-fetch"
+        "@modelcontextprotocol/server-filesystem"
+        "@modelcontextprotocol/server-memory"
+    )
+
+    local cached_count=0
+    local failed_count=0
+
+    for pkg in "${MCP_PACKAGES[@]}"; do
+        local short_name="${pkg##*/}"
+        echo -n "  Caching ${short_name}... "
+
+        # Use npm cache add to download without executing
+        if npm cache add "$pkg" &>/dev/null 2>&1; then
+            echo -e "${GREEN}✅${NC}"
+            ((cached_count++))
+        else
+            echo -e "${YELLOW}⚠️${NC}"
+            ((failed_count++))
+        fi
+    done
+
+    echo ""
+    if [ "$cached_count" -gt 0 ]; then
+        success "$cached_count MCP package(s) pre-cached."
+    fi
+    if [ "$failed_count" -gt 0 ]; then
+        warn "$failed_count package(s) could not be cached. They will download on first use."
+    fi
+}
+
 select_and_install_lsp() {
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
@@ -373,7 +414,7 @@ print_summary() {
 
     echo "║ ✅ 14 AI Agents   — configured           ║"
     echo "║ ✅ 8 Profiles     — ready                ║"
-    echo "║ ✅ MCP Tools      — configured           ║"
+    echo "║ ✅ MCP Tools      — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
         echo "║ ✅ LSP Servers    — ${LSP_INSTALLED} installed             ║"
     else
@@ -406,6 +447,7 @@ main() {
     echo ""
 
     deploy_config
+    precache_mcp_packages
     select_and_install_lsp
     print_summary
 }
