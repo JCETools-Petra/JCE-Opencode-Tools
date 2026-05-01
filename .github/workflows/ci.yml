@@ -17,10 +17,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun run typecheck
 
   test:
@@ -33,10 +33,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun test
 
   test-cli:
@@ -52,10 +52,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun run src/index.ts --help
       - run: bun run src/index.ts --version
       - run: bun run src/index.ts validate
@@ -78,10 +78,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - name: Validate all JSON configs
         run: |
           for f in $(find config schemas -name "*.json"); do
