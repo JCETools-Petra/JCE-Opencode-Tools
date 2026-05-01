@@ -17,6 +17,7 @@ function getConfigFilesToValidate(): ConfigFileEntry[] {
     { relativePath: "agents.json", schemaFile: "agents.schema.json", label: "agents.json" },
     { relativePath: "mcp.json", schemaFile: "mcp.schema.json", label: "mcp.json" },
     { relativePath: "lsp.json", schemaFile: "lsp.schema.json", label: "lsp.json" },
+    { relativePath: "fallback.json", schemaFile: "fallback.schema.json", label: "fallback.json" },
   ];
 
   // Add all profile files

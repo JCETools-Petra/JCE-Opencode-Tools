@@ -13,9 +13,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-      - run: bun install
+          bun-version: "1.1"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.1"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - run: bun test
 
   test-cli:
     runs-on: ${{ matrix.os }}
@@ -26,8 +48,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-      - run: bun install
+          bun-version: "1.1"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
       - run: bun run src/index.ts --help
       - run: bun run src/index.ts --version
       - run: bun run src/index.ts validate
@@ -46,10 +74,61 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.1"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
       - name: Validate all JSON configs
         run: |
           for f in $(find config schemas -name "*.json"); do
             echo -n "$f: "
             bun -e "JSON.parse(require('fs').readFileSync('$f','utf8')); console.log('OK')"
           done
+      - name: Validate schemas
+        run: |
+          bun -e "
+            const Ajv = require('ajv');
+            const fs = require('fs');
+            const path = require('path');
+            const ajv = new Ajv({ strict: false, allErrors: true });
+
+            const checks = [
+              ['schemas/agents.schema.json', 'config/agents.json'],
+              ['schemas/mcp.schema.json', 'config/mcp.json'],
+              ['schemas/lsp.schema.json', 'config/lsp.json'],
+            ];
+
+            let failed = false;
+            for (const [schemaFile, dataFile] of checks) {
+              const schema = JSON.parse(fs.readFileSync(schemaFile, 'utf8'));
+              const data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+              const validate = ajv.compile(schema);
+              if (!validate(data)) {
+                console.error('FAIL:', dataFile, validate.errors);
+                failed = true;
+              } else {
+                console.log('PASS:', dataFile);
+              }
+            }
+
+            // Validate all profiles
+            const profileSchema = JSON.parse(fs.readFileSync('schemas/profile.schema.json', 'utf8'));
+            const validateProfile = ajv.compile(profileSchema);
+            const profileDir = 'config/profiles';
+            for (const f of fs.readdirSync(profileDir)) {
+              if (!f.endsWith('.json')) continue;
+              const data = JSON.parse(fs.readFileSync(path.join(profileDir, f), 'utf8'));
+              if (!validateProfile(data)) {
+                console.error('FAIL:', f, validateProfile.errors);
+                failed = true;
+              } else {
+                console.log('PASS:', f);
+              }
+            }
+
+            if (failed) process.exit(1);
+          "

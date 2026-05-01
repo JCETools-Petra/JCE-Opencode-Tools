@@ -15,8 +15,7 @@ import {
   CURRENT_CONFIG_VERSION,
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
-
-const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main";
+import { GITHUB_RAW_BASE } from "../lib/constants.js";
 
 interface RemotePackageJson {
   version: string;

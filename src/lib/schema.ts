@@ -28,7 +28,11 @@ export interface ValidationResult {
 async function loadSchema(schemaFileName: string): Promise<object> {
   const schemaPath = join(getSchemasDir(), schemaFileName);
   const content = await readFile(schemaPath, "utf-8");
-  return JSON.parse(content);
+  try {
+    return JSON.parse(content);
+  } catch {
+    throw new Error(`Failed to parse ${schemaPath}: invalid JSON`);
+  }
 }
 
 /**

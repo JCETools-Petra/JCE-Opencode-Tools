@@ -4,7 +4,13 @@ import { existsSync } from "fs";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import chalk from "chalk";
-import { getConfigDir } from "../lib/config.js";
+import {
+  getConfigDir,
+  getOpenCodeConfigPath,
+  loadOpenCodeConfig,
+  buildOpenCodeLspConfig,
+  mergeLspToOpenCodeConfig,
+} from "../lib/config.js";
 import { listProfiles, setActiveProfile } from "../lib/profiles.js";
 import { initVersionFile } from "../lib/version.js";
 import { banner, heading, info, success, warn, error } from "../lib/ui.js";
@@ -174,9 +180,34 @@ async function configureLsp(rl: ReturnType<typeof createInterface>): Promise<str
   }
 
   if (enabled.length > 0) {
-    // Write enabled LSP servers to a preferences file
-    const prefsPath = join(configDir, "lsp-enabled.json");
-    await writeFile(prefsPath, JSON.stringify({ enabled }, null, 2), "utf-8");
+    // Detect which enabled servers are actually installed
+    const { execSync } = await import("child_process");
+    const installedCommands: string[] = [];
+
+    for (const name of enabled) {
+      const entry = lspConfig.lsp[name];
+      if (!entry) continue;
+      try {
+        const cmd = process.platform === "win32" ? `where ${entry.command}` : `which ${entry.command}`;
+        execSync(cmd, { stdio: "ignore" });
+        installedCommands.push(entry.command);
+      } catch {
+        warn(`${name}: ${entry.command} not found in PATH. Skipping merge.`);
+      }
+    }
+
+    // Merge into opencode.json
+    const lspServers = buildOpenCodeLspConfig(lspConfig, installedCommands);
+    if (Object.keys(lspServers).length > 0) {
+      const { added, skipped } = await mergeLspToOpenCodeConfig(lspServers);
+      if (added.length > 0) {
+        success(`Merged ${added.length} LSP server(s) into opencode.json: ${added.join(", ")}`);
+      }
+      if (skipped.length > 0) {
+        info(`Skipped ${skipped.length} (already in opencode.json): ${skipped.join(", ")}`);
+      }
+    }
+
     success(`Enabled ${enabled.length} LSP server(s): ${enabled.join(", ")}`);
   } else {
     info("No LSP servers enabled.");
@@ -185,9 +216,84 @@ async function configureLsp(rl: ReturnType<typeof createInterface>): Promise<str
   return enabled;
 }
 
+/**
+ * Merge installed LSP servers into opencode.json (non-interactive).
+ * Detects which LSP commands are in PATH and adds them to opencode.json.
+ */
+async function mergeLspNonInteractive(): Promise<void> {
+  logCommandStart("setup --merge-lsp");
+
+  const configDir = getConfigDir();
+  const lspPath = join(configDir, "lsp.json");
+
+  if (!existsSync(lspPath)) {
+    warn("lsp.json not found. Cannot merge LSP config.");
+    process.exit(EXIT_ERROR);
+  }
+
+  let lspConfig: LspConfig;
+  try {
+    const content = await Bun.file(lspPath).text();
+    lspConfig = JSON.parse(content) as LspConfig;
+  } catch {
+    error("Could not parse lsp.json.");
+    process.exit(EXIT_ERROR);
+  }
+
+  // Detect which LSP commands are installed
+  const { execSync } = await import("child_process");
+  const installedCommands: string[] = [];
+
+  for (const [, entry] of Object.entries(lspConfig.lsp)) {
+    try {
+      const cmd = process.platform === "win32" ? `where ${entry.command}` : `which ${entry.command}`;
+      execSync(cmd, { stdio: "ignore" });
+      installedCommands.push(entry.command);
+    } catch {
+      // Command not found — skip
+    }
+  }
+
+  if (installedCommands.length === 0) {
+    info("No LSP servers found in PATH. Nothing to merge.");
+    process.exit(EXIT_SUCCESS);
+  }
+
+  // Build OpenCode LSP config from installed servers
+  const lspServers = buildOpenCodeLspConfig(lspConfig, installedCommands);
+
+  if (Object.keys(lspServers).length === 0) {
+    info("No new LSP servers to add.");
+    process.exit(EXIT_SUCCESS);
+  }
+
+  // Merge into opencode.json
+  const { added, skipped } = await mergeLspToOpenCodeConfig(lspServers);
+
+  if (added.length > 0) {
+    success(`Added ${added.length} LSP server(s) to opencode.json: ${added.join(", ")}`);
+  }
+  if (skipped.length > 0) {
+    info(`Skipped ${skipped.length} (already configured): ${skipped.join(", ")}`);
+  }
+
+  const configPath = getOpenCodeConfigPath();
+  info(`Config: ${configPath}`);
+
+  logCommandSuccess("setup --merge-lsp", `added=${added.length} skipped=${skipped.length}`);
+  process.exit(EXIT_SUCCESS);
+}
+
 export const setupCommand = new Command("setup")
   .description("Interactive first-time setup wizard")
-  .action(async () => {
+  .option("--merge-lsp", "Auto-detect installed LSP servers and merge into opencode.json")
+  .action(async (options: { mergeLsp?: boolean }) => {
+    // Non-interactive LSP merge mode
+    if (options.mergeLsp) {
+      await mergeLspNonInteractive();
+      return;
+    }
+
     logCommandStart("setup");
     banner();
 

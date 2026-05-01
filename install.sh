@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
@@ -385,6 +385,23 @@ select_and_install_lsp() {
     if [ "$failed_count" -gt 0 ]; then
         warn "$failed_count LSP server(s) failed to install. You can install them manually later."
     fi
+
+    # Merge installed LSP servers into opencode.json
+    merge_lsp_to_opencode_config
+}
+
+merge_lsp_to_opencode_config() {
+    info "Merging LSP config into opencode.json..."
+
+    if command -v opencode-jce &>/dev/null; then
+        if opencode-jce setup --merge-lsp &>/dev/null 2>&1; then
+            success "LSP servers merged into opencode.json"
+        else
+            warn "Could not merge LSP config. Run 'opencode-jce setup --merge-lsp' manually."
+        fi
+    else
+        warn "opencode-jce not in PATH yet. Run 'opencode-jce setup --merge-lsp' after restarting terminal."
+    fi
 }
 
 print_summary() {
@@ -412,9 +429,9 @@ print_summary() {
         echo "║ ✅ OpenCode CLI   — already present      ║"
     fi
 
-    echo "║ ✅ 14 AI Agents   — configured           ║"
-    echo "║ ✅ 8 Profiles     — ready                ║"
-    echo "║ ✅ MCP Tools      — cached & ready        ║"
+    echo "║ ✅ 30 AI Agents   — configured           ║"
+    echo "║ ✅ 20 Profiles    — ready                ║"
+    echo "║ ✅ 5 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
         echo "║ ✅ LSP Servers    — ${LSP_INSTALLED} installed             ║"
     else

@@ -1,7 +1,7 @@
 import { join, dirname } from "path";
 import { existsSync, mkdirSync, rmSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
-import { execSync } from "child_process";
+
 import { getConfigDir } from "./config.js";
 
 /**
@@ -67,7 +67,12 @@ export async function loadPluginsRegistry(): Promise<InstalledPlugin[]> {
   }
 
   const content = await readFile(registryPath, "utf-8");
-  const registry: PluginsRegistry = JSON.parse(content);
+  let registry: PluginsRegistry;
+  try {
+    registry = JSON.parse(content);
+  } catch {
+    throw new Error(`Failed to parse ${registryPath}: invalid JSON`);
+  }
   return registry.plugins || [];
 }
 
@@ -118,7 +123,15 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     if (existsSync(pluginDir)) {
       removeDir(pluginDir);
     }
-    execSync(`git clone --depth 1 "${githubUrl}" "${pluginDir}"`, { stdio: "pipe" });
+    const proc = Bun.spawn(["git", "clone", "--depth", "1", githubUrl, pluginDir], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+    if (proc.exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      throw new Error(`git clone failed: ${stderr}`);
+    }
   } catch (err: any) {
     return { success: false, error: `Failed to clone repository: ${err.message}` };
   }

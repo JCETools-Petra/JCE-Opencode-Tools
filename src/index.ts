@@ -17,13 +17,14 @@ import { teamCommand } from "./commands/team.js";
 import { memoryCommand } from "./commands/memory.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { fallbackCommand } from "./commands/fallback.js";
+import { VERSION } from "./lib/constants.js";
 
 const program = new Command();
 
 program
   .name("opencode-jce")
   .description("OpenCode JCE — CLI management tool")
-  .version("1.1.0");
+  .version(VERSION);
 
 program.addCommand(validateCommand);
 program.addCommand(useCommand);

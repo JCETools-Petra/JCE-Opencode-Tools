@@ -20,7 +20,7 @@
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"],
       "description": "Read and search local filesystem"
     },
     "memory": {

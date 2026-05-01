@@ -109,9 +109,9 @@ Switch between providers and models instantly. From budget-friendly to maximum q
 | `mistral-large` | Mistral | European, GDPR-friendly |
 | `codestral` | Mistral | Code-only specialist |
 | `hybrid-hemat` | Auto | Smart routing (saves 30-60%) |
-| `speed` | Auto | Fastest available |
-| `quality` | Auto | Best available |
-| `budget` | Auto | Maximum savings |
+| `speed` | OpenAI | Fastest available |
+| `quality` | Anthropic | Best available |
+| `budget` | OpenAI | Maximum savings |
 | `local` | Ollama | Offline (CodeLlama 13B) |
 | `llama-70b` | Ollama | Local powerhouse |
 | `qwen-coder` | Ollama | Local coding specialist |
@@ -134,7 +134,7 @@ The `hybrid-hemat` profile automatically analyzes your prompt and routes to the 
 
 ---
 
-### 🔌 6 MCP Tools — Real-Time AI Capabilities
+### 🔌 5 MCP Tools — Real-Time AI Capabilities
 
 | Tool | Capability |
 |------|-----------|
@@ -143,7 +143,6 @@ The `hybrid-hemat` profile automatically analyzes your prompt and routes to the 
 | **Web Fetch** | Retrieve and analyze web content |
 | **Filesystem** | Read and search local files |
 | **Memory** | Persistent context across sessions |
-| **Brave Search** | Web search via Brave API |
 
 ---
 
@@ -273,7 +272,7 @@ opencode-jce/
 ├── config/                 # Pre-configured settings
 │   ├── agents.json         # 30 AI agents
 │   ├── profiles/           # 20 model profiles
-│   ├── mcp.json            # 6 MCP tools
+│   ├── mcp.json            # 5 MCP tools
 │   ├── lsp.json            # 10 LSP servers
 │   ├── prompts/            # 5 prompt templates
 │   └── fallback.json       # Provider fallback config

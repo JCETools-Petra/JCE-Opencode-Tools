@@ -1,214 +1,141 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { TokenTracker } from "../lib/tokens.js";
-import { getConfigDir } from "../lib/config.js";
-import { heading, info, success, error } from "../lib/ui.js";
+import { TokenTracker, detectOpenCodeDB } from "../lib/tokens.js";
+import { heading, info, error, formatCost } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 
-/**
- * Format a cost value as USD.
- */
-function formatCost(cost: number): string {
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(2)}`;
+// ─── Formatting Helpers ──────────────────────────────────────
+
+function formatNumber(n: number): string {
+  return n.toLocaleString();
 }
 
-/**
- * Format token count with thousands separator.
- */
-function formatTokens(count: number): string {
-  return count.toLocaleString();
-}
-
-// ─── Subcommands ─────────────────────────────────────────────
-
-const showCommand = new Command("show")
-  .description("Show token usage and estimated costs")
-  .option("-p, --period <period>", "Time period: today, week, month", "today")
-  .action(async (options: { period: string }) => {
-    logCommandStart("tokens show", { period: options.period });
-
-    const configDir = getConfigDir();
-    const tracker = new TokenTracker(configDir);
-
-    let entries;
-    let periodLabel: string;
-
-    switch (options.period) {
-      case "week":
-        entries = tracker.getThisWeek();
-        periodLabel = "This Week (last 7 days)";
-        break;
-      case "month":
-        entries = tracker.getThisMonth();
-        periodLabel = "This Month";
-        break;
-      case "today":
-      default:
-        entries = tracker.getToday();
-        periodLabel = "Today";
-        break;
-    }
-
-    heading(`Token Usage — ${periodLabel}`);
-    console.log();
-
-    if (entries.length === 0) {
-      info("No usage data recorded for this period.");
-      info("Record usage with: opencode-jce tokens record --provider <provider> --model <model> --input <n> --output <n>");
-      process.exit(EXIT_SUCCESS);
-    }
-
-    // Summary
-    const totalTokens = tracker.getTotalTokens(entries);
-    const totalCost = tracker.getTotalCost(entries);
-
-    console.log(`  ${chalk.bold("Requests:")}      ${entries.length}`);
-    console.log(`  ${chalk.bold("Input Tokens:")}  ${formatTokens(totalTokens.input)}`);
-    console.log(`  ${chalk.bold("Output Tokens:")} ${formatTokens(totalTokens.output)}`);
-    console.log(`  ${chalk.bold("Total Tokens:")}  ${formatTokens(totalTokens.input + totalTokens.output)}`);
-    console.log(`  ${chalk.bold("Est. Cost:")}     ${chalk.yellow(formatCost(totalCost))}`);
-
-    // Breakdown by provider
-    const byProvider = tracker.getByProvider(entries);
-    if (Object.keys(byProvider).length > 0) {
-      heading("By Provider");
-      console.log();
-      for (const [provider, cost] of Object.entries(byProvider)) {
-        const bar = "█".repeat(Math.max(1, Math.round((cost / totalCost) * 20)));
-        console.log(`  ${chalk.bold(provider.padEnd(12))} ${formatCost(cost).padEnd(10)} ${chalk.cyan(bar)}`);
-      }
-    }
-
-    // Breakdown by agent
-    const byAgent = tracker.getByAgent(entries);
-    if (Object.keys(byAgent).length > 0) {
-      heading("By Agent");
-      console.log();
-      for (const [agent, cost] of Object.entries(byAgent)) {
-        const bar = "█".repeat(Math.max(1, Math.round((cost / totalCost) * 20)));
-        console.log(`  ${chalk.bold(agent.padEnd(12))} ${formatCost(cost).padEnd(10)} ${chalk.magenta(bar)}`);
-      }
-    }
-
-    console.log();
-    logCommandSuccess("tokens show", `period=${options.period} entries=${entries.length} cost=${totalCost.toFixed(4)}`);
-    process.exit(EXIT_SUCCESS);
-  });
-
-const recordCommand = new Command("record")
-  .description("Record a token usage entry (for integration with external tools)")
-  .requiredOption("--provider <provider>", "Provider name (e.g. anthropic, openai)")
-  .requiredOption("--model <model>", "Model name (e.g. claude-sonnet-4-20250514)")
-  .requiredOption("--input <tokens>", "Number of input tokens", parseInt)
-  .requiredOption("--output <tokens>", "Number of output tokens", parseInt)
-  .option("--agent <agent>", "Agent name", "default")
-  .option("--cost <cost>", "Estimated cost in USD (auto-calculated if omitted)", parseFloat)
-  .action(async (options: {
-    provider: string;
-    model: string;
-    input: number;
-    output: number;
-    agent: string;
-    cost?: number;
-  }) => {
-    logCommandStart("tokens record", options);
-
-    if (isNaN(options.input) || isNaN(options.output) || options.input < 0 || options.output < 0) {
-      error("Input and output tokens must be non-negative numbers.");
-      logCommandError("tokens record", "Invalid token counts");
-      process.exit(EXIT_ERROR);
-    }
-
-    const configDir = getConfigDir();
-    const tracker = new TokenTracker(configDir);
-
-    // Auto-calculate cost if not provided
-    const cost = options.cost ?? estimateCost(options.model, options.input, options.output);
-
-    tracker.record({
-      timestamp: new Date().toISOString(),
-      provider: options.provider,
-      model: options.model,
-      agent: options.agent,
-      inputTokens: options.input,
-      outputTokens: options.output,
-      cost,
-    });
-
-    success(`Recorded: ${options.input} input + ${options.output} output tokens (${options.provider}/${options.model})`);
-    if (cost > 0) {
-      info(`  Estimated cost: $${cost.toFixed(4)}`);
-    }
-
-    logCommandSuccess("tokens record", `provider=${options.provider} model=${options.model}`);
-    process.exit(EXIT_SUCCESS);
-  });
-
-const resetCommand = new Command("reset")
-  .description("Clear all token usage data for the current month")
-  .option("--confirm", "Skip confirmation")
-  .action(async (options: { confirm?: boolean }) => {
-    logCommandStart("tokens reset");
-
-    if (!options.confirm) {
-      error("This will delete all usage data for the current month.");
-      info("Run with --confirm to proceed: opencode-jce tokens reset --confirm");
-      process.exit(EXIT_ERROR);
-    }
-
-    const configDir = getConfigDir();
-    const tracker = new TokenTracker(configDir);
-
-    // Record empty to overwrite
-    const now = new Date();
-    const { existsSync } = await import("fs");
-    const { unlink } = await import("fs/promises");
-    const { join } = await import("path");
-
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const filePath = join(configDir, "usage", `${year}-${month}.json`);
-
-    if (existsSync(filePath)) {
-      await unlink(filePath);
-      success("Usage data cleared for the current month.");
-    } else {
-      info("No usage data to clear.");
-    }
-
-    logCommandSuccess("tokens reset");
-    process.exit(EXIT_SUCCESS);
-  });
-
-// ─── Cost Estimation ─────────────────────────────────────────
-
-const COST_PER_1K: Record<string, { input: number; output: number }> = {
-  "claude-opus-4-20250514": { input: 0.015, output: 0.075 },
-  "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
-  "claude-3-5-haiku-20241022": { input: 0.0008, output: 0.004 },
-  "gpt-4o": { input: 0.005, output: 0.015 },
-  "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
-  "o3": { input: 0.01, output: 0.04 },
-};
-
-function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const rates = COST_PER_1K[model];
-  if (!rates) return 0;
-  return (inputTokens / 1000) * rates.input + (outputTokens / 1000) * rates.output;
+function makeBar(value: number, max: number, width: number = 20): string {
+  if (max === 0) return "";
+  const filled = Math.max(1, Math.round((value / max) * width));
+  return "\u2588".repeat(filled);
 }
 
 // ─── Main Command ────────────────────────────────────────────
 
 export const tokensCommand = new Command("tokens")
-  .description("Track and manage token usage and costs")
-  .addCommand(showCommand)
-  .addCommand(recordCommand)
-  .addCommand(resetCommand);
+  .description("Show all token usage history from OpenCode")
+  .action(async () => {
+    logCommandStart("tokens");
 
-// Default action: show usage (backward compatible)
-tokensCommand.action(async () => {
-  // If no subcommand given, default to "show"
-  await showCommand.parseAsync(["show", ...process.argv.slice(3)], { from: "user" });
-});
+    // 1. Detect database
+    const dbPath = detectOpenCodeDB();
+
+    if (!dbPath) {
+      console.log();
+      error("OpenCode database not found.");
+      console.log();
+      info("Make sure OpenCode has been run at least once.");
+      info("Expected locations:");
+      info("  Windows: ~/.local/share/opencode/opencode.db");
+      info("  macOS:   ~/Library/Application Support/opencode/opencode.db");
+      info("  Linux:   ~/.local/share/opencode/opencode.db");
+      logCommandError("tokens", "Database not found");
+      process.exit(EXIT_ERROR);
+    }
+
+    // 2. Validate schema
+    const tracker = new TokenTracker(dbPath);
+
+    if (!tracker.validateSchema()) {
+      console.log();
+      error("Database schema not recognized.");
+      info("You may need to update opencode-jce to a newer version.");
+      logCommandError("tokens", "Schema validation failed");
+      process.exit(EXIT_ERROR);
+    }
+
+    // 3. Query and display
+    let summary;
+    try {
+      summary = tracker.getSummary();
+    } catch (err: any) {
+      console.log();
+      error(`Failed to read database: ${err.message}`);
+      info("If OpenCode is running, try again in a moment.");
+      logCommandError("tokens", err.message);
+      process.exit(EXIT_ERROR);
+    }
+
+    // ─── Display ───────────────────────────────────────────
+
+    console.log();
+    console.log(chalk.cyan("══════════════════════════════════════════════"));
+    console.log(chalk.cyan.bold("       Token Usage — All History"));
+    console.log(chalk.cyan("══════════════════════════════════════════════"));
+    console.log();
+
+    if (summary.totalMessages === 0) {
+      info("No token usage data found. Start using OpenCode to generate data.");
+      process.exit(EXIT_SUCCESS);
+    }
+
+    // Summary stats
+    console.log(`  ${chalk.bold("Sessions:")}        ${formatNumber(summary.totalSessions)}`);
+    console.log(`  ${chalk.bold("Messages:")}        ${formatNumber(summary.totalMessages)}`);
+    console.log();
+    console.log(`  ${chalk.bold("Input Tokens:")}    ${chalk.white(formatNumber(summary.tokens.input))}`);
+    console.log(`  ${chalk.bold("Output Tokens:")}   ${chalk.white(formatNumber(summary.tokens.output))}`);
+    console.log(`  ${chalk.bold("Reasoning:")}       ${chalk.white(formatNumber(summary.tokens.reasoning))}`);
+    console.log(`  ${chalk.bold("Cache Read:")}      ${chalk.dim(formatNumber(summary.tokens.cacheRead))}`);
+    console.log(`  ${chalk.bold("Cache Write:")}     ${chalk.dim(formatNumber(summary.tokens.cacheWrite))}`);
+    console.log(`  ${chalk.bold("Total Tokens:")}    ${chalk.green.bold(formatNumber(summary.tokens.total))}`);
+    console.log();
+    console.log(`  ${chalk.bold("Est. Cost:")}       ${chalk.yellow(formatCost(summary.totalCost))}`);
+
+    // By Provider
+    const providers = Object.entries(summary.byProvider).sort(
+      (a, b) => b[1].tokens - a[1].tokens
+    );
+
+    if (providers.length > 0) {
+      console.log();
+      console.log(chalk.cyan("═══ By Provider ═══════════════════════════════"));
+      console.log();
+
+      const maxProviderTokens = providers[0][1].tokens;
+
+      for (const [name, data] of providers) {
+        const bar = makeBar(data.tokens, maxProviderTokens);
+        const label = name.padEnd(16);
+        const tokenStr = formatNumber(data.tokens).padStart(15);
+        const msgStr = chalk.dim(`(${data.messages} msgs)`);
+        console.log(`  ${chalk.bold(label)} ${tokenStr}  ${chalk.cyan(bar)}  ${msgStr}`);
+      }
+    }
+
+    // By Model
+    const models = Object.entries(summary.byModel).sort(
+      (a, b) => b[1].tokens - a[1].tokens
+    );
+
+    if (models.length > 0) {
+      console.log();
+      console.log(chalk.cyan("═══ By Model ══════════════════════════════════"));
+      console.log();
+
+      const maxModelTokens = models[0][1].tokens;
+
+      for (const [name, data] of models) {
+        const bar = makeBar(data.tokens, maxModelTokens);
+        const label = name.padEnd(28);
+        const tokenStr = formatNumber(data.tokens).padStart(15);
+        const msgStr = chalk.dim(`(${data.messages} msgs)`);
+        console.log(`  ${chalk.bold(label)} ${tokenStr}  ${chalk.magenta(bar)}  ${msgStr}`);
+      }
+    }
+
+    // Footer
+    console.log();
+    console.log(chalk.dim(`  Database: ${dbPath}`));
+    console.log();
+
+    logCommandSuccess("tokens", `messages=${summary.totalMessages} sessions=${summary.totalSessions}`);
+    process.exit(EXIT_SUCCESS);
+  });

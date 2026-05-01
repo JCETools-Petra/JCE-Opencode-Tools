@@ -23,7 +23,12 @@ export async function loadAgents(): Promise<Agent[]> {
   }
 
   const content = await readFile(agentsPath, "utf-8");
-  const config: AgentsConfig = JSON.parse(content);
+  let config: AgentsConfig;
+  try {
+    config = JSON.parse(content);
+  } catch {
+    throw new Error(`Failed to parse ${agentsPath}: invalid JSON`);
+  }
   return config.agents || [];
 }
 

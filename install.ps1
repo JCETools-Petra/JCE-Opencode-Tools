@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.0.0"
+$Version = "1.1.0"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $ConfigDir = Join-Path $env:APPDATA "opencode"
@@ -404,6 +404,28 @@ function Install-LspServers {
     }
     if ($failedCount -gt 0) {
         Write-Warn "$failedCount LSP server(s) failed. Install them manually later."
+    }
+
+    # Merge installed LSP servers into opencode.json
+    Merge-LspToOpenCodeConfig
+}
+
+function Merge-LspToOpenCodeConfig {
+    Write-Info "Merging LSP config into opencode.json..."
+
+    $installDir = Join-Path $ConfigDir "cli"
+    if (Test-Path (Join-Path $installDir "src\index.ts")) {
+        try {
+            $prevEA = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            $output = bun run (Join-Path $installDir "src\index.ts") setup --merge-lsp 2>&1
+            $ErrorActionPreference = $prevEA
+            Write-Ok "LSP servers merged into opencode.json"
+        } catch {
+            Write-Warn "Could not merge LSP config. Run 'opencode-jce setup --merge-lsp' manually."
+        }
+    } else {
+        Write-Warn "CLI not found for LSP merge. Run 'opencode-jce setup --merge-lsp' after install."
     }
 }
 

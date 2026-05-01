@@ -1,5 +1,6 @@
 import type { Profile } from "../types.js";
 import type { TokenUsageEntry } from "./tokens.js";
+import { COST_PER_1K } from "./constants.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -9,16 +10,6 @@ export interface OptimizationSuggestion {
   estimatedSavings: string;
   reason: string;
 }
-
-// ─── Cost Estimates (per 1K tokens) ─────────────────────────
-
-const COST_PER_1K: Record<string, { input: number; output: number }> = {
-  "claude-opus-4-20250514": { input: 0.015, output: 0.075 },
-  "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
-  "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
-  "gpt-4o": { input: 0.005, output: 0.015 },
-  "gpt-4-turbo": { input: 0.01, output: 0.03 },
-};
 
 // ─── Analysis Helpers ────────────────────────────────────────
 

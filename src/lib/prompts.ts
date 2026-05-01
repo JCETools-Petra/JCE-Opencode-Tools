@@ -1,4 +1,4 @@
-import { join, basename } from "path";
+import { join, basename, resolve } from "path";
 import { existsSync, readdirSync } from "fs";
 import { readFile } from "fs/promises";
 import { getConfigDir } from "./config.js";
@@ -31,7 +31,14 @@ export function listPromptTemplates(): string[] {
  * Returns null if not found.
  */
 export async function loadPromptTemplate(name: string): Promise<string | null> {
-  const promptPath = join(getPromptsDir(), `${name}.txt`);
+  const promptsDir = getPromptsDir();
+  const promptPath = join(promptsDir, `${name}.txt`);
+
+  const resolvedPath = resolve(promptPath);
+  const resolvedDir = resolve(promptsDir);
+  if (!resolvedPath.startsWith(resolvedDir)) {
+    throw new Error(`Invalid template name: path traversal detected`);
+  }
 
   if (!existsSync(promptPath)) {
     return null;

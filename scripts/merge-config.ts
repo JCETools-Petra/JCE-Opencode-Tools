@@ -45,10 +45,20 @@ function mergeMcp() {
 
   if (!existsSync(sourceFile)) return;
 
-  const sourceData = JSON.parse(readFileSync(sourceFile, "utf8"));
+  let sourceData: any;
+  try {
+    sourceData = JSON.parse(readFileSync(sourceFile, "utf8"));
+  } catch {
+    throw new Error(`Failed to parse ${sourceFile}: invalid JSON`);
+  }
 
   if (existsSync(targetFile)) {
-    const targetData = JSON.parse(readFileSync(targetFile, "utf8"));
+    let targetData: any;
+    try {
+      targetData = JSON.parse(readFileSync(targetFile, "utf8"));
+    } catch {
+      throw new Error(`Failed to parse ${targetFile}: invalid JSON`);
+    }
     // Only add servers that don't exist in target
     for (const [key, value] of Object.entries(sourceData.mcpServers || {})) {
       if (!targetData.mcpServers?.[key]) {
@@ -74,10 +84,20 @@ function mergeAgents() {
 
   if (!existsSync(sourceFile)) return;
 
-  const sourceData = JSON.parse(readFileSync(sourceFile, "utf8"));
+  let sourceData: any;
+  try {
+    sourceData = JSON.parse(readFileSync(sourceFile, "utf8"));
+  } catch {
+    throw new Error(`Failed to parse ${sourceFile}: invalid JSON`);
+  }
 
   if (existsSync(targetFile)) {
-    const targetData = JSON.parse(readFileSync(targetFile, "utf8"));
+    let targetData: any;
+    try {
+      targetData = JSON.parse(readFileSync(targetFile, "utf8"));
+    } catch {
+      throw new Error(`Failed to parse ${targetFile}: invalid JSON`);
+    }
     const existingIds = new Set(
       (targetData.agents || []).map((a: any) => a.id)
     );
@@ -105,10 +125,20 @@ function mergeLsp() {
 
   if (!existsSync(sourceFile)) return;
 
-  const sourceData = JSON.parse(readFileSync(sourceFile, "utf8"));
+  let sourceData: any;
+  try {
+    sourceData = JSON.parse(readFileSync(sourceFile, "utf8"));
+  } catch {
+    throw new Error(`Failed to parse ${sourceFile}: invalid JSON`);
+  }
 
   if (existsSync(targetFile)) {
-    const targetData = JSON.parse(readFileSync(targetFile, "utf8"));
+    let targetData: any;
+    try {
+      targetData = JSON.parse(readFileSync(targetFile, "utf8"));
+    } catch {
+      throw new Error(`Failed to parse ${targetFile}: invalid JSON`);
+    }
     for (const [key, value] of Object.entries(sourceData.lsp || {})) {
       if (!targetData.lsp?.[key]) {
         if (!targetData.lsp) targetData.lsp = {};

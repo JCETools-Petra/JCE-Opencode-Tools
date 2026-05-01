@@ -34,14 +34,22 @@ export async function loadFallbackConfig(configDir: string): Promise<FallbackCon
 
   if (existsSync(userPath)) {
     const content = await readFile(userPath, "utf-8");
-    return JSON.parse(content) as FallbackConfig;
+    try {
+      return JSON.parse(content) as FallbackConfig;
+    } catch {
+      throw new Error(`Failed to parse ${userPath}: invalid JSON`);
+    }
   }
 
   // Fallback to bundled config (relative to project root)
   const bundledPath = join(import.meta.dir, "../../config/fallback.json");
   if (existsSync(bundledPath)) {
     const content = await readFile(bundledPath, "utf-8");
-    return JSON.parse(content) as FallbackConfig;
+    try {
+      return JSON.parse(content) as FallbackConfig;
+    } catch {
+      throw new Error(`Failed to parse ${bundledPath}: invalid JSON`);
+    }
   }
 
   // Default config if nothing found

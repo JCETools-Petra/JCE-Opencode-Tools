@@ -3,16 +3,11 @@ import chalk from "chalk";
 import { TokenTracker } from "../lib/tokens.js";
 import { generateAnalytics, AnalyticsSummary } from "../lib/analytics.js";
 import { getConfigDir } from "../lib/config.js";
-import { info } from "../lib/ui.js";
+import { info, formatCost } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess } from "../lib/logger.js";
 import { EXIT_SUCCESS } from "../types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────
-
-function formatCost(cost: number): string {
-  if (cost < 0.01) return `$${cost.toFixed(4)}`;
-  return `$${cost.toFixed(2)}`;
-}
 
 function formatTokenCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;

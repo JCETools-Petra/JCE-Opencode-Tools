@@ -1,8 +1,9 @@
 import chalk from "chalk";
+import { VERSION } from "./constants.js";
 
 export function banner(): void {
   console.log(chalk.cyan("╔═══════════════════════════════════════════╗"));
-  console.log(chalk.cyan("║         OpenCode JCE CLI v1.1.0           ║"));
+  console.log(chalk.cyan(`║         OpenCode JCE CLI v${VERSION}           ║`));
   console.log(chalk.cyan("╚═══════════════════════════════════════════╝"));
   console.log();
 }
@@ -30,4 +31,16 @@ export function skip(msg: string): void {
 export function heading(msg: string): void {
   console.log();
   console.log(chalk.bold.underline(msg));
+}
+
+/**
+ * Format a cost value as a dollar string.
+ * - Zero returns "$0.00"
+ * - Sub-cent values use 4 decimal places for precision
+ * - Everything else uses standard 2 decimal places
+ */
+export function formatCost(cost: number): string {
+  if (cost === 0) return "$0.00";
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
 }

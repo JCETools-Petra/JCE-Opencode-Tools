@@ -1,8 +1,13 @@
 import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync } from "fs";
+import { homedir, platform } from "os";
+import { Database } from "bun:sqlite";
 
 // ─── Types ───────────────────────────────────────────────────
 
+/**
+ * Legacy compatibility type — used by analytics.ts and optimizer.ts.
+ */
 export interface TokenUsageEntry {
   timestamp: string;
   provider: string;
@@ -10,167 +15,312 @@ export interface TokenUsageEntry {
   agent: string;
   inputTokens: number;
   outputTokens: number;
-  cost: number; // estimated USD
+  cost: number;
 }
 
-interface MonthlyUsageFile {
-  entries: TokenUsageEntry[];
+export interface TokenData {
+  input: number;
+  output: number;
+  reasoning: number;
+  cache: {
+    read: number;
+    write: number;
+  };
 }
 
-// ─── Constants ───────────────────────────────────────────────
+export interface MessageTokenInfo {
+  timestamp: number;
+  provider: string;
+  model: string;
+  agent: string;
+  role: string;
+  tokens: TokenData;
+  cost: number;
+}
 
-const USAGE_DIR = "usage";
+export interface TokenSummary {
+  totalMessages: number;
+  totalSessions: number;
+  tokens: {
+    input: number;
+    output: number;
+    reasoning: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+  totalCost: number;
+  byProvider: Record<string, { tokens: number; cost: number; messages: number }>;
+  byModel: Record<string, { tokens: number; cost: number; messages: number }>;
+}
 
-// ─── Token Tracker Class ─────────────────────────────────────
+// ─── DB Location Detection ───────────────────────────────────
+
+/**
+ * Detect the OpenCode database path across platforms.
+ * OpenCode uses XDG_DATA_HOME on Linux, ~/Library/Application Support on macOS,
+ * and ~/.local/share on Windows (via Git Bash / Bun).
+ */
+export function detectOpenCodeDB(): string | null {
+  const os = platform();
+  const home = homedir();
+
+  const candidates: string[] = [];
+
+  if (os === "win32") {
+    // Windows: OpenCode uses ~/.local/share/opencode/
+    candidates.push(join(home, ".local", "share", "opencode", "opencode.db"));
+    // Also check LOCALAPPDATA
+    if (process.env.LOCALAPPDATA) {
+      candidates.push(join(process.env.LOCALAPPDATA, "opencode", "opencode.db"));
+    }
+    // Also check APPDATA
+    if (process.env.APPDATA) {
+      candidates.push(join(process.env.APPDATA, "opencode", "opencode.db"));
+    }
+  } else if (os === "darwin") {
+    // macOS
+    candidates.push(join(home, "Library", "Application Support", "opencode", "opencode.db"));
+    candidates.push(join(home, ".local", "share", "opencode", "opencode.db"));
+  } else {
+    // Linux
+    const xdgData = process.env.XDG_DATA_HOME || join(home, ".local", "share");
+    candidates.push(join(xdgData, "opencode", "opencode.db"));
+  }
+
+  for (const path of candidates) {
+    if (existsSync(path)) {
+      return path;
+    }
+  }
+
+  return null;
+}
+
+// ─── Token Tracker (SQLite) ──────────────────────────────────
 
 export class TokenTracker {
-  private configDir: string;
-  private usageDir: string;
-
-  constructor(configDir: string) {
-    this.configDir = configDir;
-    this.usageDir = join(configDir, USAGE_DIR);
-  }
+  private dbPath: string;
 
   /**
-   * Ensure the usage directory exists.
+   * Create a TokenTracker.
+   * @param pathOrConfigDir - Either a direct path to opencode.db, or a config directory
+   *                          (legacy usage — will auto-detect the DB).
    */
-  private ensureUsageDir(): void {
-    if (!existsSync(this.usageDir)) {
-      mkdirSync(this.usageDir, { recursive: true });
+  constructor(pathOrConfigDir?: string) {
+    if (pathOrConfigDir && pathOrConfigDir.endsWith(".db")) {
+      this.dbPath = pathOrConfigDir;
+    } else {
+      // Auto-detect DB location
+      const detected = detectOpenCodeDB();
+      if (!detected) {
+        throw new Error("OpenCode database not found.");
+      }
+      this.dbPath = detected;
     }
   }
 
   /**
-   * Get the filename for a given month (YYYY-MM.json).
+   * Open the database in readonly mode to avoid conflicts with running OpenCode.
    */
-  private getMonthlyFilename(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    return `${year}-${month}.json`;
-  }
-
-  /**
-   * Get the full path to a monthly usage file.
-   */
-  private getMonthlyFilePath(date: Date): string {
-    return join(this.usageDir, this.getMonthlyFilename(date));
-  }
-
-  /**
-   * Load entries from a monthly file.
-   */
-  private loadMonthlyFile(date: Date): TokenUsageEntry[] {
-    const filePath = this.getMonthlyFilePath(date);
-
-    if (!existsSync(filePath)) {
-      return [];
+  private openDB(): Database {
+    try {
+      return new Database(this.dbPath, { readonly: true });
+    } catch (err: any) {
+      if (err?.code === "SQLITE_CANTOPEN") {
+        throw new Error(
+          "Cannot open OpenCode database. Make sure OpenCode is not exclusively locking it."
+        );
+      }
+      throw err;
     }
+  }
+
+  /**
+   * Validate that the database has the expected schema.
+   */
+  validateSchema(): boolean {
+    const db = this.openDB();
+    try {
+      const tables = db
+        .query("SELECT name FROM sqlite_master WHERE type='table'")
+        .all() as { name: string }[];
+      const tableNames = tables.map((t) => t.name);
+      return tableNames.includes("message") && tableNames.includes("session");
+    } finally {
+      db.close();
+    }
+  }
+
+  /**
+   * Get the full token usage summary from all messages.
+   */
+  getSummary(): TokenSummary {
+    const db = this.openDB();
 
     try {
-      const content = readFileSync(filePath, "utf-8");
-      const data = JSON.parse(content) as MonthlyUsageFile;
-      return data.entries || [];
-    } catch {
-      return [];
+      // Count sessions
+      const sessionCount = db.query("SELECT COUNT(*) as cnt FROM session").get() as {
+        cnt: number;
+      };
+
+      // Get all messages with data
+      const rows = db
+        .query("SELECT time_created, data FROM message ORDER BY time_created ASC")
+        .all() as { time_created: number; data: string }[];
+
+      const summary: TokenSummary = {
+        totalMessages: 0,
+        totalSessions: sessionCount.cnt,
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+        totalCost: 0,
+        byProvider: {},
+        byModel: {},
+      };
+
+      for (const row of rows) {
+        let data: any;
+        try {
+          data = JSON.parse(row.data);
+        } catch {
+          continue; // skip malformed entries
+        }
+
+        // Only count messages that have token data
+        if (!data.tokens) continue;
+
+        const tokens = data.tokens;
+        const input = tokens.input || 0;
+        const output = tokens.output || 0;
+        const reasoning = tokens.reasoning || 0;
+        const cacheRead = tokens.cache?.read || 0;
+        const cacheWrite = tokens.cache?.write || 0;
+        const msgTotal = input + output;
+
+        // Skip zero-token messages (e.g. user messages)
+        if (msgTotal === 0 && reasoning === 0) continue;
+
+        summary.totalMessages++;
+        summary.tokens.input += input;
+        summary.tokens.output += output;
+        summary.tokens.reasoning += reasoning;
+        summary.tokens.cacheRead += cacheRead;
+        summary.tokens.cacheWrite += cacheWrite;
+
+        const cost = data.cost || 0;
+        summary.totalCost += cost;
+
+        // By provider
+        const provider = data.providerID || "unknown";
+        if (!summary.byProvider[provider]) {
+          summary.byProvider[provider] = { tokens: 0, cost: 0, messages: 0 };
+        }
+        summary.byProvider[provider].tokens += msgTotal;
+        summary.byProvider[provider].cost += cost;
+        summary.byProvider[provider].messages++;
+
+        // By model
+        const model = data.modelID || "unknown";
+        if (!summary.byModel[model]) {
+          summary.byModel[model] = { tokens: 0, cost: 0, messages: 0 };
+        }
+        summary.byModel[model].tokens += msgTotal;
+        summary.byModel[model].cost += cost;
+        summary.byModel[model].messages++;
+      }
+
+      summary.tokens.total =
+        summary.tokens.input + summary.tokens.output + summary.tokens.reasoning;
+
+      return summary;
+    } finally {
+      db.close();
     }
   }
 
-  /**
-   * Save entries to a monthly file.
-   */
-  private saveMonthlyFile(date: Date, entries: TokenUsageEntry[]): void {
-    this.ensureUsageDir();
-    const filePath = this.getMonthlyFilePath(date);
-    const data: MonthlyUsageFile = { entries };
-    writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-  }
+  // ─── Legacy Compatibility Methods ────────────────────────
+  // Used by dashboard.ts, optimize.ts, analytics.ts
 
   /**
-   * Record a new token usage entry.
+   * Convert DB messages to legacy TokenUsageEntry format, filtered by time.
    */
-  record(entry: TokenUsageEntry): void {
-    const date = new Date(entry.timestamp);
-    const entries = this.loadMonthlyFile(date);
-    entries.push(entry);
-    this.saveMonthlyFile(date, entries);
+  private queryEntries(since?: Date): TokenUsageEntry[] {
+    const db = this.openDB();
+    try {
+      let rows: { time_created: number; data: string }[];
+
+      if (since) {
+        const sinceMs = since.getTime();
+        rows = db
+          .query("SELECT time_created, data FROM message WHERE time_created >= ? ORDER BY time_created ASC")
+          .all(sinceMs) as any[];
+      } else {
+        rows = db
+          .query("SELECT time_created, data FROM message ORDER BY time_created ASC")
+          .all() as any[];
+      }
+
+      const entries: TokenUsageEntry[] = [];
+
+      for (const row of rows) {
+        let data: any;
+        try {
+          data = JSON.parse(row.data);
+        } catch {
+          continue;
+        }
+
+        if (!data.tokens) continue;
+        const input = data.tokens.input || 0;
+        const output = data.tokens.output || 0;
+        if (input === 0 && output === 0) continue;
+
+        entries.push({
+          timestamp: new Date(row.time_created).toISOString(),
+          provider: data.providerID || "unknown",
+          model: data.modelID || "unknown",
+          agent: data.agent || "default",
+          inputTokens: input,
+          outputTokens: output,
+          cost: data.cost || 0,
+        });
+      }
+
+      return entries;
+    } finally {
+      db.close();
+    }
   }
 
-  /**
-   * Get all entries for today.
-   */
+  /** Get all entries for today. */
   getToday(): TokenUsageEntry[] {
     const now = new Date();
-    const todayStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
-    const entries = this.loadMonthlyFile(now);
-    return entries.filter((e) => e.timestamp.startsWith(todayStr));
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return this.queryEntries(startOfDay);
   }
 
-  /**
-   * Get all entries for this week (last 7 days).
-   */
+  /** Get all entries for the last 7 days. */
   getThisWeek(): TokenUsageEntry[] {
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    // May span two months
-    const entries: TokenUsageEntry[] = [];
-    entries.push(...this.loadMonthlyFile(now));
-
-    if (weekAgo.getMonth() !== now.getMonth()) {
-      entries.push(...this.loadMonthlyFile(weekAgo));
-    }
-
-    return entries.filter((e) => new Date(e.timestamp) >= weekAgo);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    return this.queryEntries(weekAgo);
   }
 
-  /**
-   * Get all entries for this month.
-   */
+  /** Get all entries for the current month. */
   getThisMonth(): TokenUsageEntry[] {
     const now = new Date();
-    return this.loadMonthlyFile(now);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return this.queryEntries(startOfMonth);
   }
 
-  /**
-   * Calculate total cost from a set of entries.
-   */
+  /** Calculate total cost from entries. */
   getTotalCost(entries: TokenUsageEntry[]): number {
     return entries.reduce((sum, e) => sum + e.cost, 0);
-  }
-
-  /**
-   * Get total tokens (input + output) from entries.
-   */
-  getTotalTokens(entries: TokenUsageEntry[]): { input: number; output: number } {
-    return entries.reduce(
-      (acc, e) => ({
-        input: acc.input + e.inputTokens,
-        output: acc.output + e.outputTokens,
-      }),
-      { input: 0, output: 0 }
-    );
-  }
-
-  /**
-   * Group cost by provider.
-   */
-  getByProvider(entries: TokenUsageEntry[]): Record<string, number> {
-    const result: Record<string, number> = {};
-    for (const entry of entries) {
-      result[entry.provider] = (result[entry.provider] || 0) + entry.cost;
-    }
-    return result;
-  }
-
-  /**
-   * Group cost by agent.
-   */
-  getByAgent(entries: TokenUsageEntry[]): Record<string, number> {
-    const result: Record<string, number> = {};
-    for (const entry of entries) {
-      result[entry.agent] = (result[entry.agent] || 0) + entry.cost;
-    }
-    return result;
   }
 }
