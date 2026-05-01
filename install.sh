@@ -190,7 +190,42 @@ deploy_config() {
 
     # Merge configuration (preserves existing settings)
     info "Merging configuration (preserving existing settings)..."
-    bun run "$TEMP_DIR/scripts/merge-config.ts" "$TEMP_DIR/config" "$CONFIG_DIR"
+    if ! bun run "$TEMP_DIR/scripts/merge-config.ts" "$TEMP_DIR/config" "$CONFIG_DIR" 2>/dev/null; then
+        warn "merge-config.ts failed. Falling back to manual copy..."
+        # Fallback: copy config files that don't exist
+        for f in agents.json mcp.json lsp.json fallback.json; do
+            if [ -f "$TEMP_DIR/config/$f" ] && [ ! -f "$CONFIG_DIR/$f" ]; then
+                cp "$TEMP_DIR/config/$f" "$CONFIG_DIR/$f"
+                success "  Created: $f"
+            elif [ -f "$CONFIG_DIR/$f" ]; then
+                skip "  Exists, preserved: $f"
+            fi
+        done
+        # Copy profiles that don't exist
+        if [ -d "$TEMP_DIR/config/profiles" ]; then
+            mkdir -p "$CONFIG_DIR/profiles"
+            for f in "$TEMP_DIR/config/profiles"/*.json; do
+                [ -f "$f" ] || continue
+                fname=$(basename "$f")
+                if [ ! -f "$CONFIG_DIR/profiles/$fname" ]; then
+                    cp "$f" "$CONFIG_DIR/profiles/$fname"
+                fi
+            done
+            success "  Profiles copied"
+        fi
+        # Copy prompts that don't exist
+        if [ -d "$TEMP_DIR/config/prompts" ]; then
+            mkdir -p "$CONFIG_DIR/prompts"
+            for f in "$TEMP_DIR/config/prompts"/*; do
+                [ -f "$f" ] || continue
+                fname=$(basename "$f")
+                if [ ! -f "$CONFIG_DIR/prompts/$fname" ]; then
+                    cp "$f" "$CONFIG_DIR/prompts/$fname"
+                fi
+            done
+            success "  Prompts copied"
+        fi
+    fi
 
     # Deploy AGENTS.md (only if not already present)
     if [ ! -f "$CONFIG_DIR/AGENTS.md" ]; then
@@ -256,10 +291,10 @@ precache_mcp_packages() {
         # Use npm cache add to download without executing
         if npm cache add "$pkg" &>/dev/null 2>&1; then
             echo -e "${GREEN}✅${NC}"
-            ((cached_count++))
+            cached_count=$((cached_count + 1))
         else
             echo -e "${YELLOW}⚠️${NC}"
-            ((failed_count++))
+            failed_count=$((failed_count + 1))
         fi
     done
 
@@ -292,7 +327,7 @@ select_and_install_lsp() {
         "npm install -g dockerfile-language-server-nodejs"
         "npm install -g sql-language-server"
         "brew install jdtls"
-        "apt install clangd || brew install llvm"
+        "sudo apt-get install -y clangd || brew install llvm"
         "npm install -g intelephense"
         "gem install solargraph"
         "dotnet tool install -g omnisharp"
@@ -301,11 +336,11 @@ select_and_install_lsp() {
         "npm install -g vscode-langservers-extracted"
         "npm install -g vscode-langservers-extracted"
         "brew install kotlin-language-server || sdk install kotlin"
-        "brew install dart || choco install dart-sdk"
-        "brew install lua-language-server || cargo install lua-language-server"
+        "brew install dart || sudo apt-get install -y dart"
+        "brew install lua-language-server || sudo apt-get install -y lua-language-server"
         "npm install -g svelte-language-server"
         "npm install -g @vue/language-server"
-        "brew install hashicorp/tap/terraform-ls || choco install terraform-ls"
+        "brew install hashicorp/tap/terraform-ls || sudo apt-get install -y terraform-ls"
         "npm install -g @tailwindcss/language-server"
         "brew install zls || snap install zls"
         "brew install marksman || cargo install marksman"
@@ -335,7 +370,25 @@ select_and_install_lsp() {
     echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
     echo ""
 
-    read -rp "  Your choice: " lsp_choice
+    # Detect if stdin is a terminal (interactive) or piped
+    local lsp_choice=""
+    if [ -t 0 ]; then
+        # Interactive terminal — ask user
+        read -rp "  Your choice: " lsp_choice
+    else
+        # Non-interactive (piped via curl | bash) — cannot read input
+        warn "Non-interactive mode detected (piped install)."
+        warn "LSP selection requires interactive terminal."
+        echo ""
+        info "To install LSP servers later, run:"
+        echo -e "  ${CYAN}opencode-jce setup${NC}          # interactive setup wizard"
+        echo -e "  ${CYAN}opencode-jce setup --merge-lsp${NC}  # auto-detect installed LSPs"
+        echo ""
+        info "Skipping LSP installation. Merging any already-installed LSPs..."
+        # Still merge whatever LSPs are already installed on the system
+        merge_lsp_to_opencode_config
+        return
+    fi
 
     # Parse choice
     local -a selected=()
@@ -358,6 +411,8 @@ select_and_install_lsp() {
             ;;
         [sS]|"")
             info "Skipping LSP installation."
+            # Still merge any LSPs already in PATH
+            merge_lsp_to_opencode_config
             return
             ;;
         *)
@@ -408,11 +463,11 @@ select_and_install_lsp() {
         # Run install command
         if eval "$install_cmd" &>/dev/null 2>&1; then
             echo -e "${GREEN}✅${NC}"
-            ((installed_count++))
+            installed_count=$((installed_count + 1))
         else
             echo -e "${YELLOW}⚠️  Failed${NC}"
             warn "  Command: $install_cmd"
-            ((failed_count++))
+            failed_count=$((failed_count + 1))
         fi
     done
 
@@ -433,14 +488,121 @@ select_and_install_lsp() {
 merge_lsp_to_opencode_config() {
     info "Merging LSP config into opencode.json..."
 
+    # Try opencode-jce CLI first
     if command -v opencode-jce &>/dev/null; then
-        if opencode-jce setup --merge-lsp &>/dev/null 2>&1; then
-            success "LSP servers merged into opencode.json"
-        else
-            warn "Could not merge LSP config. Run 'opencode-jce setup --merge-lsp' manually."
+        if opencode-jce setup --merge-lsp 2>/dev/null; then
+            success "LSP servers merged into opencode.json (via opencode-jce)"
+            return
         fi
+    fi
+
+    # Fallback: directly write LSP entries to opencode.json
+    # This ensures LSP config is always written, even without opencode-jce in PATH
+    info "Using direct merge fallback..."
+
+    local opencode_json="${CONFIG_DIR}/opencode.json"
+    local lsp_json="${CONFIG_DIR}/lsp.json"
+
+    # Need lsp.json as source of truth
+    if [ ! -f "$lsp_json" ]; then
+        warn "lsp.json not found in ${CONFIG_DIR}. Cannot merge LSP config."
+        return
+    fi
+
+    # Detect which LSP commands are actually installed
+    local -a installed_lsps=()
+    
+    # Read lsp.json and check each command
+    # We use a simple approach: parse the command field and check if it exists
+    local lsp_keys
+    lsp_keys=$(grep -o '"[^"]*":\s*{' "$lsp_json" | grep -v '"lsp"' | sed 's/"//g; s/:.*//' | tr -d ' ')
+
+    for key in $lsp_keys; do
+        # Extract the command for this LSP entry
+        local cmd
+        cmd=$(sed -n "/${key}/,/}/p" "$lsp_json" | grep '"command"' | head -1 | sed 's/.*"command":\s*"//; s/".*//')
+        
+        if [ -n "$cmd" ] && command -v "$cmd" &>/dev/null; then
+            installed_lsps+=("$key")
+        fi
+    done
+
+    if [ ${#installed_lsps[@]} -eq 0 ]; then
+        info "No LSP servers found in PATH. Nothing to merge."
+        return
+    fi
+
+    info "Found ${#installed_lsps[@]} LSP server(s) in PATH: ${installed_lsps[*]}"
+
+    # Build LSP section for opencode.json using bun (reliable JSON manipulation)
+    # If bun is available, use it for proper JSON merge
+    if command -v bun &>/dev/null; then
+        bun -e "
+import fs from 'fs';
+const path = '${opencode_json}';
+const lspPath = '${lsp_json}';
+const installed = '${installed_lsps[*]}'.split(' ').filter(Boolean);
+
+// Load or create opencode.json
+let config = {};
+if (fs.existsSync(path)) {
+    try { config = JSON.parse(fs.readFileSync(path, 'utf8')); } catch {}
+}
+
+// Load lsp.json
+let lspData = {};
+try { lspData = JSON.parse(fs.readFileSync(lspPath, 'utf8')); } catch { process.exit(1); }
+
+// Initialize lsp section
+if (!config.lsp) config.lsp = {};
+
+let added = 0;
+for (const key of installed) {
+    if (config.lsp[key]) continue; // already configured
+    const entry = lspData.lsp?.[key];
+    if (!entry) continue;
+
+    // Build opencode.json LSP format
+    const cmdArray = [entry.command, ...entry.args];
+    const extensions = (entry.filetypes || []).map(ft => {
+        const extMap = {
+            python: ['.py', '.pyi'], typescript: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
+            javascript: ['.js', '.jsx', '.mjs', '.cjs'], rust: ['.rs'], go: ['.go'],
+            dockerfile: ['.dockerfile'], sql: ['.sql'], java: ['.java'],
+            c: ['.c', '.h'], cpp: ['.cpp', '.hpp', '.cc', '.cxx'], objc: ['.m', '.mm'],
+            php: ['.php'], ruby: ['.rb'], csharp: ['.cs'],
+            bash: ['.sh', '.bash'], sh: ['.sh'], zsh: ['.zsh'],
+            yaml: ['.yaml', '.yml'], yml: ['.yaml', '.yml'],
+            html: ['.html', '.htm'], htm: ['.html', '.htm'],
+            css: ['.css'], scss: ['.scss'], less: ['.less'],
+            kotlin: ['.kt', '.kts'], dart: ['.dart'], lua: ['.lua'],
+            svelte: ['.svelte'], vue: ['.vue'],
+            terraform: ['.tf', '.tfvars'], hcl: ['.hcl'],
+            zig: ['.zig'], markdown: ['.md'], toml: ['.toml'],
+            graphql: ['.graphql', '.gql'], gql: ['.graphql', '.gql'],
+            elixir: ['.ex', '.exs'], eelixir: ['.eex', '.heex'],
+            scala: ['.scala', '.sbt'], sbt: ['.sbt'],
+            typescriptreact: ['.tsx'], javascriptreact: ['.jsx'],
+        };
+        return extMap[ft] || [];
+    }).flat();
+
+    // Deduplicate extensions
+    const uniqueExts = [...new Set(extensions)];
+
+    config.lsp[key] = {
+        command: cmdArray,
+        extensions: uniqueExts
+    };
+    added++;
+}
+
+fs.writeFileSync(path, JSON.stringify(config, null, 2));
+console.log('Added ' + added + ' LSP server(s) to opencode.json');
+" 2>/dev/null && success "LSP servers merged into opencode.json (direct)" \
+          || warn "Failed to merge LSP config. Run 'opencode-jce setup --merge-lsp' after restarting terminal."
     else
-        warn "opencode-jce not in PATH yet. Run 'opencode-jce setup --merge-lsp' after restarting terminal."
+        warn "bun not available for JSON merge. Run 'opencode-jce setup --merge-lsp' after restarting terminal."
     fi
 }
 

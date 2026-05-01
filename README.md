@@ -14,7 +14,7 @@
 
 Transform your terminal into a fully-configured AI coding powerhouse — 30 specialized agents, 20 model profiles, smart routing, token tracking, and more.
 
-[Quick Install](#-quick-install) • [Features](#-features) • [CLI Commands](#-cli-commands) • [Documentation](#-documentation)
+[Quick Install](#-quick-install) • [Features](#-features) • [Installation Tutorial](#-installation-tutorial) • [CLI Commands](#-cli-commands)
 
 </div>
 
@@ -297,6 +297,309 @@ docker run -it opencode-jce doctor
 tar -xzf opencode-jce-offline-v1.1.0.tar.gz
 cd opencode-jce-offline && ./install-offline.sh
 ```
+
+---
+
+## 📖 Installation Tutorial
+
+<details>
+<summary><b>🪟 Windows — Step-by-Step Guide</b></summary>
+
+### Prerequisites
+
+- Windows 10/11
+- PowerShell 5.1+ (pre-installed on Windows 10+)
+- Internet connection
+
+### Step 1: Open PowerShell as Administrator
+
+Press `Win + X` → select **Windows Terminal (Admin)** or **PowerShell (Admin)**.
+
+### Step 2: Run the Installer
+
+```powershell
+irm https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/install.ps1 | iex
+```
+
+The installer will automatically:
+1. ✅ Install **Git** (via winget, if not present)
+2. ✅ Install **Bun** runtime (if not present)
+3. ✅ Install **OpenCode CLI** (if not present)
+4. ✅ Deploy 30 AI Agents, 20 Profiles, MCP Tools, Skills
+5. ✅ Pre-cache MCP server packages
+
+### Step 3: Select LSP Servers
+
+After the main installation, you'll see an interactive menu:
+
+```
+╔══════════════════════════════════════════╗
+║       LSP Server Installation            ║
+╠══════════════════════════════════════════╣
+  [OK]  1. Python       (already installed)
+  [ ]   2. TypeScript
+  [ ]   3. Rust
+  [ ]   4. Go
+  ...
+  a = Install all    s = Skip all
+  Or enter numbers:  1,2,4
+╚══════════════════════════════════════════╝
+
+  Your choice: _
+```
+
+- Type `a` to install all LSP servers
+- Type `s` to skip (you can install later)
+- Type specific numbers like `1,2,12` to install Python, TypeScript, and Bash
+
+> LSP servers provide autocomplete, diagnostics, and go-to-definition inside OpenCode.
+
+### Step 4: Verify Installation
+
+Open a **new** PowerShell window, then:
+
+```powershell
+opencode-jce doctor
+```
+
+This checks that everything is configured correctly.
+
+### Step 5: Start Using OpenCode
+
+```powershell
+cd your-project-folder
+opencode
+```
+
+### Configuration Location
+
+All config files are stored in:
+```
+%APPDATA%\opencode\
+├── opencode.json       # Main config (LSP, MCP, providers)
+├── agents.json         # 30 AI agents
+├── profiles\           # 20 model profiles
+├── mcp.json            # MCP server config
+├── lsp.json            # LSP server definitions
+├── skills\             # 35 on-demand skill files
+└── AGENTS.md           # Global AI instructions
+```
+
+### Troubleshooting (Windows)
+
+| Problem | Solution |
+|---------|----------|
+| `opencode` not found | Restart PowerShell or run `refreshenv` |
+| `bun` not found | Close and reopen PowerShell |
+| LSP not working | Run `opencode-jce setup --merge-lsp` |
+| Permission denied | Run PowerShell as Administrator |
+
+</details>
+
+---
+
+<details>
+<summary><b>🐧 Ubuntu / Linux — Step-by-Step Guide</b></summary>
+
+### Prerequisites
+
+- Ubuntu 20.04+ / Debian 11+ / Fedora 36+ / Arch Linux
+- Terminal access (bash or zsh)
+- Internet connection
+- `curl` installed (`sudo apt install curl` if missing)
+
+### Step 1: Download and Run the Installer
+
+> **Important:** For the full interactive experience (including LSP selection), download the script first instead of piping directly.
+
+```bash
+# Download the installer
+curl -fsSL https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/install.sh -o install.sh
+
+# Make it executable
+chmod +x install.sh
+
+# Run it
+./install.sh
+```
+
+> **Why not `curl | bash`?** Piping directly works for the main installation, but the LSP selection menu requires interactive input. If you pipe, LSP selection will be skipped (but any already-installed LSPs will still be auto-detected and configured).
+
+The installer will automatically:
+1. ✅ Detect your OS and package manager (apt/dnf/pacman/brew)
+2. ✅ Install **Git** (if not present)
+3. ✅ Install **Bun** runtime (if not present)
+4. ✅ Install **OpenCode CLI** (if not present)
+5. ✅ Deploy 30 AI Agents, 20 Profiles, MCP Tools, Skills
+6. ✅ Pre-cache MCP server packages
+
+### Step 2: Select LSP Servers
+
+After the main installation, you'll see an interactive menu:
+
+```
+╔══════════════════════════════════════════╗
+║       LSP Server Installation            ║
+╠══════════════════════════════════════════╣
+  [✓]  1. Python       (already installed)
+  [ ]  2. TypeScript
+  [ ]  3. Rust
+  [ ]  4. Go
+  ...
+  a = Install all    s = Skip all
+  Or enter numbers: 1,2,4
+╚══════════════════════════════════════════╝
+
+  Your choice: _
+```
+
+- Type `a` to install all LSP servers
+- Type `s` to skip (you can install later)
+- Type specific numbers like `1,2,12` to install Python, TypeScript, and Bash
+
+### Step 3: Verify Installation
+
+```bash
+# Reload your shell
+source ~/.bashrc   # or: source ~/.zshrc
+
+# Run health check
+opencode-jce doctor
+```
+
+### Step 4: Start Using OpenCode
+
+```bash
+cd your-project-folder
+opencode
+```
+
+### Configuration Location
+
+All config files are stored in:
+```
+~/.config/opencode/
+├── opencode.json       # Main config (LSP, MCP, providers)
+├── agents.json         # 30 AI agents
+├── profiles/           # 20 model profiles
+├── mcp.json            # MCP server config
+├── lsp.json            # LSP server definitions
+├── skills/             # 35 on-demand skill files
+└── AGENTS.md           # Global AI instructions
+```
+
+### Installing LSP Servers Manually (VPS / Post-Install)
+
+If you skipped LSP during installation or need to add more later:
+
+```bash
+# Option 1: Interactive setup wizard
+opencode-jce setup
+
+# Option 2: Auto-detect installed LSPs and merge to opencode.json
+opencode-jce setup --merge-lsp
+
+# Option 3: Install specific LSPs manually, then merge
+npm install -g typescript-language-server typescript
+npm install -g pyright
+npm install -g bash-language-server
+npm install -g yaml-language-server
+npm install -g vscode-langservers-extracted   # HTML + CSS + JSON
+
+# After installing, merge into opencode.json:
+opencode-jce setup --merge-lsp
+```
+
+### Common LSP Install Commands (Ubuntu/Debian)
+
+```bash
+# --- npm-based (requires Node.js) ---
+npm install -g pyright                          # Python
+npm install -g typescript-language-server typescript  # TypeScript/JS
+npm install -g bash-language-server             # Bash/Shell
+npm install -g yaml-language-server             # YAML
+npm install -g vscode-langservers-extracted     # HTML + CSS + JSON
+npm install -g dockerfile-language-server-nodejs # Docker
+npm install -g sql-language-server              # SQL
+npm install -g intelephense                     # PHP
+npm install -g svelte-language-server           # Svelte
+npm install -g @vue/language-server             # Vue
+npm install -g @tailwindcss/language-server     # Tailwind CSS
+npm install -g graphql-language-service-cli     # GraphQL
+
+# --- apt-based ---
+sudo apt-get install -y clangd                  # C/C++
+
+# --- Language-specific ---
+go install golang.org/x/tools/gopls@latest      # Go
+rustup component add rust-analyzer              # Rust
+gem install solargraph                          # Ruby
+dotnet tool install -g csharp-ls                # C#
+```
+
+### Verifying LSP is Configured
+
+After installation, check your `opencode.json`:
+
+```bash
+cat ~/.config/opencode/opencode.json | grep -A 5 '"lsp"'
+```
+
+You should see entries like:
+```json
+{
+  "lsp": {
+    "typescript": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
+    },
+    "python": {
+      "command": ["pyright-langserver", "--stdio"],
+      "extensions": [".py", ".pyi"]
+    }
+  }
+}
+```
+
+If the `"lsp"` section is missing or empty, run:
+```bash
+opencode-jce setup --merge-lsp
+```
+
+### Troubleshooting (Linux)
+
+| Problem | Solution |
+|---------|----------|
+| `opencode` not found | Run `source ~/.bashrc` or restart terminal |
+| `bun` not found | Run `source ~/.bashrc` or check `~/.bun/bin` is in PATH |
+| LSP menu didn't appear | You likely piped the install. Run `opencode-jce setup` |
+| LSP not in opencode.json | Run `opencode-jce setup --merge-lsp` |
+| `npm` not found | Install Node.js: `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash - && sudo apt install -y nodejs` |
+| Permission denied | Use `sudo` for apt commands, or fix npm permissions: `npm config set prefix ~/.npm-global` |
+| Script failed mid-way | Run with debug: `bash -x install.sh 2>&1 \| tee install-log.txt` |
+
+### VPS / Server Quick Setup
+
+For headless VPS where you want a minimal setup without interactive prompts:
+
+```bash
+# 1. Install via pipe (skips LSP selection automatically)
+curl -fsSL https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/install.sh | bash
+
+# 2. Reload shell
+source ~/.bashrc
+
+# 3. Install the LSPs you need
+npm install -g typescript-language-server typescript pyright bash-language-server
+
+# 4. Auto-merge installed LSPs into opencode.json
+opencode-jce setup --merge-lsp
+
+# 5. Verify
+opencode-jce doctor
+```
+
+</details>
 
 ---
 
