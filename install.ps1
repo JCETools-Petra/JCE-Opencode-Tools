@@ -311,7 +311,7 @@ function Install-LspServers {
         @{ Num=8;  Name="C/C++";         Cmd="clangd";                     Install="winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements" }
         @{ Num=9;  Name="PHP";           Cmd="intelephense";               Install="npm install -g intelephense" }
         @{ Num=10; Name="Ruby";          Cmd="solargraph";                 Install="gem install solargraph" }
-        @{ Num=11; Name="C#";            Cmd="csharp-ls";                  Install="dotnet tool install -g csharp-ls" }
+        @{ Num=11; Name="C#";            Cmd="csharp-ls";                  Install="dotnet tool install -g csharp-ls --version 0.15.0" }
         @{ Num=12; Name="Bash";          Cmd="bash-language-server";       Install="npm install -g bash-language-server" }
         @{ Num=13; Name="YAML";          Cmd="yaml-language-server";       Install="npm install -g yaml-language-server" }
         @{ Num=14; Name="HTML";          Cmd="vscode-html-language-server"; Install="npm install -g vscode-langservers-extracted" }
@@ -404,7 +404,8 @@ function Install-LspServers {
             $prevEA = $ErrorActionPreference
             $ErrorActionPreference = "Continue"
             cmd /c "$($lsp.Install)" 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "Exit code $LASTEXITCODE" }
+            # winget exit 0=success, 43=already installed (no upgrade available)
+            if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 43) { throw "Exit code $LASTEXITCODE" }
             $ErrorActionPreference = $prevEA
             Write-Host "[OK]" -ForegroundColor Green
             $installedCount++
