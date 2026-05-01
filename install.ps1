@@ -473,19 +473,19 @@ function Install-LspServers {
         @{ Num=13; Name="YAML";          Cmd="yaml-language-server";       Install="npm install -g yaml-language-server" }
         @{ Num=14; Name="HTML";          Cmd="vscode-html-language-server"; Install="npm install -g vscode-langservers-extracted" }
         @{ Num=15; Name="CSS";           Cmd="vscode-css-language-server";  Install="npm install -g vscode-langservers-extracted" }
-        @{ Num=16; Name="Kotlin";        Cmd="kotlin-language-server";     Install="npm install -g kotlin-language-server" }
+        @{ Num=16; Name="Kotlin";        Cmd="kotlin-language-server";     Install="winget install -e --id fwcd.KotlinLanguageServer --accept-package-agreements --accept-source-agreements" }
         @{ Num=17; Name="Dart";          Cmd="dart";                       Install="winget install -e --id Google.DartSDK --accept-package-agreements --accept-source-agreements" }
         @{ Num=18; Name="Lua";           Cmd="lua-language-server";        Install="winget install -e --id LuaLS.lua-language-server --accept-package-agreements --accept-source-agreements" }
         @{ Num=19; Name="Svelte";        Cmd="svelteserver";               Install="npm install -g svelte-language-server" }
         @{ Num=20; Name="Vue";           Cmd="vue-language-server";        Install="npm install -g @vue/language-server" }
-        @{ Num=21; Name="Terraform";     Cmd="terraform-ls";               Install="winget install -e --id HashiCorp.Terraform --accept-package-agreements --accept-source-agreements" }
+        @{ Num=21; Name="Terraform";     Cmd="terraform-ls";               Install="winget install -e --id HashiCorp.terraform-ls --accept-package-agreements --accept-source-agreements" }
         @{ Num=22; Name="Tailwind CSS";  Cmd="tailwindcss-language-server"; Install="npm install -g @tailwindcss/language-server" }
-        @{ Num=23; Name="Zig";           Cmd="zls";                        Install="winget install -e --id zig.zig --accept-package-agreements --accept-source-agreements" }
+        @{ Num=23; Name="Zig";           Cmd="zls";                        Install="winget install -e --id zigtools.zls --accept-package-agreements --accept-source-agreements" }
         @{ Num=24; Name="Markdown";      Cmd="marksman";                   Install="winget install -e --id Artempyanykh.Marksman --accept-package-agreements --accept-source-agreements" }
         @{ Num=25; Name="TOML";          Cmd="taplo";                      Install="cargo install taplo-cli --features lsp" }
         @{ Num=26; Name="GraphQL";       Cmd="graphql-lsp";                Install="npm install -g graphql-language-service-cli" }
-        @{ Num=27; Name="Elixir";        Cmd="elixir-ls";                  Install="winget install -e --id ElixirLang.Elixir --accept-package-agreements --accept-source-agreements" }
-        @{ Num=28; Name="Scala";         Cmd="metals";                     Install="npm install -g metals-languageclient" }
+        @{ Num=27; Name="Elixir";        Cmd="elixir-ls";                  Install="npm install -g @elixir-tools/next-ls" }
+        @{ Num=28; Name="Scala";         Cmd="metals";                     Install="cs install metals" }
     )
 
     # Show list with status
@@ -637,7 +637,7 @@ function Write-Summary {
 
     Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
-    Write-Host "  [OK] 35 Skills      - on-demand workflows" -ForegroundColor Green
+    Write-Host "  [OK] 36 Skills      - on-demand workflows" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
     Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {
@@ -658,7 +658,17 @@ function Write-Summary {
 
 # --- Main ---
 
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    Write-Host "[FAIL] PowerShell 5.1+ required. Current: $($PSVersionTable.PSVersion)" -ForegroundColor Red
+    exit 1
+}
+
 Write-Banner
+
+if (-not (Test-Command "winget")) {
+    Write-Warn "winget not found. Some installations may fail."
+    Write-Info "Get winget from: https://aka.ms/getwinget"
+}
 Install-Git
 Install-Bun
 Install-OpenCode

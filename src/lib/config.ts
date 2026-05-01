@@ -144,6 +144,33 @@ const FILETYPE_TO_EXTENSIONS: Record<string, string[]> = {
   objc: [".m", ".mm"],
   php: [".php"],
   ruby: [".rb"],
+  bash: [".sh", ".bash"],
+  sh: [".sh"],
+  zsh: [".zsh"],
+  yaml: [".yaml", ".yml"],
+  yml: [".yaml", ".yml"],
+  html: [".html", ".htm"],
+  htm: [".html"],
+  css: [".css"],
+  scss: [".scss"],
+  less: [".less"],
+  kotlin: [".kt", ".kts"],
+  dart: [".dart"],
+  lua: [".lua"],
+  svelte: [".svelte"],
+  vue: [".vue"],
+  terraform: [".tf", ".tfvars"],
+  hcl: [".hcl"],
+  zig: [".zig"],
+  markdown: [".md"],
+  toml: [".toml"],
+  graphql: [".graphql", ".gql"],
+  gql: [".graphql", ".gql"],
+  elixir: [".ex", ".exs"],
+  eelixir: [".eex", ".heex"],
+  scala: [".scala", ".sbt"],
+  sbt: [".sbt"],
+  csharp: [".cs"],
 };
 
 /**
@@ -170,6 +197,9 @@ export function buildOpenCodeLspConfig(
         }
       }
     }
+
+    // Skip servers with no recognized extensions
+    if (extensions.length === 0) continue;
 
     // Build command array
     const command = [entry.command, ...entry.args];

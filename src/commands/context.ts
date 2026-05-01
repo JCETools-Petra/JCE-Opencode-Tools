@@ -11,7 +11,8 @@ import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 
 const CONTEXT_FILENAME = ".opencode-context.md";
 
-const CONTEXT_TEMPLATE = `# Project Context
+function getContextTemplate(): string {
+  return `# Project Context
 > Auto-maintained by AI. You can edit this file freely.
 > Last updated: ${new Date().toISOString().split("T")[0]}
 
@@ -34,6 +35,7 @@ const CONTEXT_TEMPLATE = `# Project Context
 ## Important Notes
 - [anything the AI should always remember]
 `;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -58,7 +60,7 @@ const initCommand = new Command("init")
     }
 
     try {
-      await writeFile(contextPath, CONTEXT_TEMPLATE, "utf-8");
+      await writeFile(contextPath, getContextTemplate(), "utf-8");
     } catch (err: any) {
       error(`Failed to write ${CONTEXT_FILENAME}: ${err.message}`);
       process.exit(EXIT_ERROR);
@@ -129,12 +131,7 @@ const clearCommand = new Command("clear")
       process.exit(EXIT_ERROR);
     }
 
-    const freshTemplate = CONTEXT_TEMPLATE.replace(
-      /Last updated: .*/,
-      `Last updated: ${new Date().toISOString().split("T")[0]}`
-    );
-
-    await writeFile(contextPath, freshTemplate, "utf-8");
+    await writeFile(contextPath, getContextTemplate(), "utf-8");
 
     success(`${CONTEXT_FILENAME} reset to empty template.`);
     logCommandSuccess("context clear");

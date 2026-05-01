@@ -303,7 +303,7 @@ precache_mcp_packages() {
         echo -n "  Caching ${short_name}... "
 
         # Use npm cache add to download without executing
-        if npm cache add "$pkg" &>/dev/null 2>&1; then
+        if npm cache add "$pkg" &>/dev/null; then
             echo -e "${GREEN}✅${NC}"
             cached_count=$((cached_count + 1))
         else
@@ -349,14 +349,14 @@ select_and_install_lsp() {
         "npm install -g yaml-language-server"
         "npm install -g vscode-langservers-extracted"
         "npm install -g vscode-langservers-extracted"
-        "brew install kotlin-language-server || sdk install kotlin"
+        "brew install kotlin-language-server || sdk install kotlin-language-server"
         "brew install dart || sudo apt-get install -y dart"
         "brew install lua-language-server || sudo apt-get install -y lua-language-server"
         "npm install -g svelte-language-server"
         "npm install -g @vue/language-server"
         "brew install hashicorp/tap/terraform-ls || sudo apt-get install -y terraform-ls"
         "npm install -g @tailwindcss/language-server"
-        "brew install zls || snap install zls"
+        "brew install zls || cargo install zls"
         "brew install marksman || cargo install marksman"
         "cargo install taplo-cli --features lsp"
         "npm install -g graphql-language-service-cli"
@@ -475,7 +475,7 @@ select_and_install_lsp() {
         echo -n "  Installing ${name}... "
 
         # Run install command
-        if eval "$install_cmd" &>/dev/null 2>&1; then
+        if eval "$install_cmd" &>/dev/null; then
             echo -e "${GREEN}✅${NC}"
             installed_count=$((installed_count + 1))
         else
@@ -652,7 +652,7 @@ print_summary() {
 
     echo "║ ✅ 30 AI Agents   — configured           ║"
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
-    echo "║ ✅ 35 Skills      — on-demand workflows  ║"
+    echo "║ ✅ 36 Skills      — on-demand workflows  ║"
     echo "║ ✅ 20 Profiles    — ready                ║"
     echo "║ ✅ 5 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
