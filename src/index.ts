@@ -16,6 +16,7 @@ import { pluginCommand } from "./commands/plugin.js";
 import { teamCommand } from "./commands/team.js";
 import { memoryCommand } from "./commands/memory.js";
 import { dashboardCommand } from "./commands/dashboard.js";
+import { fallbackCommand } from "./commands/fallback.js";
 
 const program = new Command();
 
@@ -39,5 +40,6 @@ program.addCommand(pluginCommand);
 program.addCommand(teamCommand);
 program.addCommand(memoryCommand);
 program.addCommand(dashboardCommand);
+program.addCommand(fallbackCommand);
 
 program.parse(process.argv);

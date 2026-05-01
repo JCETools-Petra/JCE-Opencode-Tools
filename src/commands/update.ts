@@ -55,30 +55,53 @@ async function fetchRemoteFile(relativePath: string): Promise<string | null> {
 }
 
 /**
+ * Fetch the list of profile files from the GitHub repository.
+ * Returns an array of filenames like ["budget.json", "quality.json", ...].
+ */
+async function fetchProfileFileList(): Promise<string[]> {
+  try {
+    // Use GitHub API to list files in config/profiles/
+    const response = await fetch(
+      "https://api.github.com/repos/JCETools-Petra/JCE-Opencode-Tools/contents/config/profiles",
+      {
+        headers: { "Accept": "application/vnd.github.v3+json" },
+      }
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const files = (await response.json()) as Array<{ name: string; type: string }>;
+    return files
+      .filter((f) => f.type === "file" && f.name.endsWith(".json"))
+      .map((f) => f.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Deploy updated config files from GitHub to the local config directory.
  */
 async function deployUpdatedConfigs(): Promise<number> {
   const configDir = getConfigDir();
   let updatedCount = 0;
 
-  // List of config files to update
+  // Static config files to update
   const configFiles = [
     "agents.json",
     "mcp.json",
     "lsp.json",
+    "fallback.json",
   ];
 
-  // Profile files to update
-  const profileFiles = [
-    "profiles/budget.json",
-    "profiles/codex-5.3.json",
-    "profiles/hybrid-hemat.json",
-    "profiles/local.json",
-    "profiles/opus-latest.json",
-    "profiles/quality.json",
-    "profiles/sonnet-4.6.json",
-    "profiles/speed.json",
-  ];
+  // Dynamically discover profile files from GitHub
+  info("Discovering profile files...");
+  const profileFileNames = await fetchProfileFileList();
+  const profileFiles = profileFileNames.map((f) => `profiles/${f}`);
+
+  if (profileFiles.length === 0) {
+    warn("Could not fetch profile list from GitHub. Using local profiles only.");
+  }
 
   const allFiles = [...configFiles, ...profileFiles];
 

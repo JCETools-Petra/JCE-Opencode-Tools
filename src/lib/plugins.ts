@@ -1,8 +1,19 @@
 import { join, dirname } from "path";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, rmSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import { execSync } from "child_process";
 import { getConfigDir } from "./config.js";
+
+/**
+ * Remove a directory recursively (cross-platform).
+ */
+function removeDir(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Non-fatal
+  }
+}
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -105,8 +116,7 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
   // Clone the repository
   try {
     if (existsSync(pluginDir)) {
-      // Remove existing directory
-      execSync(`rm -rf "${pluginDir}"`, { stdio: "pipe" });
+      removeDir(pluginDir);
     }
     execSync(`git clone --depth 1 "${githubUrl}" "${pluginDir}"`, { stdio: "pipe" });
   } catch (err: any) {
@@ -117,7 +127,7 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
   const manifestPath = join(pluginDir, "plugin.json");
   if (!existsSync(manifestPath)) {
     // Cleanup
-    try { execSync(`rm -rf "${pluginDir}"`, { stdio: "pipe" }); } catch {}
+    removeDir(pluginDir);
     return { success: false, error: "Repository does not contain a plugin.json manifest." };
   }
 
@@ -126,13 +136,13 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     const content = await readFile(manifestPath, "utf-8");
     manifest = JSON.parse(content);
   } catch {
-    try { execSync(`rm -rf "${pluginDir}"`, { stdio: "pipe" }); } catch {}
+    removeDir(pluginDir);
     return { success: false, error: "Invalid plugin.json — could not parse manifest." };
   }
 
   // Validate manifest
   if (!manifest.name || !manifest.version || !manifest.type) {
-    try { execSync(`rm -rf "${pluginDir}"`, { stdio: "pipe" }); } catch {}
+    removeDir(pluginDir);
     return { success: false, error: "plugin.json is missing required fields (name, version, type)." };
   }
 
@@ -167,7 +177,7 @@ export async function removePlugin(name: string): Promise<{ success: boolean; er
   const pluginDir = join(getPluginsDir(), name);
   if (existsSync(pluginDir)) {
     try {
-      execSync(`rm -rf "${pluginDir}"`, { stdio: "pipe" });
+      removeDir(pluginDir);
     } catch {
       // Non-fatal — registry will still be updated
     }
