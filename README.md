@@ -458,19 +458,30 @@ opencode-jce/
 
 ---
 
-## Support the Project
+## Donate / Buy Me a Coffee
 
-If this tool saves you time and money, consider buying me a coffee:
+If this tool saves you time and money, consider supporting the project:
 
 <div align="center">
 
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?style=for-the-badge&logo=paypal)](https://paypal.me/Darkness0777)
+<a href="https://paypal.me/Darkness0777">
+  <img src="https://img.shields.io/badge/PayPal-Donate-0070ba?style=for-the-badge&logo=paypal&logoColor=white" alt="Donate via PayPal" />
+</a>
+<a href="https://paypal.me/Darkness0777">
+  <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee" />
+</a>
+
+<br/><br/>
+
+<a href="https://paypal.me/Darkness0777">
+  <img src="https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_111x69.jpg" alt="PayPal" width="120" />
+</a>
 
 **[paypal.me/Darkness0777](https://paypal.me/Darkness0777)**
 
 </div>
 
-Your support helps keep this project maintained and free for everyone.
+Every donation helps keep this project maintained, updated, and free for everyone.
 
 ---
 
