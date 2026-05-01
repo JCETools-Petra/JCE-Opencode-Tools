@@ -143,7 +143,7 @@ Skills are detected from context (file extensions, frameworks mentioned) and wor
 
 ---
 
-### 5 MCP Tools
+### 8 MCP Tools
 
 | Tool | Capability |
 |------|-----------|
@@ -152,6 +152,9 @@ Skills are detected from context (file extensions, frameworks mentioned) and wor
 | **Web Fetch** | Retrieve and analyze web content |
 | **Filesystem** | Read and search local files |
 | **Memory** | Persistent context across sessions |
+| **Playwright** | Browser automation — testing, scraping, screenshots |
+| **Sequential Thinking** | Structured reasoning for complex problems |
+| **PostgreSQL** | Query databases directly — schema, data, debugging |
 
 ---
 
@@ -432,7 +435,7 @@ opencode-jce/
 │   ├── agents.json         # 30 AI agents
 │   ├── profiles/           # 20 model profiles
 │   ├── skills/             # 36 on-demand skill files
-│   ├── mcp.json            # 5 MCP tools
+│   ├── mcp.json            # 8 MCP tools
 │   ├── lsp.json            # 28 LSP servers
 │   ├── prompts/            # 5 prompt templates
 │   └── fallback.json       # Provider fallback config

@@ -1,40 +1,94 @@
-# Skill: React
+# Skill: React Advanced
 # Loaded on-demand when working with React, JSX, TSX components
 
-## Hooks Patterns
+## Auto-Detect
 
-### State & Effects
-```tsx
-// useState: prefer functional updates for state derived from previous
-const [count, setCount] = useState(0);
-setCount(prev => prev + 1); // NOT setCount(count + 1) in async contexts
+Trigger this skill when:
+- File extensions: `.jsx`, `.tsx`, `*.component.tsx`
+- `package.json` contains: `react`, `react-dom`, `next`, `@tanstack/react-query`
+- Imports from: `react`, `react-dom`, `react-dom/client`
+- Directory patterns: `components/`, `hooks/`, `app/` (Next.js App Router)
 
-// useEffect: cleanup is mandatory for subscriptions/timers
-useEffect(() => {
-  const controller = new AbortController();
-  fetch(url, { signal: controller.signal }).then(setData);
-  return () => controller.abort();
-}, [url]);
+---
 
-// useRef: mutable container that doesn't trigger re-renders
-const renderCount = useRef(0);
-renderCount.current++; // silent mutation, no re-render
+## Decision Tree: State Management
+
+```
+Need to store data?
+├── Derived from props/other state? → Compute during render (no state needed)
+├── Only used by this component? → useState / useReducer
+├── Shared by 2-3 nearby components? → Lift state up
+├── App-wide UI state (theme, sidebar)? → Zustand (no providers, minimal boilerplate)
+├── Server data (API responses)? → TanStack Query (caching, revalidation, dedup)
+├── Complex form state? → React Hook Form + Zod
+├── URL-driven state? → useSearchParams / nuqs
+└── Deeply nested prop threading? → Context (but ONLY for rarely-changing values)
 ```
 
-### Memoization (use sparingly — profile first)
-```tsx
-// useCallback: stabilize function identity for child props
-const handleClick = useCallback((id: string) => {
-  setItems(prev => prev.filter(item => item.id !== id));
-}, []); // no deps needed when using functional updater
+## Decision Tree: Component Type
 
-// useMemo: expensive computations only
-const sorted = useMemo(() => items.toSorted((a, b) => a.name.localeCompare(b.name)), [items]);
+```
+Does it need interactivity (state, effects, event handlers)?
+├── No → Server Component (default in App Router, no directive needed)
+│   ├── Needs data? → async function + direct DB/API call
+│   └── Renders children that are interactive? → Pass Client Components as children
+└── Yes → Client Component ('use client' directive)
+    ├── Needs form submission? → Server Action + useActionState
+    ├── Needs optimistic UI? → useOptimistic
+    └── Needs pending state? → useTransition or useFormStatus
 ```
 
-### Custom Hooks
+---
+
+## React 19 Patterns
+
 ```tsx
-function useDebounce<T>(value: T, delay: number): T {
+// useActionState — replaces useFormState, handles async actions
+function CreatePost() {
+  const [state, action, isPending] = useActionState(async (prev, formData: FormData) => {
+    const result = await createPost(formData);
+    if (!result.ok) return { error: result.error };
+    redirect('/posts');
+  }, { error: null });
+
+  return (
+    <form action={action}>
+      <input name="title" required />
+      {state.error && <p className="text-red-500">{state.error}</p>}
+      <button disabled={isPending}>{isPending ? 'Creating...' : 'Create'}</button>
+    </form>
+  );
+}
+
+// use() — read promises/context in render (replaces useContext)
+function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
+  const user = use(userPromise); // suspends until resolved
+  return <h1>{user.name}</h1>;
+}
+
+// useOptimistic — instant UI feedback before server confirms
+function LikeButton({ likes, postId }: { likes: number; postId: string }) {
+  const [optimisticLikes, setOptimisticLikes] = useOptimistic(likes);
+  async function handleLike() {
+    setOptimisticLikes(prev => prev + 1);
+    await likePost(postId);
+  }
+  return <button onClick={handleLike}>♥ {optimisticLikes}</button>;
+}
+
+// ref as prop — no more forwardRef wrapper needed in React 19
+function Input({ ref, ...props }: { ref?: React.Ref<HTMLInputElement> }) {
+  return <input ref={ref} {...props} />;
+}
+```
+
+---
+
+## Hooks Best Practices
+
+```tsx
+// Custom hook: encapsulate reusable logic
+function useDebounce<T>(value: T, delay = 300): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(value), delay);
@@ -42,164 +96,177 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
   return debounced;
 }
+
+// useReducer for complex state machines
+type State = { status: 'idle' | 'loading' | 'success' | 'error'; data?: Data; error?: string };
+type Action = { type: 'fetch' } | { type: 'success'; data: Data } | { type: 'error'; error: string };
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'fetch': return { status: 'loading' };
+    case 'success': return { status: 'success', data: action.data };
+    case 'error': return { status: 'error', error: action.error };
+  }
+}
 ```
 
-## React 19 Features
+---
+
+## Performance Patterns
 
 ```tsx
-// use() — read promises and context in render
-function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
-  const user = use(userPromise); // suspends until resolved
-  return <h1>{user.name}</h1>;
+// React.memo — only for expensive renders (profile first!)
+const ExpensiveList = memo(function ExpensiveList({ items }: { items: Item[] }) {
+  return items.map(item => <ExpensiveRow key={item.id} item={item} />);
+});
+
+// lazy + Suspense for route-level code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+<Suspense fallback={<DashboardSkeleton />}><Dashboard /></Suspense>
+
+// startTransition — mark non-urgent updates (search results, filters)
+function Search() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Item[]>([]);
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    setQuery(e.target.value);
+    startTransition(() => setResults(filterItems(e.target.value)));
+  }
+  return <input value={query} onChange={handleChange} />;
 }
 
-// Actions — async transitions with automatic pending state
-function UpdateForm() {
-  const [optimisticName, setOptimisticName] = useOptimistic(name);
-  async function updateAction(formData: FormData) {
-    setOptimisticName(formData.get('name') as string);
-    await updateNameOnServer(formData);
-  }
+// useDeferredValue — defer expensive child re-renders
+function FilteredList({ filter }: { filter: string }) {
+  const deferredFilter = useDeferredValue(filter);
+  const items = useMemo(() => expensiveFilter(deferredFilter), [deferredFilter]);
+  return <List items={items} />;
+}
+```
+
+---
+
+## Server Components (RSC)
+
+```tsx
+// Server Component — direct data access, zero client JS
+async function ProductPage({ params }: { params: { id: string } }) {
+  const product = await db.product.findUnique({ where: { id: params.id } });
+  if (!product) notFound();
   return (
-    <form action={updateAction}>
-      <input name="name" />
-      <p>Current: {optimisticName}</p>
-    </form>
+    <main>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+      <AddToCartButton productId={product.id} /> {/* Client Component */}
+    </main>
   );
 }
 
-// useFormStatus — access parent form state from child
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return <button disabled={pending}>{pending ? 'Saving...' : 'Save'}</button>;
+// Streaming with Suspense boundaries
+async function Page() {
+  return (
+    <main>
+      <h1>Dashboard</h1>
+      <Suspense fallback={<StatsSkeleton />}>
+        <Stats /> {/* Streams in when ready */}
+      </Suspense>
+      <Suspense fallback={<ChartSkeleton />}>
+        <RevenueChart /> {/* Independent stream */}
+      </Suspense>
+    </main>
+  );
 }
 ```
 
-## Component Composition
+---
+
+## Testing Patterns
 
 ```tsx
-// Compound components over prop drilling
-function Tabs({ children }: { children: ReactNode }) {
-  const [active, setActive] = useState(0);
-  return <TabsContext.Provider value={{ active, setActive }}>{children}</TabsContext.Provider>;
-}
-Tabs.List = TabList;
-Tabs.Panel = TabPanel;
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
-// Render props for flexible rendering
-<DataTable data={users} renderRow={(user) => <UserRow key={user.id} user={user} />} />
+// Test behavior, not implementation
+test('submits form with validated data', async () => {
+  const user = userEvent.setup();
+  const onSubmit = vi.fn();
+  render(<ContactForm onSubmit={onSubmit} />);
 
-// Suspense + ErrorBoundary composition
-<ErrorBoundary fallback={<ErrorUI />}>
-  <Suspense fallback={<Skeleton />}>
+  await user.type(screen.getByLabelText(/email/i), 'test@example.com');
+  await user.click(screen.getByRole('button', { name: /submit/i }));
+
+  expect(onSubmit).toHaveBeenCalledWith({ email: 'test@example.com' });
+});
+
+// Test async components with MSW for API mocking
+// Test error boundaries by throwing in child components
+// Test accessibility: screen.getByRole > getByTestId
+```
+
+---
+
+## Code Templates
+
+### Component with Error Boundary
+```tsx
+<ErrorBoundary fallback={<ErrorFallback />}>
+  <Suspense fallback={<Loading />}>
     <AsyncComponent />
   </Suspense>
 </ErrorBoundary>
 ```
 
-## Server Components (RSC)
-
+### TanStack Query Pattern
 ```tsx
-// Server Component (default in App Router) — no 'use client'
-async function ProductList() {
-  const products = await db.products.findMany(); // direct DB access
-  return <ul>{products.map(p => <ProductCard key={p.id} product={p} />)}</ul>;
-}
-
-// Client Component — interactive, has state/effects
-'use client';
-function AddToCart({ productId }: { productId: string }) {
-  const [qty, setQty] = useState(1);
-  return <button onClick={() => addToCart(productId, qty)}>Add {qty}</button>;
+function useProducts(filters: Filters) {
+  return useQuery({
+    queryKey: ['products', filters],
+    queryFn: () => fetchProducts(filters),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
 }
 ```
 
-## Performance
+---
 
-```tsx
-// React.memo — skip re-render when props unchanged
-const ExpensiveList = memo(function ExpensiveList({ items }: { items: Item[] }) {
-  return items.map(item => <ExpensiveRow key={item.id} item={item} />);
-});
+## Anti-Patterns
 
-// lazy + Suspense for code splitting
-const HeavyChart = lazy(() => import('./HeavyChart'));
-<Suspense fallback={<ChartSkeleton />}><HeavyChart data={data} /></Suspense>
+| ❌ Don't | ✅ Do Instead |
+|----------|---------------|
+| `useEffect` to sync derived state | Compute during render |
+| `useEffect` to fetch data | TanStack Query / Server Component |
+| Index as key for dynamic lists | Stable unique ID (`item.id`) |
+| Object literals in JSX props | Hoist to module scope or `useMemo` |
+| Prop drilling 4+ levels deep | Composition, Context, or Zustand |
+| Giant useEffect doing 3 things | Split into separate effects |
+| `any` in component props | Proper TypeScript generics |
+| Snapshot-only tests | Behavioral tests with Testing Library |
+| `useEffect` + `setState` for transforms | `useMemo` or compute inline |
+| Fetching in useEffect without AbortController | Use a data library or add cleanup |
 
-// startTransition — mark non-urgent updates
-function Search() {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value); // urgent: update input
-    startTransition(() => setResults(search(e.target.value))); // non-urgent
-  };
-}
-```
+---
 
-## State Management
+## Verification Checklist
 
-```tsx
-// useReducer for complex state logic
-const [state, dispatch] = useReducer(reducer, { items: [], loading: false });
+Before considering React work done:
+- [ ] No `useEffect` for derived state — computed inline or `useMemo`
+- [ ] All lists use stable keys (not index)
+- [ ] Client Components have `'use client'` directive
+- [ ] Server Components have no `useState`/`useEffect`/event handlers
+- [ ] Error boundaries wrap async/suspense boundaries
+- [ ] Forms use proper validation (Zod + React Hook Form or Server Actions)
+- [ ] No prop drilling beyond 2 levels
+- [ ] Accessibility: semantic HTML, ARIA labels, keyboard navigation
+- [ ] Performance: no unnecessary re-renders (React DevTools Profiler)
+- [ ] Tests cover user-facing behavior, not implementation details
 
-// Zustand — minimal, no providers
-const useStore = create<Store>((set) => ({
-  bears: 0,
-  increase: () => set((s) => ({ bears: s.bears + 1 })),
-}));
+---
 
-// Jotai — atomic, bottom-up
-const countAtom = atom(0);
-const doubleAtom = atom((get) => get(countAtom) * 2);
-```
+## MCP Integration
 
-## Forms
-
-```tsx
-// React Hook Form — performant, minimal re-renders
-const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
-<form onSubmit={handleSubmit(onSubmit)}>
-  <input {...register('email', { required: true, pattern: /^\S+@\S+$/ })} />
-  {errors.email && <span>Valid email required</span>}
-</form>
-```
-
-## Testing
-
-```tsx
-// React Testing Library — test behavior, not implementation
-import { render, screen, userEvent } from '@testing-library/react';
-
-test('submits form with user data', async () => {
-  const onSubmit = vi.fn();
-  render(<UserForm onSubmit={onSubmit} />);
-  await userEvent.type(screen.getByLabelText(/name/i), 'Alice');
-  await userEvent.click(screen.getByRole('button', { name: /submit/i }));
-  expect(onSubmit).toHaveBeenCalledWith({ name: 'Alice' });
-});
-// NEVER: enzyme, shallow rendering, snapshot-only tests, testing implementation details
-```
-
-## Anti-Patterns to Avoid
-
-```tsx
-// BAD: useEffect for derived state
-useEffect(() => { setFullName(first + ' ' + last); }, [first, last]);
-// GOOD: compute during render
-const fullName = `${first} ${last}`;
-
-// BAD: object/array literals in JSX props (new ref every render)
-<Child style={{ color: 'red' }} />
-// GOOD: hoist or memoize
-const style = useMemo(() => ({ color: 'red' }), []);
-
-// BAD: index as key for dynamic lists
-items.map((item, i) => <Item key={i} />)
-// GOOD: stable unique id
-items.map(item => <Item key={item.id} />)
-
-// BAD: prop drilling through 5+ levels — use context or composition
-// BAD: giant useEffect doing multiple unrelated things — split into separate effects
-// BAD: fetching in useEffect without cleanup — use a data fetching library (TanStack Query, SWR)
-```
+| Tool | Use For |
+|------|---------|
+| `context7` | Look up React 19 API docs, TanStack Query patterns |
+| `playwright` | E2E testing of component interactions |
+| `sequential-thinking` | Design complex component hierarchies |
+| `grep/glob` | Find existing patterns in codebase before creating new ones |
