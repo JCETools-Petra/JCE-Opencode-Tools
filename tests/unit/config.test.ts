@@ -283,9 +283,9 @@ describe("config/skills/", () => {
     expect(existsSync(skillsDir)).toBe(true);
   });
 
-  test("has exactly 35 .md files", () => {
+  test("has exactly 36 .md files", () => {
     const mdFiles = readdirSync(skillsDir).filter((f) => f.endsWith(".md"));
-    expect(mdFiles).toHaveLength(35);
+    expect(mdFiles).toHaveLength(36);
   });
 
   test("all skill files are non-empty", () => {
