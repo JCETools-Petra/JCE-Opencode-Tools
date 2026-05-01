@@ -458,6 +458,22 @@ opencode-jce/
 
 ---
 
+## Support the Project
+
+If this tool saves you time and money, consider buying me a coffee:
+
+<div align="center">
+
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?style=for-the-badge&logo=paypal)](https://paypal.me/Darkness0777)
+
+**[paypal.me/Darkness0777](https://paypal.me/Darkness0777)**
+
+</div>
+
+Your support helps keep this project maintained and free for everyone.
+
+---
+
 ## Contributing
 
 1. Fork the repository
@@ -478,6 +494,6 @@ MIT © [JCETools-Petra](https://github.com/JCETools-Petra)
 
 **Built for the OpenCode community**
 
-[Report Bug](https://github.com/JCETools-Petra/JCE-Opencode-Tools/issues) · [Request Feature](https://github.com/JCETools-Petra/JCE-Opencode-Tools/issues)
+[Report Bug](https://github.com/JCETools-Petra/JCE-Opencode-Tools/issues) · [Request Feature](https://github.com/JCETools-Petra/JCE-Opencode-Tools/issues) · [Donate](https://paypal.me/Darkness0777)
 
 </div>
