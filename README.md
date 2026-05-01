@@ -477,8 +477,6 @@ If this tool saves you time and money, consider supporting the project:
   <img src="https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_111x69.jpg" alt="PayPal" width="120" />
 </a>
 
-**[paypal.me/Darkness0777](https://paypal.me/Darkness0777)**
-
 </div>
 
 Every donation helps keep this project maintained, updated, and free for everyone.
