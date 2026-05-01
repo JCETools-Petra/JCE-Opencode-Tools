@@ -113,6 +113,8 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
 ### Routing Rules
 
+> **Note:** Routing berlaku untuk SEMUA bahasa (Indonesia, English, dll). Deteksi berdasarkan konteks (framework, file extension, task type) — bukan bahasa prompt.
+
 1. **Detect from context** — file extensions, frameworks mentioned, task type
 2. **Load 1-4 skills max** per task — don't load everything
 3. **Always load `software-engineering.md`** for any coding task
@@ -121,7 +123,7 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 6. **Domain skill** — load based on task domain (security audit → security.md)
 7. **Framework > Language** — if user says "Laravel", load `laravel.md` (includes PHP patterns)
 
-### Examples
+### Examples (English)
 
 | User says | Load |
 |-----------|------|
@@ -135,6 +137,24 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 | "Fix this Rust code" | `software-engineering.md` + `rust.md` |
 | "Style with Tailwind" | `tailwind.md` + `frontend.md` |
 | "Spring Boot microservice" | `spring-boot.md` + `architecture.md` + `java-kotlin.md` |
+
+### Contoh (Bahasa Indonesia)
+
+| User bilang | Load |
+|-------------|------|
+| "Perbaiki komponen React ini" | `software-engineering.md` + `react.md` + `typescript.md` |
+| "Buat API pakai Laravel" | `software-engineering.md` + `laravel.md` + `architecture.md` |
+| "Cek keamanan API ini" | `security.md` + `architecture.md` |
+| "Setup Docker dan CI/CD" | `devops.md` |
+| "Optimasi query database" | `sql-database.md` + `architecture.md` |
+| "Buat aplikasi Next.js" | `nextjs.md` + `react.md` + `typescript.md` |
+| "Buat app mobile Flutter" | `flutter-dart.md` + `software-engineering.md` |
+| "Fix bug di kode Rust" | `software-engineering.md` + `rust.md` |
+| "Styling pakai Tailwind" | `tailwind.md` + `frontend.md` |
+| "Buat microservice Spring Boot" | `spring-boot.md` + `architecture.md` + `java-kotlin.md` |
+| "Deploy ke server" | `devops.md` |
+| "Tambah fitur login" | `security.md` + `software-engineering.md` |
+| "Refactor kode ini" | `software-engineering.md` |
 
 ---
 
