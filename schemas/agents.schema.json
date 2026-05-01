@@ -40,6 +40,31 @@
             "items": {
               "type": "string"
             }
+          },
+          "workflow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Step-by-step execution plan for advanced agents"
+          },
+          "outputFormat": {
+            "type": "string",
+            "description": "Structured response template"
+          },
+          "contextRules": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Project-type-specific behavior rules"
+          },
+          "verification": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Self-check steps before responding"
           }
         },
         "additionalProperties": false
