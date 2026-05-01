@@ -205,6 +205,22 @@ The `hybrid-hemat` profile automatically analyzes your prompt and routes to the 
 
 ---
 
+### 🧠 Global AI Instructions — AGENTS.md
+
+Every OpenCode session automatically loads a comprehensive set of engineering best practices:
+
+- **Software Engineering** — TDD, debugging methodology, code review, refactoring
+- **Security** — OWASP Top 10, input validation, secrets management
+- **Architecture** — API design, database patterns, error handling
+- **UI/UX** — Accessibility (WCAG), responsive design, Core Web Vitals
+- **DevOps** — Docker, CI/CD, monitoring, infrastructure as code
+- **Language Patterns** — TypeScript, Python, Rust, Go best practices
+- **AI Optimization** — Token efficiency, model selection, context management
+
+> 📝 Fully customizable — edit `~/.config/opencode/AGENTS.md` to add your own rules. The installer will never overwrite your changes.
+
+---
+
 ## 🖥️ CLI Commands
 
 After installation, you get the `opencode-jce` management tool with **15 commands**:
@@ -304,6 +320,7 @@ opencode-jce/
 │   ├── commands/           # Command implementations
 │   └── lib/                # Shared libraries
 ├── config/                 # Pre-configured settings
+│   ├── AGENTS.md           # Global AI instructions
 │   ├── agents.json         # 30 AI agents
 │   ├── profiles/           # 20 model profiles
 │   ├── mcp.json            # 5 MCP tools

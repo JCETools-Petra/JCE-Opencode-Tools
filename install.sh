@@ -192,6 +192,14 @@ deploy_config() {
     info "Merging configuration (preserving existing settings)..."
     bun run "$TEMP_DIR/scripts/merge-config.ts" "$TEMP_DIR/config" "$CONFIG_DIR"
 
+    # Deploy AGENTS.md (only if not already present)
+    if [ ! -f "$CONFIG_DIR/AGENTS.md" ]; then
+        cp "$TEMP_DIR/config/AGENTS.md" "$CONFIG_DIR/AGENTS.md"
+        success "AGENTS.md deployed"
+    else
+        skip "AGENTS.md already exists (preserved)"
+    fi
+
     success "Configuration deployed to: ${CONFIG_DIR}"
 
     # Install opencode-jce CLI globally
@@ -448,6 +456,7 @@ print_summary() {
     fi
 
     echo "║ ✅ 30 AI Agents   — configured           ║"
+    echo "║ ✅ AGENTS.md      — global AI instructions ║"
     echo "║ ✅ 20 Profiles    — ready                ║"
     echo "║ ✅ 5 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then

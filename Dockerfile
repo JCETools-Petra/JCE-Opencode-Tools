@@ -19,6 +19,7 @@ RUN mkdir -p /root/.config/opencode/profiles && \
     cp config/agents.json /root/.config/opencode/ && \
     cp config/mcp.json /root/.config/opencode/ && \
     cp config/lsp.json /root/.config/opencode/ && \
+    cp config/AGENTS.md /root/.config/opencode/ && \
     cp config/profiles/*.json /root/.config/opencode/profiles/
 
 ENTRYPOINT ["opencode-jce"]

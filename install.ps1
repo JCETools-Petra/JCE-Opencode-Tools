@@ -365,6 +365,18 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
         }
         Write-Ok "  Prompts copied"
     }
+
+    # Deploy AGENTS.md (only if not already present)
+    $agentsMdSrc = Join-Path $sourceDir "AGENTS.md"
+    $agentsMdDst = Join-Path $targetDir "AGENTS.md"
+    if (-not (Test-Path $agentsMdDst)) {
+        if (Test-Path $agentsMdSrc) {
+            Copy-Item $agentsMdSrc $agentsMdDst
+            Write-Ok "  AGENTS.md deployed"
+        }
+    } else {
+        Write-Skip "  AGENTS.md already exists (preserved)"
+    }
 }
 
 # API keys are managed by OpenCode CLI directly - no need to configure here
@@ -603,6 +615,7 @@ function Write-Summary {
     }
 
     Write-Host "  [OK] 30 AI Agents   - configured" -ForegroundColor Green
+    Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
     Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {
