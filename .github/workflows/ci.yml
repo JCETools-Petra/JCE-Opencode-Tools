@@ -42,6 +42,7 @@ jobs:
   test-cli:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
@@ -56,9 +57,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install
-      - run: bun run src/index.ts --help
-      - run: bun run src/index.ts --version
-      - run: bun run src/index.ts validate
+      - name: CLI --help
+        run: bun run ./src/index.ts -- --help
+      - name: CLI --version
+        run: bun run ./src/index.ts -- --version
+      - name: CLI validate
+        run: bun run ./src/index.ts -- validate
         continue-on-error: true
 
   lint-shell:
