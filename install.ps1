@@ -304,7 +304,7 @@ function Install-LspServers {
         @{ Num=1;  Name="Python";       Cmd="pyright-langserver";          Install="npm install -g pyright" }
         @{ Num=2;  Name="TypeScript";    Cmd="typescript-language-server";  Install="npm install -g typescript-language-server typescript" }
         @{ Num=3;  Name="Rust";          Cmd="rust-analyzer";              Install="rustup component add rust-analyzer" }
-        @{ Num=4;  Name="Go";            Cmd="gopls";                      Install="go install golang.org/x/tools/gopls@latest" }
+        @{ Num=4;  Name="Go";            Cmd="gopls";                      Install="winget install GoLang.Go --accept-package-agreements --accept-source-agreements && go install golang.org/x/tools/gopls@latest" }
         @{ Num=5;  Name="Docker";        Cmd="docker-langserver";          Install="npm install -g dockerfile-language-server-nodejs" }
         @{ Num=6;  Name="SQL";           Cmd="sql-language-server";        Install="npm install -g sql-language-server" }
         @{ Num=7;  Name="Java";          Cmd="jdtls";                      Install="npm install -g jdtls" }
@@ -316,19 +316,19 @@ function Install-LspServers {
         @{ Num=13; Name="YAML";          Cmd="yaml-language-server";       Install="npm install -g yaml-language-server" }
         @{ Num=14; Name="HTML";          Cmd="vscode-html-language-server"; Install="npm install -g vscode-langservers-extracted" }
         @{ Num=15; Name="CSS";           Cmd="vscode-css-language-server";  Install="npm install -g vscode-langservers-extracted" }
-        @{ Num=16; Name="Kotlin";        Cmd="kotlin-language-server";     Install="choco install kotlin-language-server" }
-        @{ Num=17; Name="Dart";          Cmd="dart";                       Install="choco install dart-sdk" }
-        @{ Num=18; Name="Lua";           Cmd="lua-language-server";        Install="choco install lua-language-server" }
+        @{ Num=16; Name="Kotlin";        Cmd="kotlin-language-server";     Install="npm install -g kotlin-language-server" }
+        @{ Num=17; Name="Dart";          Cmd="dart";                       Install="winget install Google.DartSDK --accept-package-agreements --accept-source-agreements" }
+        @{ Num=18; Name="Lua";           Cmd="lua-language-server";        Install="winget install sumneko.lua-language-server --accept-package-agreements --accept-source-agreements" }
         @{ Num=19; Name="Svelte";        Cmd="svelteserver";               Install="npm install -g svelte-language-server" }
         @{ Num=20; Name="Vue";           Cmd="vue-language-server";        Install="npm install -g @vue/language-server" }
-        @{ Num=21; Name="Terraform";     Cmd="terraform-ls";               Install="choco install terraform-ls" }
+        @{ Num=21; Name="Terraform";     Cmd="terraform-ls";               Install="winget install HashiCorp.Terraform --accept-package-agreements --accept-source-agreements" }
         @{ Num=22; Name="Tailwind CSS";  Cmd="tailwindcss-language-server"; Install="npm install -g @tailwindcss/language-server" }
-        @{ Num=23; Name="Zig";           Cmd="zls";                        Install="winget install zls" }
-        @{ Num=24; Name="Markdown";      Cmd="marksman";                   Install="winget install marksman" }
+        @{ Num=23; Name="Zig";           Cmd="zls";                        Install="winget install zig.zig --accept-package-agreements --accept-source-agreements" }
+        @{ Num=24; Name="Markdown";      Cmd="marksman";                   Install="winget install Artempyanykh.Marksman --accept-package-agreements --accept-source-agreements" }
         @{ Num=25; Name="TOML";          Cmd="taplo";                      Install="cargo install taplo-cli --features lsp" }
         @{ Num=26; Name="GraphQL";       Cmd="graphql-lsp";                Install="npm install -g graphql-language-service-cli" }
-        @{ Num=27; Name="Elixir";        Cmd="elixir-ls";                  Install="choco install elixir-ls" }
-        @{ Num=28; Name="Scala";         Cmd="metals";                     Install="cs install metals" }
+        @{ Num=27; Name="Elixir";        Cmd="elixir-ls";                  Install="winget install ElixirLang.Elixir --accept-package-agreements --accept-source-agreements" }
+        @{ Num=28; Name="Scala";         Cmd="metals";                     Install="npm install -g metals-languageclient" }
     )
 
     # Show list with status
@@ -403,7 +403,8 @@ function Install-LspServers {
         try {
             $prevEA = $ErrorActionPreference
             $ErrorActionPreference = "Continue"
-            Invoke-Expression $lsp.Install 2>$null | Out-Null
+            cmd /c "$($lsp.Install)" 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Exit code $LASTEXITCODE" }
             $ErrorActionPreference = $prevEA
             Write-Host "[OK]" -ForegroundColor Green
             $installedCount++
