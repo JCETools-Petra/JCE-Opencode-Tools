@@ -85,6 +85,16 @@ function Invoke-InstallCommand($command) {
     if ($code -ne 0 -and $code -ne 43) { throw "Exit code $code" }
 }
 
+function Invoke-NativeCommand($exe, [string[]]$arguments) {
+    $prevEA = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & $exe @arguments 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEA
+
+    if ($code -ne 0) { throw "Exit code $code" }
+}
+
 function Install-GoLsp {
     if (-not (Get-KnownCommandPath "go")) {
         Invoke-InstallCommand "winget install -e --id GoLang.Go --accept-package-agreements --accept-source-agreements"
@@ -96,8 +106,8 @@ function Install-GoLsp {
     $go = Get-KnownCommandPath "go"
     if (-not $go) { throw "Go installed but go.exe not found; restart terminal and rerun installer" }
 
-    & $go install golang.org/x/tools/gopls@latest 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "gopls install failed" }
+    Write-Host "(building gopls, this can take a few minutes) " -NoNewline -ForegroundColor DarkGray
+    Invoke-NativeCommand $go @("install", "golang.org/x/tools/gopls@latest")
     if (-not (Test-Command "gopls")) { throw "gopls installed but not found on PATH" }
 }
 
