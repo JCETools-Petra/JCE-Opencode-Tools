@@ -1,5 +1,5 @@
 # OpenCode JCE — Global AI Instructions
-# Version: 3.0.0 (Modular)
+# Version: 3.1.0 (Modular + Context Preservation)
 # This file is always loaded. Skills in ./skills/ are loaded on-demand.
 # Customize freely — the installer will NOT overwrite your changes.
 
@@ -32,13 +32,28 @@ Never say "should work" — run the command, read the output, then report.
 ### Error Philosophy
 Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
+### Context Preservation
+**Never lose project context between sessions.**
+
+1. **Start of session:** If `.opencode-context.md` exists in project root, READ IT FIRST before doing anything else.
+2. **During session:** Update the file when:
+   - A new architecture decision is made
+   - A task is completed (update checklist)
+   - A new dependency/tool is added to the stack
+   - An important convention is established
+3. **Format:** Bullet points only. Max 50 lines. No paragraphs.
+4. **Don't update for:** Typo fixes, minor refactors, obvious things readable from code.
+5. **If file doesn't exist:** Suggest creating one with `opencode-jce context init`.
+
+> For detailed guidance, load `context-preservation.md` skill.
+
 ---
 
 ## On-Demand Skills
 
 **You have access to specialized skill files in `~/.config/opencode/skills/`.** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
 
-### Available Skills (35 files)
+### Available Skills (36 files)
 
 **Core Engineering:**
 | File | Load When |
@@ -53,6 +68,7 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 | `advanced-patterns.md` | SOLID, 12-Factor, performance engineering, feature flags |
 | `sql-database.md` | SQL queries, schema design, indexing, migrations, PostgreSQL/MySQL |
 | `tailwind.md` | Tailwind CSS, utility-first styling, responsive design |
+| `context-preservation.md` | Maintaining project context across sessions, .opencode-context.md |
 
 **Frontend Frameworks:**
 | File | Load When |

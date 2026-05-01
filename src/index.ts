@@ -17,6 +17,7 @@ import { teamCommand } from "./commands/team.js";
 import { memoryCommand } from "./commands/memory.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { fallbackCommand } from "./commands/fallback.js";
+import { contextCommand } from "./commands/context.js";
 import { VERSION } from "./lib/constants.js";
 
 const program = new Command();
@@ -42,5 +43,6 @@ program.addCommand(teamCommand);
 program.addCommand(memoryCommand);
 program.addCommand(dashboardCommand);
 program.addCommand(fallbackCommand);
+program.addCommand(contextCommand);
 
 program.parse(process.argv);
