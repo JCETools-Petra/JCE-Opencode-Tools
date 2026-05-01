@@ -260,8 +260,8 @@ select_and_install_lsp() {
     echo -e "${CYAN}║                                          ║${NC}"
 
     # Define LSP servers
-    local -a LSP_NAMES=("Python" "TypeScript" "Rust" "Go" "Docker" "SQL" "Java" "C/C++" "PHP" "Ruby")
-    local -a LSP_CMDS=("pyright-langserver" "typescript-language-server" "rust-analyzer" "gopls" "docker-langserver" "sql-language-server" "jdtls" "clangd" "intelephense" "solargraph")
+    local -a LSP_NAMES=("Python" "TypeScript" "Rust" "Go" "Docker" "SQL" "Java" "C/C++" "PHP" "Ruby" "C#" "Bash" "YAML" "HTML" "CSS" "Kotlin" "Dart" "Lua" "Svelte" "Vue" "Terraform" "Tailwind CSS" "Zig" "Markdown" "TOML" "GraphQL" "Elixir" "Scala")
+    local -a LSP_CMDS=("pyright-langserver" "typescript-language-server" "rust-analyzer" "gopls" "docker-langserver" "sql-language-server" "jdtls" "clangd" "intelephense" "solargraph" "OmniSharp" "bash-language-server" "yaml-language-server" "vscode-html-language-server" "vscode-css-language-server" "kotlin-language-server" "dart" "lua-language-server" "svelteserver" "vue-language-server" "terraform-ls" "tailwindcss-language-server" "zls" "marksman" "taplo" "graphql-lsp" "elixir-ls" "metals")
     local -a LSP_INSTALL=(
         "npm install -g pyright"
         "npm install -g typescript-language-server typescript"
@@ -273,6 +273,24 @@ select_and_install_lsp() {
         "apt install clangd || brew install llvm"
         "npm install -g intelephense"
         "gem install solargraph"
+        "dotnet tool install -g omnisharp"
+        "npm install -g bash-language-server"
+        "npm install -g yaml-language-server"
+        "npm install -g vscode-langservers-extracted"
+        "npm install -g vscode-langservers-extracted"
+        "brew install kotlin-language-server || sdk install kotlin"
+        "brew install dart || choco install dart-sdk"
+        "brew install lua-language-server || cargo install lua-language-server"
+        "npm install -g svelte-language-server"
+        "npm install -g @vue/language-server"
+        "brew install hashicorp/tap/terraform-ls || choco install terraform-ls"
+        "npm install -g @tailwindcss/language-server"
+        "brew install zls || snap install zls"
+        "brew install marksman || cargo install marksman"
+        "cargo install taplo-cli --features lsp"
+        "npm install -g graphql-language-service-cli"
+        "brew install elixir-ls || mix archive.install hex elixir_ls"
+        "brew install metals || cs install metals"
     )
 
     # Show list with status

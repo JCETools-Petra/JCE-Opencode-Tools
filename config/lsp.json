@@ -69,6 +69,132 @@
       "args": ["stdio"],
       "filetypes": ["ruby"],
       "installCommand": "gem install solargraph"
+    },
+    "csharp": {
+      "server": "omnisharp",
+      "command": "OmniSharp",
+      "args": ["--languageserver"],
+      "filetypes": ["csharp"],
+      "installCommand": "dotnet tool install -g omnisharp"
+    },
+    "bash": {
+      "server": "bash-language-server",
+      "command": "bash-language-server",
+      "args": ["start"],
+      "filetypes": ["bash", "sh", "zsh"],
+      "installCommand": "npm install -g bash-language-server"
+    },
+    "yaml": {
+      "server": "yaml-language-server",
+      "command": "yaml-language-server",
+      "args": ["--stdio"],
+      "filetypes": ["yaml", "yml"],
+      "installCommand": "npm install -g yaml-language-server"
+    },
+    "html": {
+      "server": "vscode-html-language-server",
+      "command": "vscode-html-language-server",
+      "args": ["--stdio"],
+      "filetypes": ["html", "htm"],
+      "installCommand": "npm install -g vscode-langservers-extracted"
+    },
+    "css": {
+      "server": "vscode-css-language-server",
+      "command": "vscode-css-language-server",
+      "args": ["--stdio"],
+      "filetypes": ["css", "scss", "less"],
+      "installCommand": "npm install -g vscode-langservers-extracted"
+    },
+    "kotlin": {
+      "server": "kotlin-language-server",
+      "command": "kotlin-language-server",
+      "args": [],
+      "filetypes": ["kotlin"],
+      "installCommand": "brew install kotlin-language-server || sdk install kotlin"
+    },
+    "dart": {
+      "server": "dart-language-server",
+      "command": "dart",
+      "args": ["language-server", "--protocol=lsp"],
+      "filetypes": ["dart"],
+      "installCommand": "brew install dart || choco install dart-sdk"
+    },
+    "lua": {
+      "server": "lua-language-server",
+      "command": "lua-language-server",
+      "args": [],
+      "filetypes": ["lua"],
+      "installCommand": "brew install lua-language-server || cargo install lua-language-server"
+    },
+    "svelte": {
+      "server": "svelte-language-server",
+      "command": "svelteserver",
+      "args": ["--stdio"],
+      "filetypes": ["svelte"],
+      "installCommand": "npm install -g svelte-language-server"
+    },
+    "vue": {
+      "server": "vue-language-server",
+      "command": "vue-language-server",
+      "args": ["--stdio"],
+      "filetypes": ["vue"],
+      "installCommand": "npm install -g @vue/language-server"
+    },
+    "terraform": {
+      "server": "terraform-ls",
+      "command": "terraform-ls",
+      "args": ["serve"],
+      "filetypes": ["terraform", "hcl", "tf"],
+      "installCommand": "brew install hashicorp/tap/terraform-ls || choco install terraform-ls"
+    },
+    "tailwindcss": {
+      "server": "tailwindcss-language-server",
+      "command": "tailwindcss-language-server",
+      "args": ["--stdio"],
+      "filetypes": ["html", "css", "javascript", "typescript", "vue", "svelte"],
+      "installCommand": "npm install -g @tailwindcss/language-server"
+    },
+    "zig": {
+      "server": "zls",
+      "command": "zls",
+      "args": [],
+      "filetypes": ["zig"],
+      "installCommand": "brew install zls || snap install zls"
+    },
+    "markdown": {
+      "server": "marksman",
+      "command": "marksman",
+      "args": ["server"],
+      "filetypes": ["markdown"],
+      "installCommand": "brew install marksman || cargo install marksman"
+    },
+    "toml": {
+      "server": "taplo",
+      "command": "taplo",
+      "args": ["lsp", "stdio"],
+      "filetypes": ["toml"],
+      "installCommand": "cargo install taplo-cli --features lsp"
+    },
+    "graphql": {
+      "server": "graphql-language-service",
+      "command": "graphql-lsp",
+      "args": ["server", "-m", "stream"],
+      "filetypes": ["graphql", "gql"],
+      "installCommand": "npm install -g graphql-language-service-cli"
+    },
+    "elixir": {
+      "server": "elixir-ls",
+      "command": "elixir-ls",
+      "args": [],
+      "filetypes": ["elixir", "eelixir"],
+      "installCommand": "brew install elixir-ls || mix archive.install hex elixir_ls"
+    },
+    "scala": {
+      "server": "metals",
+      "command": "metals",
+      "args": [],
+      "filetypes": ["scala", "sbt"],
+      "installCommand": "brew install metals || cs install metals"
     }
   }
 }

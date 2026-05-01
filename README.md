@@ -146,7 +146,7 @@ The `hybrid-hemat` profile automatically analyzes your prompt and routes to the 
 
 ---
 
-### 📝 10 LSP Servers — Autocomplete for Every Language
+### 📝 28 LSP Servers — Autocomplete for Every Language
 
 Python • TypeScript/JavaScript • Rust • Go • Java • C/C++ • PHP • Ruby • Docker • SQL
 
@@ -273,7 +273,7 @@ opencode-jce/
 │   ├── agents.json         # 30 AI agents
 │   ├── profiles/           # 20 model profiles
 │   ├── mcp.json            # 5 MCP tools
-│   ├── lsp.json            # 10 LSP servers
+│   ├── lsp.json            # 28 LSP servers
 │   ├── prompts/            # 5 prompt templates
 │   └── fallback.json       # Provider fallback config
 ├── schemas/                # JSON Schema validation
