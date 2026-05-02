@@ -293,6 +293,9 @@ precache_mcp_packages() {
         "@modelcontextprotocol/server-fetch"
         "@modelcontextprotocol/server-filesystem"
         "@modelcontextprotocol/server-memory"
+        "@playwright/mcp@latest"
+        "@modelcontextprotocol/server-sequential-thinking"
+        "@modelcontextprotocol/server-postgres"
     )
 
     local cached_count=0
@@ -475,7 +478,7 @@ select_and_install_lsp() {
         echo -n "  Installing ${name}... "
 
         # Run install command
-        if eval "$install_cmd" &>/dev/null; then
+        if bash -c "$install_cmd" &>/dev/null; then
             echo -e "${GREEN}✅${NC}"
             installed_count=$((installed_count + 1))
         else
@@ -524,27 +527,28 @@ merge_lsp_to_opencode_config() {
     fi
 
     # Detect which LSP commands are actually installed
-    local -a installed_lsps=()
-    
-    # Read lsp.json and check each command
-    # We use a simple approach: parse the command field and check if it exists
-    local lsp_keys
-    lsp_keys=$(grep -o '"[^"]*":\s*{' "$lsp_json" 2>/dev/null | grep -v '"lsp"' | sed 's/"//g; s/:.*//' | tr -d ' ' || true)
+    # Use bun to reliably parse JSON and check installed commands
+    local installed_json
+    installed_json=$(bun -e "
+const fs = require('fs');
+const { execSync } = require('child_process');
+const lsp = JSON.parse(fs.readFileSync('$lsp_json', 'utf8'));
+const installed = [];
+for (const [key, entry] of Object.entries(lsp.lsp || {})) {
+    try {
+        execSync('command -v ' + entry.command, { stdio: 'ignore' });
+        installed.push(key);
+    } catch {}
+}
+console.log(installed.join(' '));
+" 2>/dev/null || true)
 
-    if [ -z "$lsp_keys" ]; then
-        info "Could not parse lsp.json. Nothing to merge."
+    if [ -z "$installed_json" ]; then
+        info "Could not detect installed LSP servers. Nothing to merge."
         return
     fi
 
-    for key in $lsp_keys; do
-        # Extract the command for this LSP entry
-        local cmd
-        cmd=$(sed -n "/${key}/,/}/p" "$lsp_json" 2>/dev/null | grep '"command"' | head -1 | sed 's/.*"command":\s*"//; s/".*//' || true)
-        
-        if [ -n "$cmd" ] && command -v "$cmd" &>/dev/null; then
-            installed_lsps+=("$key")
-        fi
-    done
+    local -a installed_lsps=($installed_json)
 
     if [ ${#installed_lsps[@]} -eq 0 ]; then
         info "No LSP servers found in PATH. Nothing to merge."
@@ -654,7 +658,7 @@ print_summary() {
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
     echo "║ ✅ 36 Skills      — on-demand workflows  ║"
     echo "║ ✅ 20 Profiles    — ready                ║"
-    echo "║ ✅ 5 MCP Servers  — cached & ready        ║"
+    echo "║ ✅ 8 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
         echo "║ ✅ LSP Servers    — ${LSP_INSTALLED} installed             ║"
     else

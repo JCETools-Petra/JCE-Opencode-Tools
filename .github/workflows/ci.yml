@@ -63,7 +63,6 @@ jobs:
         run: bun run ./src/index.ts -- --version
       - name: CLI validate
         run: bun run ./src/index.ts -- validate
-        continue-on-error: true
 
   lint-shell:
     runs-on: ubuntu-latest
@@ -90,14 +89,14 @@ jobs:
         run: |
           for f in $(find config schemas -name "*.json"); do
             echo -n "$f: "
-            bun -e "JSON.parse(require('fs').readFileSync('$f','utf8')); console.log('OK')"
+            bun -e "import fs from 'fs'; JSON.parse(fs.readFileSync('$f','utf8')); console.log('OK')"
           done
       - name: Validate schemas
         run: |
           bun -e "
-            const Ajv = require('ajv');
-            const fs = require('fs');
-            const path = require('path');
+            import Ajv from 'ajv';
+            import fs from 'fs';
+            import path from 'path';
             const ajv = new Ajv({ strict: false, allErrors: true });
 
             const checks = [

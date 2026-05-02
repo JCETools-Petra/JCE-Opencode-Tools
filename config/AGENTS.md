@@ -51,7 +51,7 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
 ## On-Demand Skills
 
-**You have access to specialized skill files in `~/.config/opencode/skills/`.** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
+**You have access to specialized skill files in the OpenCode config directory (`~/.config/opencode/skills/` on Linux/macOS, `%APPDATA%\opencode\skills\` on Windows).** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
 
 ### Available Skills (36 files)
 

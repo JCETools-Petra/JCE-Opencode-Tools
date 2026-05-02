@@ -5,6 +5,9 @@ import { fileURLToPath } from "url";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
+/** Cache for compiled validators */
+const validatorCache = new Map<string, ReturnType<typeof ajv.compile>>();
+
 /**
  * Get the path to the schemas directory (relative to the repo root).
  * Since this CLI runs via `bun run src/index.ts` or as a global install,
@@ -36,14 +39,28 @@ async function loadSchema(schemaFileName: string): Promise<object> {
 }
 
 /**
+ * Get or create a compiled validator for a schema file.
+ * Validators are cached for performance on repeated validations.
+ */
+async function getValidator(schemaFileName: string) {
+  if (validatorCache.has(schemaFileName)) {
+    return validatorCache.get(schemaFileName)!;
+  }
+
+  const schema = await loadSchema(schemaFileName);
+  const validate = ajv.compile(schema);
+  validatorCache.set(schemaFileName, validate);
+  return validate;
+}
+
+/**
  * Validate a data object against a named schema file.
  */
 export async function validateAgainstSchema(
   data: unknown,
   schemaFileName: string
 ): Promise<ValidationResult> {
-  const schema = await loadSchema(schemaFileName);
-  const validate = ajv.compile(schema);
+  const validate = await getValidator(schemaFileName);
   const valid = validate(data);
 
   if (valid) {

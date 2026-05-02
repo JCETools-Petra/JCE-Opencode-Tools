@@ -64,24 +64,10 @@ export function getConfigPath(relativePath: string): string {
 
 /**
  * Get the path to OpenCode's own opencode.json config file.
- * OpenCode reads from ~/.config/opencode/opencode.json (all platforms).
+ * Uses the same directory as getConfigDir() for consistency.
  */
 export function getOpenCodeConfigPath(): string {
-  const os = platform();
-  const home = homedir();
-
-  // OpenCode always uses ~/.config/opencode/opencode.json
-  const xdgConfig = process.env.XDG_CONFIG_HOME;
-  if (xdgConfig) {
-    return join(xdgConfig, "opencode", "opencode.json");
-  }
-
-  if (os === "win32") {
-    // On Windows, OpenCode uses ~/.config/opencode/ (not %APPDATA%)
-    return join(home, ".config", "opencode", "opencode.json");
-  }
-
-  return join(home, ".config", "opencode", "opencode.json");
+  return join(getConfigDir(), "opencode.json");
 }
 
 /**

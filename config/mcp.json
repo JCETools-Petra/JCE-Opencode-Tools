@@ -2,7 +2,7 @@
   "mcpServers": {
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"],
+      "args": ["-y", "@upstash/context7-mcp@1"],
       "description": "Search library documentation in real-time"
     },
     "github-search": {
@@ -30,7 +30,7 @@
     },
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"],
+      "args": ["-y", "@playwright/mcp@0.0.28"],
       "description": "Browser automation — testing, scraping, screenshots, PDF generation"
     },
     "sequential-thinking": {

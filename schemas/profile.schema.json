@@ -3,6 +3,7 @@
   "title": "Profile Configuration",
   "type": "object",
   "required": ["id", "name", "description", "provider", "tokenSaving"],
+  "additionalProperties": false,
   "properties": {
     "id": {
       "type": "string",
@@ -42,8 +43,24 @@
     "routing": {
       "type": "object",
       "properties": {
-        "simple": { "type": "object" },
-        "complex": { "type": "object" }
+        "simple": {
+          "type": "object",
+          "properties": {
+            "provider": { "type": "string" },
+            "model": { "type": "string" },
+            "maxTokens": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["provider", "model"]
+        },
+        "complex": {
+          "type": "object",
+          "properties": {
+            "provider": { "type": "string" },
+            "model": { "type": "string" },
+            "maxTokens": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["provider", "model"]
+        }
       }
     },
     "tokenSaving": {

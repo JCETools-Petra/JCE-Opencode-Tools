@@ -236,6 +236,33 @@ function mergePrompts() {
   console.log(`  [+] Prompts: ${added} added, ${skipped} already exist`);
 }
 
+// --- Merge skills directory (only copy missing) ---
+function mergeSkills() {
+  const sourceSkills = join(sourceDir, "skills");
+  const targetSkills = join(targetDir, "skills");
+
+  if (!existsSync(sourceSkills)) return;
+
+  mkdirSync(targetSkills, { recursive: true });
+
+  let added = 0;
+  let skipped = 0;
+  for (const file of readdirSync(sourceSkills)) {
+    const sourcePath = join(sourceSkills, file);
+    // Skip directories
+    if (statSync(sourcePath).isDirectory()) continue;
+
+    const target = join(targetSkills, file);
+    if (!existsSync(target)) {
+      copyFileSync(sourcePath, target);
+      added++;
+    } else {
+      skipped++;
+    }
+  }
+  console.log(`  [+] Skills: ${added} added, ${skipped} already exist`);
+}
+
 // --- Copy only if not exists (for other files) ---
 function copyIfMissing(filename: string) {
   const sourceFile = join(sourceDir, filename);
@@ -299,6 +326,15 @@ try {
   mergePrompts();
 } catch (err: any) {
   console.error(`  [ERROR] Prompts merge failed: ${err.message}`);
+  hasErrors = true;
+}
+console.log("");
+
+console.log("Skills:");
+try {
+  mergeSkills();
+} catch (err: any) {
+  console.error(`  [ERROR] Skills merge failed: ${err.message}`);
   hasErrors = true;
 }
 console.log("");

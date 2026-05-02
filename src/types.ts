@@ -8,6 +8,10 @@ export interface Agent {
   preferredProfile: string;
   maxTokens: number;
   tools: string[];
+  workflow?: string[];
+  outputFormat?: string;
+  contextRules?: Record<string, string>;
+  verification?: string[];
 }
 
 export interface AgentsConfig {
@@ -25,7 +29,7 @@ export interface Profile {
   id: string;
   name: string;
   description: string;
-  provider: "openai" | "anthropic" | "ollama" | "auto";
+  provider: "openai" | "anthropic" | "ollama" | "auto" | "google" | "deepseek" | "xai" | "mistral";
   model: string;
   maxTokens: number;
   temperature: number;
