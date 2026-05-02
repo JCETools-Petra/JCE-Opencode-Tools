@@ -15,7 +15,7 @@ import {
   CURRENT_CONFIG_VERSION,
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
-import { GITHUB_RAW_BASE, GITHUB_REPO } from "../lib/constants.js";
+import { GITHUB_RAW_BASE, GITHUB_REPO, VERSION } from "../lib/constants.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -95,6 +95,46 @@ async function fetchDirectoryListing(dir: string): Promise<string[]> {
       .map((f) => f.name);
   } catch {
     return [];
+  }
+}
+
+// ─── Self-Update CLI ─────────────────────────────────────────
+
+/**
+ * Update the opencode-jce CLI itself to the latest version.
+ * Runs `bun install -g opencode-jce` to pull the latest from npm/GitHub.
+ * Returns true if the CLI was updated successfully.
+ */
+async function selfUpdateCli(latestVersion: string): Promise<boolean> {
+  // Check if CLI is already at the latest version
+  if (VERSION === latestVersion) {
+    info("CLI already at latest version.");
+    return true;
+  }
+
+  info(`Updating CLI: ${VERSION} → ${latestVersion}...`);
+
+  try {
+    const proc = Bun.spawn(
+      ["bun", "install", "-g", `github:${GITHUB_REPO}`],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    const exitCode = await proc.exited;
+
+    if (exitCode === 0) {
+      success(`CLI updated to v${latestVersion}.`);
+      return true;
+    } else {
+      const stderr = await new Response(proc.stderr).text();
+      warn(`CLI self-update failed (exit ${exitCode}): ${stderr.trim()}`);
+      warn("You can update manually: bun install -g opencode-jce");
+      return false;
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    warn(`CLI self-update failed: ${msg}`);
+    warn("You can update manually: bun install -g opencode-jce");
+    return false;
   }
 }
 
@@ -397,7 +437,7 @@ function printMergeReport(stats: MergeStats): void {
 // ─── Command ─────────────────────────────────────────────────
 
 export const updateCommand = new Command("update")
-  .description("Check for updates and merge latest configuration from GitHub")
+  .description("Update CLI and merge latest configuration from GitHub")
   .option("--check", "Only check for updates without applying them")
   .option("--force", "Force update even if already on latest version")
   .action(async (options: { check?: boolean; force?: boolean }) => {
@@ -449,9 +489,14 @@ export const updateCommand = new Command("update")
       process.exit(EXIT_SUCCESS);
     }
 
-    // Apply update via merge
+    // Step 1: Self-update CLI
     console.log();
-    heading("Applying Update (Merge Strategy)");
+    heading("Step 1: Update CLI");
+    await selfUpdateCli(latestVersion);
+
+    // Step 2: Merge config files
+    console.log();
+    heading("Step 2: Merge Configuration");
 
     // Backup current config
     const configDir = getConfigDir();
