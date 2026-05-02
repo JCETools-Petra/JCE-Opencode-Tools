@@ -163,6 +163,32 @@ function Install-CSharpLsp {
     if (-not (Test-Command "csharp-ls")) { throw "csharp-ls installed but not found on PATH" }
 }
 
+function Install-LuaLsp {
+    Invoke-InstallCommand "winget install -e --id LuaLS.lua-language-server --accept-package-agreements --accept-source-agreements"
+
+    # winget installs lua-language-server to various possible locations
+    $possiblePaths = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\lua-language-server\bin"),
+        (Join-Path $env:ProgramFiles "lua-language-server\bin"),
+        (Join-Path ${env:ProgramFiles(x86)} "lua-language-server\bin")
+    )
+
+    foreach ($p in $possiblePaths) {
+        if (Test-Path $p) {
+            Add-UserPath $p
+            break
+        }
+    }
+
+    # Also check winget's default install location via registry/shim
+    $wingetLinks = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
+    if (Test-Path $wingetLinks) { Add-UserPath $wingetLinks }
+
+    if (-not (Test-Command "lua-language-server")) {
+        throw "lua-language-server installed but not found on PATH. Restart terminal and verify."
+    }
+}
+
 # --- Installation Steps ---
 
 function Install-Git {
@@ -563,6 +589,7 @@ function Install-LspServers {
                 "Java" { Install-Jdtls }
                 "C/C++" { Install-Clangd }
                 "C#" { Install-CSharpLsp }
+                "Lua" { Install-LuaLsp }
                 default {
                     Invoke-InstallCommand $lsp.Install
                     if (-not (Test-Command $lsp.Cmd)) { throw "$($lsp.Cmd) not found after install" }
