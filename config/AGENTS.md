@@ -33,17 +33,43 @@ Never say "should work" — run the command, read the output, then report.
 Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
 ### Context Preservation
-**Never lose project context between sessions.**
+**Never lose project context between sessions. This is AUTOMATIC — no user action required.**
 
-1. **Start of session:** If `.opencode-context.md` exists in project root, READ IT FIRST before doing anything else.
+1. **Start of session (MANDATORY):**
+   - Check if `.opencode-context.md` exists in project root.
+   - **If it exists:** READ IT FIRST before doing anything else. Do NOT overwrite or recreate it.
+   - **If it does NOT exist:** AUTOMATICALLY CREATE IT with the template below. Do not ask the user — just do it silently.
 2. **During session:** Update the file when:
    - A new architecture decision is made
    - A task is completed (update checklist)
    - A new dependency/tool is added to the stack
    - An important convention is established
+   - The project stack is detected (auto-fill ## Stack from package.json, Cargo.toml, go.mod, etc.)
 3. **Format:** Bullet points only. Max 50 lines. No paragraphs.
 4. **Don't update for:** Typo fixes, minor refactors, obvious things readable from code.
-5. **If file doesn't exist:** Suggest creating one with `opencode-jce context init`.
+5. **NEVER overwrite existing content.** Only append or update specific lines. If the file already has content, preserve everything the user or previous sessions wrote.
+
+**Auto-create template** (use when file doesn't exist):
+```markdown
+# Project Context
+> Auto-maintained by AI. You can edit this file freely.
+> Last updated: [today's date]
+
+## Stack
+- [auto-detect from project files]
+
+## Architecture Decisions
+- (none yet)
+
+## Conventions
+- (none yet)
+
+## Current Status
+- [ ] (session start)
+
+## Important Notes
+- (none yet)
+```
 
 > For detailed guidance, load `context-preservation.md` skill.
 

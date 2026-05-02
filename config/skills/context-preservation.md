@@ -13,19 +13,27 @@ Panduan untuk menjaga context antar sesi agar AI tidak pernah kehilangan informa
 
 ---
 
-## Flow Setiap Sesi
+## Flow Setiap Sesi (OTOMATIS)
 
 ```
 1. Awal sesi → Cek apakah .opencode-context.md ada di root project
-2. Jika ada → Baca dan pahami sebelum menjawab apapun
-3. Selama sesi → Update file saat ada:
+2. Jika TIDAK ada → BUAT OTOMATIS (jangan tanya user, langsung buat dengan template)
+   - Auto-detect stack dari package.json, Cargo.toml, go.mod, requirements.txt, dll
+   - Isi ## Stack dengan hasil deteksi
+3. Jika SUDAH ada → Baca dan pahami sebelum menjawab apapun
+   - JANGAN PERNAH timpa/overwrite konten yang sudah ada
+   - Hanya tambah atau update baris spesifik
+4. Selama sesi → Update file saat ada:
    - Keputusan arsitektur baru
    - Stack/dependency baru ditambahkan
    - Task selesai (checklist update)
    - Bug penting ditemukan & di-fix
    - Konvensi baru disepakati
-4. Akhir sesi → Pastikan status terkini tercatat
+5. Akhir sesi → Pastikan status terkini tercatat
 ```
+
+> **PENTING:** User tidak perlu jalankan `opencode-jce context init` manual.
+> AI WAJIB buat file ini otomatis di awal sesi jika belum ada.
 
 ---
 
