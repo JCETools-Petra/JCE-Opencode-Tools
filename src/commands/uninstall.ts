@@ -192,6 +192,29 @@ async function isRunningAsAdmin(): Promise<boolean> {
   }
 }
 
+/**
+ * Run a command elevated (as Administrator) on Windows via PowerShell.
+ * Triggers UAC prompt automatically. Returns true if successful.
+ */
+async function runElevated(command: string, argsString: string): Promise<boolean> {
+  try {
+    const proc = Bun.spawn([
+      "powershell.exe", "-NoProfile", "-Command",
+      `Start-Process ${command} -ArgumentList "${argsString}" -Verb RunAs -Wait`
+    ], { stdout: "pipe", stderr: "pipe" });
+
+    const timeoutMs = 120_000;
+    const exitPromise = proc.exited;
+    const timeoutPromise = new Promise<number>((_, reject) =>
+      setTimeout(() => { proc.kill(); reject(new Error("timeout")); }, timeoutMs)
+    );
+    const exitCode = await Promise.race([exitPromise, timeoutPromise]);
+    return exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
 async function commandExists(cmd: string): Promise<boolean> {
   const isWindows = platform() === "win32";
 
@@ -389,13 +412,8 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
     }
   }
 
-  // Check admin status — winget uninstall needs admin for system packages
   const isAdmin = await isRunningAsAdmin();
-  if (!isAdmin && platform() === "win32") {
-    warn("Terminal tidak berjalan sebagai Administrator.");
-    warn("Beberapa LSP (winget-installed) mungkin gagal dihapus tanpa admin.");
-    console.log();
-  }
+  const isWindows = platform() === "win32";
 
   const removed: string[] = [];
   const skipped: string[] = [];
@@ -418,16 +436,24 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
         uninstalled = true;
         break;
       }
+
+      // If winget failed and we're not admin, try elevated
+      if (cmd === "winget" && !isAdmin && isWindows) {
+        info(`  Meminta akses Administrator...`);
+        const argsStr = args.join(" ");
+        const elevated = await runElevated("winget", argsStr);
+        if (elevated) {
+          success(`${server.name} dihapus (elevated).`);
+          removed.push(server.name);
+          uninstalled = true;
+          break;
+        }
+      }
     }
 
     if (!uninstalled) {
       const fallbackCmd = server.uninstallStrategies[0].join(" ");
-      warn(`Gagal menghapus ${server.name}.`);
-      if (!isAdmin) {
-        warn(`  → Jalankan sebagai Administrator: ${fallbackCmd}`);
-      } else {
-        warn(`  → Coba manual: ${fallbackCmd}`);
-      }
+      warn(`Gagal menghapus ${server.name}. Coba manual: ${fallbackCmd}`);
       skipped.push(server.name);
     }
   }
