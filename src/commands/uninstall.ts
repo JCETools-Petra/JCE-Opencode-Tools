@@ -51,11 +51,18 @@ function buildLspServers(): LspServerInfo[] {
     { name: "Tailwind CSS", command: "tailwindcss-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "@tailwindcss/language-server"]] },
     { name: "GraphQL", command: "graphql-lsp", uninstallStrategies: [["npm", "uninstall", "-g", "graphql-language-service-cli"]] },
 
-    // Rust-analyzer: try rustup first, then cargo
-    { name: "Rust (rust-analyzer)", command: "rust-analyzer", uninstallStrategies: [
-      ["rustup", "component", "remove", "rust-analyzer"],
-      ["cargo", "uninstall", "rust-analyzer"],
-    ]},
+    // Rust-analyzer: try multiple approaches
+    { name: "Rust (rust-analyzer)", command: "rust-analyzer", uninstallStrategies: isWindows
+      ? [
+          ["rustup", "component", "remove", "rust-analyzer"],
+          ["cargo", "uninstall", "rust-analyzer"],
+          ["winget", "uninstall", "rust-analyzer"],
+        ]
+      : [
+          ["rustup", "component", "remove", "rust-analyzer"],
+          ["cargo", "uninstall", "rust-analyzer"],
+        ]
+    },
 
     // Go
     { name: "Go (gopls)", command: "gopls", uninstallStrategies: isWindows
@@ -66,27 +73,30 @@ function buildLspServers(): LspServerInfo[] {
     // Ruby
     { name: "Ruby (solargraph)", command: "solargraph", uninstallStrategies: [["gem", "uninstall", "solargraph", "-x"]] },
 
-    // .NET
-    { name: "C# (OmniSharp)", command: "OmniSharp", uninstallStrategies: [["dotnet", "tool", "uninstall", "-g", "omnisharp"]] },
+    // .NET — try dotnet tool first, then winget
+    { name: "C# (OmniSharp)", command: "OmniSharp", uninstallStrategies: isWindows
+      ? [["dotnet", "tool", "uninstall", "-g", "csharp-ls"], ["winget", "uninstall", "OmniSharp.OmniSharp"]]
+      : [["dotnet", "tool", "uninstall", "-g", "omnisharp"]]
+    },
 
     // C/C++ (clangd) — platform-specific
     { name: "C/C++ (clangd)", command: "clangd", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "LLVM.LLVM"]]
-      : [["brew", "uninstall", "llvm"], ["sudo", "apt-get", "remove", "-y", "clangd"]]
+      ? [["winget", "uninstall", "LLVM.LLVM"], ["scoop", "uninstall", "llvm"], ["choco", "uninstall", "llvm"]]
+      : [["brew", "uninstall", "llvm"], ["apt-get", "remove", "-y", "clangd"]]
     },
 
     // Java (jdtls)
     { name: "Java (jdtls)", command: "jdtls", uninstallStrategies: isWindows
-      ? [["scoop", "uninstall", "jdtls"]]
+      ? [["winget", "uninstall", "jdtls"], ["scoop", "uninstall", "jdtls"], ["choco", "uninstall", "jdtls"]]
       : [["brew", "uninstall", "jdtls"]]
     },
 
     // Cargo-installed tools
     { name: "TOML (taplo)", command: "taplo", uninstallStrategies: [["cargo", "uninstall", "taplo-cli"]] },
 
-    // Marksman — cargo on Windows, brew on macOS/Linux
+    // Marksman — multiple strategies per platform
     { name: "Markdown (marksman)", command: "marksman", uninstallStrategies: isWindows
-      ? [["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
+      ? [["winget", "uninstall", "marksman"], ["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
       : [["brew", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
     },
 
@@ -156,12 +166,28 @@ async function commandExists(cmd: string): Promise<boolean> {
   const isWindows = platform() === "win32";
 
   if (isWindows) {
+    // First try `where` (checks PATH)
     try {
       const proc = Bun.spawn(["where", cmd], { stdout: "pipe", stderr: "pipe" });
-      return (await proc.exited) === 0;
-    } catch {
-      return false;
+      if ((await proc.exited) === 0) return true;
+    } catch {}
+
+    // Also check common Windows installation paths (matching install.ps1 behavior)
+    const home = process.env.USERPROFILE || "";
+    const knownPaths = [
+      join(home, "go", "bin", `${cmd}.exe`),
+      join(home, ".dotnet", "tools", `${cmd}.exe`),
+      join(home, ".cargo", "bin", `${cmd}.exe`),
+      `C:\\Program Files\\LLVM\\bin\\${cmd}.exe`,
+      `C:\\Program Files\\Go\\bin\\${cmd}.exe`,
+      join(home, ".rustup", "toolchains", "stable-x86_64-pc-windows-msvc", "bin", `${cmd}.exe`),
+    ];
+
+    for (const p of knownPaths) {
+      if (existsSync(p)) return true;
     }
+
+    return false;
   }
 
   try {
