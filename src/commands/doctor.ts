@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { banner, heading, success, warn, error } from "../lib/ui.js";
+import chalk from "chalk";
+import { banner, heading, success, warn, error, info } from "../lib/ui.js";
 import {
   checkTools,
   checkApiKeys,
@@ -8,6 +9,7 @@ import {
   checkLspServers,
   checkInternet,
 } from "../lib/checker.js";
+import { runAllFixes } from "../lib/fixer.js";
 import type { CheckResult, CheckCategory } from "../types.js";
 import { EXIT_SUCCESS, EXIT_ERROR, EXIT_WARNING } from "../types.js";
 
@@ -29,7 +31,8 @@ function printResults(results: CheckResult[]): void {
 
 export const doctorCommand = new Command("doctor")
   .description("Run a full health check of the OpenCode JCE installation")
-  .action(async () => {
+  .option("--fix", "Automatically fix issues that can be resolved")
+  .action(async (opts: { fix?: boolean }) => {
     banner();
 
     const categories: CheckCategory[] = [];
@@ -75,6 +78,49 @@ export const doctorCommand = new Command("doctor")
     console.log("─".repeat(40));
     console.log(`  Results: ${passes} passed, ${warnings} warnings, ${errors} errors`);
     console.log("─".repeat(40));
+
+    // Auto-fix mode
+    if (opts.fix && (errors > 0 || warnings > 0)) {
+      console.log();
+      heading("Auto-Fix");
+      info("Attempting to fix detected issues...");
+      console.log();
+
+      const failedChecks = allResults.filter((r) => r.status === "error" || r.status === "warn");
+      const fixResults = await runAllFixes(failedChecks);
+
+      if (fixResults.length === 0) {
+        info("No auto-fixable issues found. Fix manually using the commands above.");
+      } else {
+        const fixed = fixResults.filter((r) => r.fixed).length;
+        const notFixed = fixResults.filter((r) => !r.fixed).length;
+
+        for (const result of fixResults) {
+          if (result.fixed) {
+            success(`${result.name} — ${result.message}`);
+          } else {
+            warn(`${result.name} — ${result.message}`);
+          }
+        }
+
+        console.log();
+        console.log("─".repeat(40));
+        console.log(`  Fixed: ${fixed} | Could not fix: ${notFixed}`);
+        console.log("─".repeat(40));
+
+        if (fixed > 0) {
+          console.log();
+          info("Run " + chalk.cyan("opencode-jce doctor") + " again to verify fixes.");
+        }
+      }
+
+      process.exit(fixResults.some((r) => !r.fixed) ? EXIT_WARNING : EXIT_SUCCESS);
+    }
+
+    if (!opts.fix && (errors > 0 || warnings > 0)) {
+      console.log();
+      info("Run " + chalk.cyan("opencode-jce doctor --fix") + " to auto-fix issues.");
+    }
 
     if (errors > 0) {
       process.exit(EXIT_ERROR);
