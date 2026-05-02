@@ -444,6 +444,18 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
   const removed: string[] = [];
   const skipped: string[] = [];
 
+  // Kill running LSP processes first (they lock the exe files)
+  if (isWindows) {
+    for (const server of installed) {
+      const procName = server.command.replace(/\.exe$/, "");
+      try {
+        await runCommand("powershell.exe", ["-NoProfile", "-Command", `Stop-Process -Name '${procName}' -Force -ErrorAction SilentlyContinue`]);
+      } catch {}
+    }
+    // Give OS time to release file locks
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
   for (const server of installed) {
     info(`Menghapus ${server.name}...`);
 
