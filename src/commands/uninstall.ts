@@ -79,9 +79,13 @@ function buildLspServers(): LspServerInfo[] {
       : [["dotnet", "tool", "uninstall", "-g", "csharp-ls"], ["dotnet", "tool", "uninstall", "-g", "omnisharp"]]
     },
 
-    // C/C++ (clangd) — platform-specific
+    // C/C++ (clangd) — needs admin on Windows for Program Files uninstall
     { name: "C/C++ (clangd)", command: "clangd", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "--id", "LLVM.LLVM", "--accept-source-agreements", "--silent"], ["scoop", "uninstall", "llvm"], ["choco", "uninstall", "llvm"]]
+      ? [
+          ["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','LLVM.LLVM','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"],
+          ["scoop", "uninstall", "llvm"],
+          ["choco", "uninstall", "llvm"],
+        ]
       : [["brew", "uninstall", "llvm"], ["apt-get", "remove", "-y", "clangd"]]
     },
 
@@ -94,9 +98,13 @@ function buildLspServers(): LspServerInfo[] {
     // Cargo-installed tools
     { name: "TOML (taplo)", command: "taplo", uninstallStrategies: [["cargo", "uninstall", "taplo-cli"]] },
 
-    // Marksman — installed via winget on Windows (Artempyanykh.Marksman)
+    // Marksman — needs admin on Windows for winget uninstall
     { name: "Markdown (marksman)", command: "marksman", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "--id", "Artempyanykh.Marksman", "--accept-source-agreements", "--silent"], ["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
+      ? [
+          ["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','Artempyanykh.Marksman','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"],
+          ["scoop", "uninstall", "marksman"],
+          ["cargo", "uninstall", "marksman"],
+        ]
       : [["brew", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
     },
 
@@ -114,7 +122,10 @@ function buildLspServers(): LspServerInfo[] {
 
     // Lua — installed via winget on Windows
     { name: "Lua", command: "lua-language-server", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "--id", "LuaLS.lua-language-server", "--accept-source-agreements", "--silent"], ["scoop", "uninstall", "lua-language-server"]]
+      ? [
+          ["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','LuaLS.lua-language-server','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"],
+          ["scoop", "uninstall", "lua-language-server"],
+        ]
       : [["brew", "uninstall", "lua-language-server"]]
     },
 
@@ -126,7 +137,7 @@ function buildLspServers(): LspServerInfo[] {
 
     // Terraform
     { name: "Terraform", command: "terraform-ls", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "--id", "HashiCorp.Terraform", "--accept-source-agreements", "--silent"]]
+      ? [["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','HashiCorp.Terraform','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"]]
       : [["brew", "uninstall", "terraform-ls"]]
     },
 
