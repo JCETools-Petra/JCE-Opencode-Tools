@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.0-green)]()
+[![Version](https://img.shields.io/badge/Version-1.4.3-green)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen)]()
 
 **One command. Full setup. Zero hassle.**
@@ -347,6 +347,8 @@ opencode-jce uninstall           # Clean removal (with backup)
 | `bun` not found | Close and reopen PowerShell |
 | LSP not working | `opencode-jce setup --merge-lsp` |
 | Permission denied | Run as Administrator |
+| `rust-analyzer` not found | Ensure `rustup` is installed, then: `rustup default stable && rustup component add rust-analyzer` |
+| `lua-language-server` not found | Restart terminal after winget install; verify with `where lua-language-server` |
 
 </details>
 
@@ -414,7 +416,7 @@ npm install -g vscode-langservers-extracted         # HTML + CSS + JSON
 npm install -g @tailwindcss/language-server         # Tailwind
 sudo apt-get install -y clangd                      # C/C++
 go install golang.org/x/tools/gopls@latest          # Go
-rustup component add rust-analyzer                  # Rust
+rustup default stable && rustup component add rust-analyzer  # Rust
 ```
 
 ### Troubleshooting
@@ -502,6 +504,16 @@ If this tool saves you time and money, consider supporting the project:
 </div>
 
 Every donation helps keep this project maintained, updated, and free for everyone.
+
+---
+
+## Changelog
+
+### v1.4.3
+
+- **fix(installer):** Rust LSP — added custom `Install-RustAnalyzer` handler that auto-installs `rustup` via winget, sets up stable toolchain, adds `~/.cargo/bin` to PATH, then installs `rust-analyzer` component
+- **fix(installer):** Lua LSP — expanded path detection to search winget Packages & LinkPackages directories recursively, added PATH refresh from registry after install
+- **fix(installer):** Added `~/.cargo/bin` to `Get-KnownCommandPath` candidate paths for Rust tooling discovery
 
 ---
 

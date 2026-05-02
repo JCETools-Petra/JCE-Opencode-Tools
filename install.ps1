@@ -56,6 +56,7 @@ function Get-KnownCommandPath($cmd) {
 
     $candidates = @(
         (Join-Path $env:USERPROFILE "go\bin\$cmd.exe"),
+        (Join-Path $env:USERPROFILE ".cargo\bin\$cmd.exe"),
         (Join-Path $env:USERPROFILE ".dotnet\tools\$cmd.exe"),
         (Join-Path $JceBinDir "$cmd.cmd"),
         (Join-Path $JceBinDir "$cmd.exe"),
@@ -163,6 +164,37 @@ function Install-CSharpLsp {
     if (-not (Test-Command "csharp-ls")) { throw "csharp-ls installed but not found on PATH" }
 }
 
+function Install-RustAnalyzer {
+    # Ensure rustup is installed
+    if (-not (Test-Command "rustup")) {
+        Invoke-InstallCommand "winget install -e --id Rustlang.Rustup --accept-package-agreements --accept-source-agreements"
+    }
+
+    # Add cargo bin to PATH (where rust-analyzer gets installed)
+    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+    Add-UserPath $cargoBin
+
+    # Refresh PATH to pick up rustup
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+
+    $rustup = Get-KnownCommandPath "rustup"
+    if (-not $rustup) { throw "rustup installed but not found on PATH. Restart terminal and rerun installer." }
+
+    # Ensure a default toolchain is installed (required before adding components)
+    $toolchains = & $rustup toolchain list 2>&1
+    if ($toolchains -match "no installed toolchains" -or $toolchains -match "no default" -or -not ($toolchains -match "stable")) {
+        Write-Host "(installing stable toolchain) " -NoNewline -ForegroundColor DarkGray
+        Invoke-NativeCommand $rustup @("default", "stable")
+    }
+
+    # Install rust-analyzer component
+    Invoke-NativeCommand $rustup @("component", "add", "rust-analyzer")
+
+    if (-not (Test-Command "rust-analyzer")) {
+        throw "rust-analyzer installed but not found on PATH. Restart terminal and verify."
+    }
+}
+
 function Install-LuaLsp {
     Invoke-InstallCommand "winget install -e --id LuaLS.lua-language-server --accept-package-agreements --accept-source-agreements"
 
@@ -173,16 +205,49 @@ function Install-LuaLsp {
         (Join-Path ${env:ProgramFiles(x86)} "lua-language-server\bin")
     )
 
+    $found = $false
     foreach ($p in $possiblePaths) {
         if (Test-Path $p) {
             Add-UserPath $p
+            $found = $true
             break
         }
     }
 
-    # Also check winget's default install location via registry/shim
+    # Check winget's default install location via registry/shim
     $wingetLinks = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
     if (Test-Path $wingetLinks) { Add-UserPath $wingetLinks }
+
+    # Search winget packages directory (where portable installs land)
+    if (-not $found) {
+        $wingetPkgs = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+        if (Test-Path $wingetPkgs) {
+            $luaPkg = Get-ChildItem $wingetPkgs -Directory -Filter "LuaLS.lua-language-server_*" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($luaPkg) {
+                # Find the bin directory containing lua-language-server.exe
+                $luaExe = Get-ChildItem $luaPkg.FullName -Recurse -Filter "lua-language-server.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($luaExe) {
+                    Add-UserPath $luaExe.DirectoryName
+                    $found = $true
+                }
+            }
+        }
+    }
+
+    # Also search common winget install location under LinkPackages
+    if (-not $found) {
+        $linkPkgs = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\LinkPackages"
+        if (Test-Path $linkPkgs) {
+            $luaExe = Get-ChildItem $linkPkgs -Recurse -Filter "lua-language-server.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($luaExe) {
+                Add-UserPath $luaExe.DirectoryName
+                $found = $true
+            }
+        }
+    }
+
+    # Refresh PATH from registry to pick up winget's changes
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
     if (-not (Test-Command "lua-language-server")) {
         throw "lua-language-server installed but not found on PATH. Restart terminal and verify."
@@ -585,6 +650,7 @@ function Install-LspServers {
         Write-Host "  Installing $($lsp.Name)... " -NoNewline
         try {
             switch ($lsp.Name) {
+                "Rust" { Install-RustAnalyzer }
                 "Go" { Install-GoLsp }
                 "Java" { Install-Jdtls }
                 "C/C++" { Install-Clangd }
