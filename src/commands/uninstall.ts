@@ -81,7 +81,7 @@ function buildLspServers(): LspServerInfo[] {
 
     // C/C++ (clangd) — platform-specific
     { name: "C/C++ (clangd)", command: "clangd", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "LLVM.LLVM"], ["scoop", "uninstall", "llvm"], ["choco", "uninstall", "llvm"]]
+      ? [["winget", "uninstall", "--id", "LLVM.LLVM", "--accept-source-agreements", "--silent"], ["scoop", "uninstall", "llvm"], ["choco", "uninstall", "llvm"]]
       : [["brew", "uninstall", "llvm"], ["apt-get", "remove", "-y", "clangd"]]
     },
 
@@ -96,7 +96,7 @@ function buildLspServers(): LspServerInfo[] {
 
     // Marksman — installed via winget on Windows (Artempyanykh.Marksman)
     { name: "Markdown (marksman)", command: "marksman", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "Artempyanykh.Marksman"], ["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
+      ? [["winget", "uninstall", "--id", "Artempyanykh.Marksman", "--accept-source-agreements", "--silent"], ["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
       : [["brew", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
     },
 
@@ -114,7 +114,7 @@ function buildLspServers(): LspServerInfo[] {
 
     // Lua — installed via winget on Windows
     { name: "Lua", command: "lua-language-server", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "LuaLS.lua-language-server"], ["scoop", "uninstall", "lua-language-server"]]
+      ? [["winget", "uninstall", "--id", "LuaLS.lua-language-server", "--accept-source-agreements", "--silent"], ["scoop", "uninstall", "lua-language-server"]]
       : [["brew", "uninstall", "lua-language-server"]]
     },
 
@@ -126,7 +126,7 @@ function buildLspServers(): LspServerInfo[] {
 
     // Terraform
     { name: "Terraform", command: "terraform-ls", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "HashiCorp.Terraform"]]
+      ? [["winget", "uninstall", "--id", "HashiCorp.Terraform", "--accept-source-agreements", "--silent"]]
       : [["brew", "uninstall", "terraform-ls"]]
     },
 
