@@ -35,19 +35,32 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 ### Context Preservation
 **Never lose project context between sessions. This is AUTOMATIC — no user action required.**
 
+**Context file is PER-PROJECT** — each project root has its own `.opencode-context.md`. Not global.
+
 1. **Start of session (MANDATORY):**
    - Check if `.opencode-context.md` exists in project root.
    - **If it exists:** READ IT FIRST before doing anything else. Do NOT overwrite or recreate it.
    - **If it does NOT exist:** AUTOMATICALLY CREATE IT with the template below. Do not ask the user — just do it silently.
 2. **During session:** Update the file when:
    - A new architecture decision is made
-   - A task is completed (update checklist)
+   - A task is completed (mark `[x]` in checklist)
    - A new dependency/tool is added to the stack
    - An important convention is established
    - The project stack is detected (auto-fill ## Stack from package.json, Cargo.toml, go.mod, etc.)
-3. **Format:** Bullet points only. Max 50 lines. No paragraphs.
+3. **Format:** Bullet points only. Max 40 lines. No paragraphs.
 4. **Don't update for:** Typo fixes, minor refactors, obvious things readable from code.
-5. **NEVER overwrite existing content.** Only append or update specific lines. If the file already has content, preserve everything the user or previous sessions wrote.
+5. **NEVER overwrite existing content.** Only append or update specific lines.
+
+**Auto-Prune (setiap awal sesi, SEBELUM menambah konten baru):**
+   - Hapus semua task yang sudah selesai `[x]` dari ## Current Status
+   - Hapus notes di ## Important Notes yang sudah tidak relevan (misal: bug yang sudah di-fix 2+ sesi lalu)
+   - Ringkas keputusan arsitektur lama yang sudah obvious jadi 1 baris
+   - Target: file tetap ≤ 40 baris setelah prune
+
+**Auto-Archive (jika setelah prune masih > 50 baris):**
+   - Pindahkan section ## Architecture Decisions dan ## Important Notes yang lama ke `.opencode-context-archive.md`
+   - Di file utama, tambahkan: `> Archived entries: see .opencode-context-archive.md`
+   - Archive file tidak punya batas ukuran — itu referensi history
 
 **Auto-create template** (use when file doesn't exist):
 ```markdown

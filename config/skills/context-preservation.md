@@ -15,25 +15,34 @@ Panduan untuk menjaga context antar sesi agar AI tidak pernah kehilangan informa
 
 ## Flow Setiap Sesi (OTOMATIS)
 
+**Context file adalah PER-PROJECT** — setiap project root punya `.opencode-context.md` sendiri. Bukan file global.
+
 ```
 1. Awal sesi → Cek apakah .opencode-context.md ada di root project
 2. Jika TIDAK ada → BUAT OTOMATIS (jangan tanya user, langsung buat dengan template)
    - Auto-detect stack dari package.json, Cargo.toml, go.mod, requirements.txt, dll
    - Isi ## Stack dengan hasil deteksi
-3. Jika SUDAH ada → Baca dan pahami sebelum menjawab apapun
-   - JANGAN PERNAH timpa/overwrite konten yang sudah ada
-   - Hanya tambah atau update baris spesifik
-4. Selama sesi → Update file saat ada:
+3. Jika SUDAH ada → Baca, lalu PRUNE dulu sebelum lanjut kerja:
+   a. Hapus semua task [x] (sudah selesai) dari ## Current Status
+   b. Hapus notes di ## Important Notes yang sudah tidak relevan
+   c. Ringkas keputusan arsitektur lama yang sudah obvious jadi 1 baris
+   d. Target: file tetap ≤ 40 baris setelah prune
+4. Jika setelah prune masih > 50 baris → AUTO-ARCHIVE:
+   - Pindahkan entries lama ke .opencode-context-archive.md
+   - Di file utama tambah: "> Archived entries: see .opencode-context-archive.md"
+   - Archive file = referensi history, tidak ada batas ukuran
+5. Selama sesi → Update file saat ada:
    - Keputusan arsitektur baru
    - Stack/dependency baru ditambahkan
-   - Task selesai (checklist update)
+   - Task selesai (mark [x])
    - Bug penting ditemukan & di-fix
    - Konvensi baru disepakati
-5. Akhir sesi → Pastikan status terkini tercatat
+6. Akhir sesi → Pastikan status terkini tercatat
 ```
 
 > **PENTING:** User tidak perlu jalankan `opencode-jce context init` manual.
 > AI WAJIB buat file ini otomatis di awal sesi jika belum ada.
+> AI WAJIB prune di awal sesi agar file tidak membengkak.
 
 ---
 
@@ -92,15 +101,38 @@ Panduan untuk menjaga context antar sesi agar AI tidak pernah kehilangan informa
 
 ## Rules Penulisan (Hemat Token)
 
-1. **Maksimal 50 baris** — Jika lebih, ringkaskan
+1. **Maksimal 40 baris** (target) / **50 baris** (hard limit sebelum archive)
 2. **Bullet point only** — Tidak perlu paragraf
 3. **Tidak ada duplikasi** — Jangan tulis yang sudah ada
 4. **Gunakan simbol:**
-   - `[x]` = selesai
+   - `[x]` = selesai (akan di-prune sesi berikutnya)
    - `[ ]` = belum
    - `←` = sedang dikerjakan
    - `⚠️` = perlu perhatian
 5. **Tanggal di header** — Agar tahu kapan terakhir update
+6. **Prune setiap awal sesi** — Hapus [x] tasks, notes lama, ringkas decisions
+
+## Auto-Archive (.opencode-context-archive.md)
+
+Jika setelah prune file masih > 50 baris:
+
+```markdown
+# Context Archive — [Project Name]
+> Historical decisions and notes. Reference only.
+
+## Archived: 2025-05-02
+- [keputusan lama yang dipindahkan]
+- [notes lama yang dipindahkan]
+
+## Archived: 2025-04-28
+- [entries lebih lama]
+```
+
+Rules archive:
+- Grouped by tanggal archive
+- Tidak ada batas ukuran
+- AI boleh baca archive jika perlu context historis
+- User boleh hapus archive kapan saja
 
 ---
 
