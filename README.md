@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.4.3-green)]()
+[![Version](https://img.shields.io/badge/Version-1.5.0-green)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen)]()
 
 **One command. Full setup. Zero hassle.**
@@ -508,6 +508,13 @@ Every donation helps keep this project maintained, updated, and free for everyon
 ---
 
 ## Changelog
+
+### v1.5.0
+
+- **feat(context):** Auto-create `.opencode-context.md` at session start — no manual `context init` needed
+- **feat(context):** Auto-prune at session start — removes completed tasks, stale notes, compresses old decisions (target ≤40 lines)
+- **feat(context):** Auto-archive when file exceeds 50 lines — moves old entries to `.opencode-context-archive.md`
+- **feat(context):** Auto-detect project stack from package.json, Cargo.toml, go.mod, etc.
 
 ### v1.4.3
 
