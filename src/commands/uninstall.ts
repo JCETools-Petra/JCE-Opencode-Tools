@@ -511,16 +511,41 @@ async function removeOpenCodeJceCli(force: boolean): Promise<boolean> {
     }
   }
 
-  info("Menghapus opencode-jce...");
-  const result = await runCommand("bun", ["remove", "-g", "opencode-jce"]);
+  info("Menghapus opencode-jce (semua metode)...");
 
-  if (result.ok) {
-    success("opencode-jce CLI dihapus.");
-    return true;
-  } else {
-    warn("Gagal menghapus opencode-jce (mungkin tidak terinstall secara global).");
-    return false;
+  let removed = false;
+
+  // Try all possible ways opencode-jce could be installed
+  const strategies = [
+    { cmd: "bun", args: ["remove", "-g", "opencode-jce"], label: "bun global" },
+    { cmd: "npm", args: ["uninstall", "-g", "opencode-jce"], label: "npm global" },
+    { cmd: "bun", args: ["remove", "-g", "opencode-jce-tools"], label: "bun (alt name)" },
+    { cmd: "npm", args: ["uninstall", "-g", "opencode-jce-tools"], label: "npm (alt name)" },
+  ];
+
+  for (const s of strategies) {
+    const result = await runCommand(s.cmd, s.args);
+    if (result.ok) {
+      success(`  opencode-jce dihapus via ${s.label}.`);
+      removed = true;
+    }
   }
+
+  // Also remove CLI source from config dir if it exists
+  const cliDir = join(getConfigDir(), "cli");
+  if (existsSync(cliDir)) {
+    try {
+      await rm(cliDir, { recursive: true, force: true });
+      success("  CLI source directory dihapus.");
+      removed = true;
+    } catch {}
+  }
+
+  if (!removed) {
+    warn("opencode-jce tidak ditemukan di package manager manapun.");
+  }
+
+  return removed;
 }
 
 async function removeOpenCodeCli(force: boolean): Promise<boolean> {
@@ -535,33 +560,59 @@ async function removeOpenCodeCli(force: boolean): Promise<boolean> {
     }
   }
 
-  info("Menghapus opencode...");
+  info("Menghapus opencode (semua metode)...");
 
-  // Try bun first (if installed via bun)
-  const bunResult = await runCommand("bun", ["remove", "-g", "opencode"]);
-  if (bunResult.ok) {
-    success("OpenCode CLI dihapus (via bun).");
-    return true;
+  let removed = false;
+
+  // Try ALL possible package names and managers
+  const strategies = [
+    { cmd: "npm", args: ["uninstall", "-g", "opencode-ai"], label: "npm opencode-ai" },
+    { cmd: "npm", args: ["uninstall", "-g", "opencode"], label: "npm opencode" },
+    { cmd: "npm", args: ["uninstall", "-g", "@anthropic/opencode"], label: "npm @anthropic/opencode" },
+    { cmd: "bun", args: ["remove", "-g", "opencode"], label: "bun opencode" },
+    { cmd: "bun", args: ["remove", "-g", "opencode-ai"], label: "bun opencode-ai" },
+  ];
+
+  for (const s of strategies) {
+    const result = await runCommand(s.cmd, s.args);
+    if (result.ok) {
+      success(`  OpenCode dihapus via ${s.label}.`);
+      removed = true;
+    }
   }
 
-  // Try npm (opencode-ai package name)
-  const npmResult = await runCommand("npm", ["uninstall", "-g", "opencode-ai"]);
-  if (npmResult.ok) {
-    success("OpenCode CLI dihapus (via npm).");
-    return true;
+  // Also try to remove the binary/shim directly if still exists
+  if (platform() === "win32") {
+    const npmDir = process.env.APPDATA ? join(process.env.APPDATA, "npm") : "";
+    const filesToRemove = [
+      join(npmDir, "opencode"),
+      join(npmDir, "opencode.cmd"),
+      join(npmDir, "opencode.ps1"),
+    ];
+    for (const f of filesToRemove) {
+      if (existsSync(f)) {
+        try {
+          await rm(f, { force: true });
+          removed = true;
+        } catch {}
+      }
+    }
+    // Remove node_modules package
+    const nodeModulesDir = join(npmDir, "node_modules", "opencode-ai");
+    if (existsSync(nodeModulesDir)) {
+      try {
+        await rm(nodeModulesDir, { recursive: true, force: true });
+        success("  OpenCode node_modules dihapus.");
+        removed = true;
+      } catch {}
+    }
   }
 
-  // Try npm with 'opencode' package name
-  const npmResult2 = await runCommand("npm", ["uninstall", "-g", "opencode"]);
-  if (npmResult2.ok) {
-    success("OpenCode CLI dihapus (via npm).");
-    return true;
+  if (!removed) {
+    warn("OpenCode CLI tidak ditemukan di package manager manapun.");
   }
 
-  warn("Gagal menghapus OpenCode CLI. Coba manual:");
-  warn("  npm uninstall -g opencode-ai");
-  warn("  atau: bun remove -g opencode");
-  return false;
+  return removed;
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
