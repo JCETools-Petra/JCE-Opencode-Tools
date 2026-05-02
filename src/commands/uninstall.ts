@@ -79,10 +79,10 @@ function buildLspServers(): LspServerInfo[] {
       : [["dotnet", "tool", "uninstall", "-g", "csharp-ls"], ["dotnet", "tool", "uninstall", "-g", "omnisharp"]]
     },
 
-    // C/C++ (clangd) — needs admin on Windows for Program Files uninstall
+    // C/C++ (clangd) — needs admin on Windows
     { name: "C/C++ (clangd)", command: "clangd", uninstallStrategies: isWindows
       ? [
-          ["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','LLVM.LLVM','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"],
+          ["winget", "uninstall", "--id", "LLVM.LLVM", "--force", "--accept-source-agreements", "--silent"],
           ["scoop", "uninstall", "llvm"],
           ["choco", "uninstall", "llvm"],
         ]
@@ -98,10 +98,10 @@ function buildLspServers(): LspServerInfo[] {
     // Cargo-installed tools
     { name: "TOML (taplo)", command: "taplo", uninstallStrategies: [["cargo", "uninstall", "taplo-cli"]] },
 
-    // Marksman — needs admin on Windows for winget uninstall
+    // Marksman — needs admin on Windows
     { name: "Markdown (marksman)", command: "marksman", uninstallStrategies: isWindows
       ? [
-          ["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','Artempyanykh.Marksman','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"],
+          ["winget", "uninstall", "--id", "Artempyanykh.Marksman", "--force", "--accept-source-agreements", "--silent"],
           ["scoop", "uninstall", "marksman"],
           ["cargo", "uninstall", "marksman"],
         ]
@@ -123,7 +123,7 @@ function buildLspServers(): LspServerInfo[] {
     // Lua — installed via winget on Windows
     { name: "Lua", command: "lua-language-server", uninstallStrategies: isWindows
       ? [
-          ["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','LuaLS.lua-language-server','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"],
+          ["winget", "uninstall", "--id", "LuaLS.lua-language-server", "--force", "--accept-source-agreements", "--silent"],
           ["scoop", "uninstall", "lua-language-server"],
         ]
       : [["brew", "uninstall", "lua-language-server"]]
@@ -137,7 +137,7 @@ function buildLspServers(): LspServerInfo[] {
 
     // Terraform
     { name: "Terraform", command: "terraform-ls", uninstallStrategies: isWindows
-      ? [["powershell", "-Command", "Start-Process winget -ArgumentList 'uninstall','--id','HashiCorp.Terraform','--accept-source-agreements','--silent','--force' -Verb RunAs -Wait"]]
+      ? [["winget", "uninstall", "--id", "HashiCorp.Terraform", "--force", "--accept-source-agreements", "--silent"]]
       : [["brew", "uninstall", "terraform-ls"]]
     },
 
@@ -165,11 +165,30 @@ interface CommandResult {
 async function runCommand(command: string, args: string[]): Promise<CommandResult> {
   try {
     const proc = Bun.spawn([command, ...args], { stdout: "pipe", stderr: "pipe" });
-    const exitCode = await proc.exited;
+    // Timeout: 120s for winget (can be slow), 30s for others
+    const timeoutMs = command === "winget" ? 120_000 : 30_000;
+    const exitPromise = proc.exited;
+    const timeoutPromise = new Promise<number>((_, reject) =>
+      setTimeout(() => { proc.kill(); reject(new Error("timeout")); }, timeoutMs)
+    );
+    const exitCode = await Promise.race([exitPromise, timeoutPromise]);
     const output = await new Response(proc.stdout).text();
     return { ok: exitCode === 0, output };
   } catch {
     return { ok: false, output: "" };
+  }
+}
+
+/**
+ * Check if the current process is running with admin/elevated privileges.
+ */
+async function isRunningAsAdmin(): Promise<boolean> {
+  if (platform() !== "win32") return process.getuid?.() === 0;
+  try {
+    const proc = Bun.spawn(["net", "session"], { stdout: "pipe", stderr: "pipe" });
+    return (await proc.exited) === 0;
+  } catch {
+    return false;
   }
 }
 
@@ -370,6 +389,14 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
     }
   }
 
+  // Check admin status — winget uninstall needs admin for system packages
+  const isAdmin = await isRunningAsAdmin();
+  if (!isAdmin && platform() === "win32") {
+    warn("Terminal tidak berjalan sebagai Administrator.");
+    warn("Beberapa LSP (winget-installed) mungkin gagal dihapus tanpa admin.");
+    console.log();
+  }
+
   const removed: string[] = [];
   const skipped: string[] = [];
 
@@ -395,7 +422,12 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
 
     if (!uninstalled) {
       const fallbackCmd = server.uninstallStrategies[0].join(" ");
-      warn(`Gagal menghapus ${server.name}. Coba manual: ${fallbackCmd}`);
+      warn(`Gagal menghapus ${server.name}.`);
+      if (!isAdmin) {
+        warn(`  → Jalankan sebagai Administrator: ${fallbackCmd}`);
+      } else {
+        warn(`  → Coba manual: ${fallbackCmd}`);
+      }
       skipped.push(server.name);
     }
   }
