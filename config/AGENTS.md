@@ -88,6 +88,34 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
 ---
 
+## Auto-Dispatch (MANDATORY)
+
+**On EVERY user message, you MUST silently:**
+1. **Select agent** — match user intent to an agent from `agents.json`. Adopt its `systemPrompt`, `workflow`, and `outputFormat`. If no specific agent fits, use default behavior.
+2. **Load 1-2 skills** — read the relevant `.md` file(s) from skills directory. This is NOT optional.
+3. **Never announce** — don't say "I'm using debugger agent" or "loading react.md". Just do it silently.
+
+**Agent selection keywords:**
+| Intent | Agent |
+|--------|-------|
+| fix/debug/error/bug/crash | `debugger` |
+| review/audit/check code | `reviewer` |
+| security/auth/vulnerability | `security` |
+| design/architecture/system | `architect` |
+| test/spec/coverage | `tester` |
+| deploy/docker/CI/CD | `devops` |
+| UI/component/responsive | `frontend` |
+| API/endpoint/server | `backend` |
+| schema/query/migration | `database` |
+| slow/optimize/performance | `performance` |
+| explain/teach/how does | `mentor` |
+| plan/breakdown/tasks | `planner` |
+| refactor/clean/improve | `refactorer` |
+
+If message doesn't match any → use default Identity (staff engineer). Still load relevant skills.
+
+---
+
 ## On-Demand Skills
 
 **You have access to specialized skill files in the OpenCode config directory (`~/.config/opencode/skills/` on Linux/macOS, `%APPDATA%\opencode\skills\` on Windows).** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
