@@ -536,15 +536,32 @@ async function removeOpenCodeCli(force: boolean): Promise<boolean> {
   }
 
   info("Menghapus opencode...");
-  const result = await runCommand("bun", ["remove", "-g", "opencode"]);
 
-  if (result.ok) {
-    success("OpenCode CLI dihapus.");
+  // Try bun first (if installed via bun)
+  const bunResult = await runCommand("bun", ["remove", "-g", "opencode"]);
+  if (bunResult.ok) {
+    success("OpenCode CLI dihapus (via bun).");
     return true;
-  } else {
-    warn("Gagal menghapus opencode (mungkin tidak terinstall secara global).");
-    return false;
   }
+
+  // Try npm (opencode-ai package name)
+  const npmResult = await runCommand("npm", ["uninstall", "-g", "opencode-ai"]);
+  if (npmResult.ok) {
+    success("OpenCode CLI dihapus (via npm).");
+    return true;
+  }
+
+  // Try npm with 'opencode' package name
+  const npmResult2 = await runCommand("npm", ["uninstall", "-g", "opencode"]);
+  if (npmResult2.ok) {
+    success("OpenCode CLI dihapus (via npm).");
+    return true;
+  }
+
+  warn("Gagal menghapus OpenCode CLI. Coba manual:");
+  warn("  npm uninstall -g opencode-ai");
+  warn("  atau: bun remove -g opencode");
+  return false;
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

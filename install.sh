@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.4.1"
+VERSION="1.4.2"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
