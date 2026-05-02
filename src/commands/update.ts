@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { existsSync } from "fs";
 import { join } from "path";
-import { cp, rm, mkdir } from "fs/promises";
+import { cp, mkdir, writeFile, readFile } from "fs/promises";
 import chalk from "chalk";
 import { getConfigDir } from "../lib/config.js";
 import { banner, heading, info, success, warn, error } from "../lib/ui.js";
@@ -15,11 +15,32 @@ import {
   CURRENT_CONFIG_VERSION,
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
-import { GITHUB_RAW_BASE } from "../lib/constants.js";
+import { GITHUB_RAW_BASE, GITHUB_REPO } from "../lib/constants.js";
+
+// ─── Types ───────────────────────────────────────────────────
 
 interface RemotePackageJson {
   version: string;
 }
+
+interface GitHubContentEntry {
+  name: string;
+  type: string;
+  path: string;
+}
+
+interface MergeStats {
+  agents: number;
+  mcpServers: number;
+  lspEntries: number;
+  profiles: number;
+  prompts: number;
+  skills: number;
+  agentsMdUpdated: boolean;
+  fallbackSkipped: boolean;
+}
+
+// ─── GitHub Fetch Helpers ────────────────────────────────────
 
 /**
  * Fetch the latest version from GitHub.
@@ -38,7 +59,7 @@ async function fetchLatestVersion(): Promise<string | null> {
 }
 
 /**
- * Fetch a config file from GitHub and return its content.
+ * Fetch a raw file from the config directory on GitHub.
  */
 async function fetchRemoteFile(relativePath: string): Promise<string | null> {
   try {
@@ -54,76 +75,329 @@ async function fetchRemoteFile(relativePath: string): Promise<string | null> {
 }
 
 /**
- * Fetch the list of profile files from the GitHub repository.
- * Returns an array of filenames like ["budget.json", "quality.json", ...].
+ * Fetch the list of files in a directory from the GitHub repository.
+ * Returns an array of filenames.
  */
-async function fetchProfileFileList(): Promise<string[]> {
+async function fetchDirectoryListing(dir: string): Promise<string[]> {
   try {
-    // Use GitHub API to list files in config/profiles/
     const response = await fetch(
-      "https://api.github.com/repos/JCETools-Petra/JCE-Opencode-Tools/contents/config/profiles",
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/config/${dir}`,
       {
-        headers: { "Accept": "application/vnd.github.v3+json" },
+        headers: { Accept: "application/vnd.github.v3+json" },
       }
     );
     if (!response.ok) {
       return [];
     }
-    const files = (await response.json()) as Array<{ name: string; type: string }>;
+    const files = (await response.json()) as GitHubContentEntry[];
     return files
-      .filter((f) => f.type === "file" && f.name.endsWith(".json"))
+      .filter((f) => f.type === "file")
       .map((f) => f.name);
   } catch {
     return [];
   }
 }
 
+// ─── Local File Helpers ──────────────────────────────────────
+
 /**
- * Deploy updated config files from GitHub to the local config directory.
+ * Read and parse a local JSON file. Returns null if it doesn't exist or can't be parsed.
  */
-async function deployUpdatedConfigs(): Promise<number> {
-  const configDir = getConfigDir();
-  let updatedCount = 0;
+async function readLocalJson<T>(filePath: string): Promise<T | null> {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const content = await readFile(filePath, "utf-8");
+    return JSON.parse(content) as T;
+  } catch {
+    return null;
+  }
+}
 
-  // Static config files to update
-  const configFiles = [
-    "agents.json",
-    "mcp.json",
-    "lsp.json",
-    "fallback.json",
-  ];
+/**
+ * Write a JSON object to a file with pretty formatting.
+ */
+async function writeJson(filePath: string, data: unknown): Promise<void> {
+  const dir = join(filePath, "..");
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true });
+  }
+  await writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
 
-  // Dynamically discover profile files from GitHub
-  info("Discovering profile files...");
-  const profileFileNames = await fetchProfileFileList();
-  const profileFiles = profileFileNames.map((f) => `profiles/${f}`);
+/**
+ * Write a string to a file, creating parent directories if needed.
+ */
+async function writeTextFile(filePath: string, content: string): Promise<void> {
+  const dir = join(filePath, "..");
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true });
+  }
+  await writeFile(filePath, content, "utf-8");
+}
 
-  if (profileFiles.length === 0) {
-    warn("Could not fetch profile list from GitHub. Using local profiles only.");
+// ─── Merge Logic ─────────────────────────────────────────────
+
+/**
+ * Merge agents.json: add new agents by ID, skip existing ones.
+ * Returns the number of new agents added.
+ */
+async function mergeAgents(configDir: string): Promise<number> {
+  const localPath = join(configDir, "agents.json");
+  const remoteContent = await fetchRemoteFile("agents.json");
+  if (!remoteContent) return 0;
+
+  let remoteData: { agents: Array<{ id: string; [key: string]: unknown }> };
+  try {
+    remoteData = JSON.parse(remoteContent);
+  } catch {
+    return 0;
   }
 
-  const allFiles = [...configFiles, ...profileFiles];
+  if (!remoteData.agents || !Array.isArray(remoteData.agents)) return 0;
 
-  for (const file of allFiles) {
-    const content = await fetchRemoteFile(file);
-    if (content) {
-      const targetPath = join(configDir, file);
-      const targetDir = join(targetPath, "..");
+  const localData = await readLocalJson<{ agents: Array<{ id: string; [key: string]: unknown }> }>(localPath);
+  const localAgents = localData?.agents ?? [];
+  const localIds = new Set(localAgents.map((a) => a.id));
 
-      if (!existsSync(targetDir)) {
-        await mkdir(targetDir, { recursive: true });
-      }
+  const newAgents = remoteData.agents.filter((a) => !localIds.has(a.id));
+  if (newAgents.length === 0 && localAgents.length > 0) return 0;
 
-      await Bun.write(targetPath, content);
-      updatedCount++;
+  const mergedAgents = [...localAgents, ...newAgents];
+  await writeJson(localPath, { agents: mergedAgents });
+  return newAgents.length;
+}
+
+/**
+ * Merge mcp.json: add new MCP servers by key, skip existing ones.
+ * Returns the number of new servers added.
+ */
+async function mergeMcpServers(configDir: string): Promise<number> {
+  const localPath = join(configDir, "mcp.json");
+  const remoteContent = await fetchRemoteFile("mcp.json");
+  if (!remoteContent) return 0;
+
+  let remoteData: { mcpServers: Record<string, unknown> };
+  try {
+    remoteData = JSON.parse(remoteContent);
+  } catch {
+    return 0;
+  }
+
+  if (!remoteData.mcpServers || typeof remoteData.mcpServers !== "object") return 0;
+
+  const localData = await readLocalJson<{ mcpServers: Record<string, unknown> }>(localPath);
+  const localServers = localData?.mcpServers ?? {};
+
+  let addedCount = 0;
+  const merged = { ...localServers };
+
+  for (const [key, value] of Object.entries(remoteData.mcpServers)) {
+    if (!(key in merged)) {
+      merged[key] = value;
+      addedCount++;
     }
   }
 
-  return updatedCount;
+  if (addedCount === 0 && Object.keys(localServers).length > 0) return 0;
+
+  await writeJson(localPath, { mcpServers: merged });
+  return addedCount;
 }
 
+/**
+ * Merge lsp.json: add new LSP entries by key, skip existing ones.
+ * Returns the number of new entries added.
+ */
+async function mergeLspEntries(configDir: string): Promise<number> {
+  const localPath = join(configDir, "lsp.json");
+  const remoteContent = await fetchRemoteFile("lsp.json");
+  if (!remoteContent) return 0;
+
+  let remoteData: { lsp: Record<string, unknown> };
+  try {
+    remoteData = JSON.parse(remoteContent);
+  } catch {
+    return 0;
+  }
+
+  if (!remoteData.lsp || typeof remoteData.lsp !== "object") return 0;
+
+  const localData = await readLocalJson<{ lsp: Record<string, unknown> }>(localPath);
+  const localLsp = localData?.lsp ?? {};
+
+  let addedCount = 0;
+  const merged = { ...localLsp };
+
+  for (const [key, value] of Object.entries(remoteData.lsp)) {
+    if (!(key in merged)) {
+      merged[key] = value;
+      addedCount++;
+    }
+  }
+
+  if (addedCount === 0 && Object.keys(localLsp).length > 0) return 0;
+
+  await writeJson(localPath, { lsp: merged });
+  return addedCount;
+}
+
+/**
+ * Merge a directory: copy new files only, skip existing filenames.
+ * Returns the number of new files added.
+ */
+async function mergeDirectory(configDir: string, dirName: string): Promise<number> {
+  const localDir = join(configDir, dirName);
+  const remoteFiles = await fetchDirectoryListing(dirName);
+  if (remoteFiles.length === 0) return 0;
+
+  if (!existsSync(localDir)) {
+    await mkdir(localDir, { recursive: true });
+  }
+
+  let addedCount = 0;
+
+  for (const fileName of remoteFiles) {
+    const localPath = join(localDir, fileName);
+    if (existsSync(localPath)) {
+      continue; // Skip existing files
+    }
+
+    const content = await fetchRemoteFile(`${dirName}/${fileName}`);
+    if (content) {
+      await writeTextFile(localPath, content);
+      addedCount++;
+    }
+  }
+
+  return addedCount;
+}
+
+/**
+ * Handle AGENTS.md: always overwrite (system instruction must be latest).
+ * Returns true if updated.
+ */
+async function updateAgentsMd(configDir: string): Promise<boolean> {
+  const content = await fetchRemoteFile("AGENTS.md");
+  if (!content) return false;
+
+  const localPath = join(configDir, "AGENTS.md");
+  await writeTextFile(localPath, content);
+  return true;
+}
+
+/**
+ * Handle fallback.json: skip if already exists (user may have customized).
+ * Returns true if the file was written (i.e., it didn't exist before).
+ */
+async function handleFallback(configDir: string): Promise<boolean> {
+  const localPath = join(configDir, "fallback.json");
+  if (existsSync(localPath)) {
+    return false; // Skip — user may have customized
+  }
+
+  const content = await fetchRemoteFile("fallback.json");
+  if (!content) return false;
+
+  await writeTextFile(localPath, content);
+  return true;
+}
+
+// ─── Main Merge Orchestrator ─────────────────────────────────
+
+/**
+ * Perform a merge-based update: fetch remote configs and merge them
+ * with local configs, preserving user customizations.
+ */
+async function mergeUpdatedConfigs(): Promise<MergeStats> {
+  const configDir = getConfigDir();
+
+  // Ensure config directory exists
+  if (!existsSync(configDir)) {
+    await mkdir(configDir, { recursive: true });
+  }
+
+  const stats: MergeStats = {
+    agents: 0,
+    mcpServers: 0,
+    lspEntries: 0,
+    profiles: 0,
+    prompts: 0,
+    skills: 0,
+    agentsMdUpdated: false,
+    fallbackSkipped: false,
+  };
+
+  // 1. Merge JSON config files
+  info("Merging agents.json...");
+  stats.agents = await mergeAgents(configDir);
+
+  info("Merging mcp.json...");
+  stats.mcpServers = await mergeMcpServers(configDir);
+
+  info("Merging lsp.json...");
+  stats.lspEntries = await mergeLspEntries(configDir);
+
+  // 2. Merge directories (only add new files)
+  info("Merging profiles/...");
+  stats.profiles = await mergeDirectory(configDir, "profiles");
+
+  info("Merging prompts/...");
+  stats.prompts = await mergeDirectory(configDir, "prompts");
+
+  info("Merging skills/...");
+  stats.skills = await mergeDirectory(configDir, "skills");
+
+  // 3. AGENTS.md — always overwrite
+  info("Updating AGENTS.md...");
+  stats.agentsMdUpdated = await updateAgentsMd(configDir);
+
+  // 4. fallback.json — skip if exists
+  info("Checking fallback.json...");
+  const fallbackWritten = await handleFallback(configDir);
+  stats.fallbackSkipped = !fallbackWritten && existsSync(join(configDir, "fallback.json"));
+
+  return stats;
+}
+
+// ─── Report ──────────────────────────────────────────────────
+
+/**
+ * Print a human-readable summary of what was merged.
+ */
+function printMergeReport(stats: MergeStats): void {
+  console.log();
+  heading("Merge Summary");
+
+  const items: string[] = [];
+
+  if (stats.agents > 0) items.push(`${stats.agents} agent(s)`);
+  if (stats.mcpServers > 0) items.push(`${stats.mcpServers} MCP server(s)`);
+  if (stats.lspEntries > 0) items.push(`${stats.lspEntries} LSP entry/entries`);
+  if (stats.profiles > 0) items.push(`${stats.profiles} profile(s)`);
+  if (stats.prompts > 0) items.push(`${stats.prompts} prompt(s)`);
+  if (stats.skills > 0) items.push(`${stats.skills} skill(s)`);
+
+  if (items.length > 0) {
+    success(`Added: ${items.join(", ")}`);
+  } else {
+    info("No new items to add — your config already has everything.");
+  }
+
+  if (stats.agentsMdUpdated) {
+    success("AGENTS.md updated to latest version.");
+  }
+
+  if (stats.fallbackSkipped) {
+    info("fallback.json skipped (local copy preserved).");
+  }
+}
+
+// ─── Command ─────────────────────────────────────────────────
+
 export const updateCommand = new Command("update")
-  .description("Check for updates and pull latest configuration from GitHub")
+  .description("Check for updates and merge latest configuration from GitHub")
   .option("--check", "Only check for updates without applying them")
   .option("--force", "Force update even if already on latest version")
   .action(async (options: { check?: boolean; force?: boolean }) => {
@@ -163,7 +437,7 @@ export const updateCommand = new Command("update")
     if (comparison > 0) {
       info(`${chalk.yellow("Update available:")} ${localVersion} → ${latestVersion}`);
     } else if (options.force) {
-      info("Forcing re-deployment of config files...");
+      info("Forcing merge of remote config files...");
     }
 
     // Check-only mode
@@ -175,9 +449,9 @@ export const updateCommand = new Command("update")
       process.exit(EXIT_SUCCESS);
     }
 
-    // Apply update
+    // Apply update via merge
     console.log();
-    heading("Applying Update");
+    heading("Applying Update (Merge Strategy)");
 
     // Backup current config
     const configDir = getConfigDir();
@@ -194,20 +468,33 @@ export const updateCommand = new Command("update")
       }
     }
 
-    // Deploy updated configs
-    info("Downloading latest configuration files...");
-    const updatedCount = await deployUpdatedConfigs();
+    // Merge remote configs into local
+    info("Downloading and merging latest configuration...");
+    const stats = await mergeUpdatedConfigs();
 
-    if (updatedCount === 0) {
-      error("No config files could be downloaded. Update may have failed.");
-      logCommandError("update", "No files downloaded");
+    // Check if anything was actually fetched
+    const totalChanges =
+      stats.agents +
+      stats.mcpServers +
+      stats.lspEntries +
+      stats.profiles +
+      stats.prompts +
+      stats.skills +
+      (stats.agentsMdUpdated ? 1 : 0);
+
+    if (totalChanges === 0 && !stats.fallbackSkipped) {
+      warn("No remote files could be fetched. Update may have failed.");
+      warn("Check your internet connection or try again later.");
+      logCommandError("update", "No files fetched during merge");
       process.exit(EXIT_ERROR);
     }
 
-    success(`Updated ${updatedCount} configuration files.`);
+    // Print merge report
+    printMergeReport(stats);
 
     // Run migrations if version changed
     if (comparison > 0) {
+      console.log();
       info("Running migrations...");
       const migrationsRun = await runMigrations(latestVersion);
       if (migrationsRun > 0) {
@@ -220,13 +507,13 @@ export const updateCommand = new Command("update")
       await updateVersion(latestVersion);
     }
 
-    // Summary
+    // Final summary
     console.log();
     heading("Update Complete");
     success(`Version: ${localVersion} → ${latestVersion || localVersion}`);
-    success(`Config files updated: ${updatedCount}`);
+    info("Your existing customizations have been preserved.");
     info("Run `opencode-jce doctor` to verify your installation.");
 
-    logCommandSuccess("update", `updated to ${latestVersion}, ${updatedCount} files`);
+    logCommandSuccess("update", `merged to ${latestVersion}, added ${totalChanges} item(s)`);
     process.exit(EXIT_SUCCESS);
   });

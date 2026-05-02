@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.1.0";
+export const CURRENT_CONFIG_VERSION = "1.2.0";
 
 /**
  * Get the path to the version.json file.
