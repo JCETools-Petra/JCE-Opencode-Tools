@@ -437,9 +437,9 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
         break;
       }
 
-      // If winget failed and we're not admin, try elevated
-      if (cmd === "winget" && !isAdmin && isWindows) {
-        info(`  Meminta akses Administrator...`);
+      // If winget failed, try elevated via PowerShell (triggers UAC)
+      if (cmd === "winget" && isWindows) {
+        info(`  Mencoba dengan elevated privileges...`);
         const argsStr = args.join(" ");
         const elevated = await runElevated("winget", argsStr);
         if (elevated) {

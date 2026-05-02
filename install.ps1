@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.3.8"
+$Version = "1.3.9"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $ConfigDir = Join-Path $env:APPDATA "opencode"
