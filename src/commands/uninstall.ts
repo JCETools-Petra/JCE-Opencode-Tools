@@ -21,57 +21,118 @@ const MCP_PACKAGES = [
   "@modelcontextprotocol/server-postgres",
 ] as const;
 
-// ─── LSP Servers (all 28 that the installer can install) ─────────────────────
+// ─── LSP Servers (all that the installer can install) ────────────────────────
 
 interface LspServerInfo {
   name: string;
   command: string; // Binary name to check if installed
-  uninstallCmd: string[]; // [command, ...args] to uninstall
-  uninstallMethod: string; // Description for user
+  /** Uninstall strategies in order of preference. Tries each until one succeeds. */
+  uninstallStrategies: string[][];
 }
 
-const LSP_SERVERS: LspServerInfo[] = [
-  // npm-installed LSP servers
-  { name: "Python (pyright)", command: "pyright-langserver", uninstallCmd: ["npm", "uninstall", "-g", "pyright"], uninstallMethod: "npm" },
-  { name: "TypeScript", command: "typescript-language-server", uninstallCmd: ["npm", "uninstall", "-g", "typescript-language-server"], uninstallMethod: "npm" },
-  { name: "Bash", command: "bash-language-server", uninstallCmd: ["npm", "uninstall", "-g", "bash-language-server"], uninstallMethod: "npm" },
-  { name: "YAML", command: "yaml-language-server", uninstallCmd: ["npm", "uninstall", "-g", "yaml-language-server"], uninstallMethod: "npm" },
-  { name: "HTML/CSS/JSON", command: "vscode-json-language-server", uninstallCmd: ["npm", "uninstall", "-g", "vscode-langservers-extracted"], uninstallMethod: "npm" },
-  { name: "Docker", command: "docker-langserver", uninstallCmd: ["npm", "uninstall", "-g", "dockerfile-language-server-nodejs"], uninstallMethod: "npm" },
-  { name: "SQL", command: "sql-language-server", uninstallCmd: ["npm", "uninstall", "-g", "sql-language-server"], uninstallMethod: "npm" },
-  { name: "PHP (intelephense)", command: "intelephense", uninstallCmd: ["npm", "uninstall", "-g", "intelephense"], uninstallMethod: "npm" },
-  { name: "Svelte", command: "svelteserver", uninstallCmd: ["npm", "uninstall", "-g", "svelte-language-server"], uninstallMethod: "npm" },
-  { name: "Vue", command: "vue-language-server", uninstallCmd: ["npm", "uninstall", "-g", "@vue/language-server"], uninstallMethod: "npm" },
-  { name: "Tailwind CSS", command: "tailwindcss-language-server", uninstallCmd: ["npm", "uninstall", "-g", "@tailwindcss/language-server"], uninstallMethod: "npm" },
-  { name: "GraphQL", command: "graphql-lsp", uninstallCmd: ["npm", "uninstall", "-g", "graphql-language-service-cli"], uninstallMethod: "npm" },
-  // Rust-analyzer (installed via rustup)
-  { name: "Rust (rust-analyzer)", command: "rust-analyzer", uninstallCmd: ["rustup", "component", "remove", "rust-analyzer"], uninstallMethod: "rustup" },
-  // Go (installed via go install)
-  { name: "Go (gopls)", command: "gopls", uninstallCmd: ["go", "clean", "-i", "golang.org/x/tools/gopls@latest"], uninstallMethod: "go" },
-  // Ruby (installed via gem)
-  { name: "Ruby (solargraph)", command: "solargraph", uninstallCmd: ["gem", "uninstall", "solargraph", "-x"], uninstallMethod: "gem" },
-  // .NET (installed via dotnet tool)
-  { name: "C# (OmniSharp)", command: "OmniSharp", uninstallCmd: ["dotnet", "tool", "uninstall", "-g", "omnisharp"], uninstallMethod: "dotnet" },
-  // System package managers (clangd, jdtls, etc.) — can't reliably uninstall cross-platform
-  { name: "C/C++ (clangd)", command: "clangd", uninstallCmd: ["npm", "uninstall", "-g", "clangd"], uninstallMethod: "system" },
-  { name: "Java (jdtls)", command: "jdtls", uninstallCmd: ["brew", "uninstall", "jdtls"], uninstallMethod: "system" },
-  // Cargo-installed
-  { name: "TOML (taplo)", command: "taplo", uninstallCmd: ["cargo", "uninstall", "taplo-cli"], uninstallMethod: "cargo" },
-  { name: "Markdown (marksman)", command: "marksman", uninstallCmd: ["brew", "uninstall", "marksman"], uninstallMethod: "system" },
-  { name: "Zig (zls)", command: "zls", uninstallCmd: ["brew", "uninstall", "zls"], uninstallMethod: "system" },
-  // Dart
-  { name: "Dart", command: "dart", uninstallCmd: ["brew", "uninstall", "dart"], uninstallMethod: "system" },
-  // Lua
-  { name: "Lua", command: "lua-language-server", uninstallCmd: ["brew", "uninstall", "lua-language-server"], uninstallMethod: "system" },
-  // Kotlin
-  { name: "Kotlin", command: "kotlin-language-server", uninstallCmd: ["brew", "uninstall", "kotlin-language-server"], uninstallMethod: "system" },
-  // Terraform
-  { name: "Terraform", command: "terraform-ls", uninstallCmd: ["brew", "uninstall", "terraform-ls"], uninstallMethod: "system" },
-  // Elixir
-  { name: "Elixir", command: "elixir-ls", uninstallCmd: ["brew", "uninstall", "elixir-ls"], uninstallMethod: "system" },
-  // Scala
-  { name: "Scala (metals)", command: "metals", uninstallCmd: ["brew", "uninstall", "metals"], uninstallMethod: "system" },
-];
+/**
+ * Build the LSP server list with platform-appropriate uninstall commands.
+ */
+function buildLspServers(): LspServerInfo[] {
+  const isWindows = platform() === "win32";
+
+  return [
+    // npm-installed (cross-platform, always works)
+    { name: "Python (pyright)", command: "pyright-langserver", uninstallStrategies: [["npm", "uninstall", "-g", "pyright"]] },
+    { name: "TypeScript", command: "typescript-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "typescript-language-server"]] },
+    { name: "Bash", command: "bash-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "bash-language-server"]] },
+    { name: "YAML", command: "yaml-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "yaml-language-server"]] },
+    { name: "HTML/CSS/JSON", command: "vscode-json-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "vscode-langservers-extracted"]] },
+    { name: "Docker", command: "docker-langserver", uninstallStrategies: [["npm", "uninstall", "-g", "dockerfile-language-server-nodejs"]] },
+    { name: "SQL", command: "sql-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "sql-language-server"]] },
+    { name: "PHP (intelephense)", command: "intelephense", uninstallStrategies: [["npm", "uninstall", "-g", "intelephense"]] },
+    { name: "Svelte", command: "svelteserver", uninstallStrategies: [["npm", "uninstall", "-g", "svelte-language-server"]] },
+    { name: "Vue", command: "vue-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "@vue/language-server"]] },
+    { name: "Tailwind CSS", command: "tailwindcss-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "@tailwindcss/language-server"]] },
+    { name: "GraphQL", command: "graphql-lsp", uninstallStrategies: [["npm", "uninstall", "-g", "graphql-language-service-cli"]] },
+
+    // Rust-analyzer: try rustup first, then cargo
+    { name: "Rust (rust-analyzer)", command: "rust-analyzer", uninstallStrategies: [
+      ["rustup", "component", "remove", "rust-analyzer"],
+      ["cargo", "uninstall", "rust-analyzer"],
+    ]},
+
+    // Go
+    { name: "Go (gopls)", command: "gopls", uninstallStrategies: isWindows
+      ? [["go", "clean", "-i", "golang.org/x/tools/gopls@latest"]]
+      : [["go", "clean", "-i", "golang.org/x/tools/gopls@latest"], ["rm", "-f", "$(which gopls)"]]
+    },
+
+    // Ruby
+    { name: "Ruby (solargraph)", command: "solargraph", uninstallStrategies: [["gem", "uninstall", "solargraph", "-x"]] },
+
+    // .NET
+    { name: "C# (OmniSharp)", command: "OmniSharp", uninstallStrategies: [["dotnet", "tool", "uninstall", "-g", "omnisharp"]] },
+
+    // C/C++ (clangd) — platform-specific
+    { name: "C/C++ (clangd)", command: "clangd", uninstallStrategies: isWindows
+      ? [["winget", "uninstall", "LLVM.LLVM"]]
+      : [["brew", "uninstall", "llvm"], ["sudo", "apt-get", "remove", "-y", "clangd"]]
+    },
+
+    // Java (jdtls)
+    { name: "Java (jdtls)", command: "jdtls", uninstallStrategies: isWindows
+      ? [["scoop", "uninstall", "jdtls"]]
+      : [["brew", "uninstall", "jdtls"]]
+    },
+
+    // Cargo-installed tools
+    { name: "TOML (taplo)", command: "taplo", uninstallStrategies: [["cargo", "uninstall", "taplo-cli"]] },
+
+    // Marksman — cargo on Windows, brew on macOS/Linux
+    { name: "Markdown (marksman)", command: "marksman", uninstallStrategies: isWindows
+      ? [["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
+      : [["brew", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
+    },
+
+    // Zig
+    { name: "Zig (zls)", command: "zls", uninstallStrategies: isWindows
+      ? [["scoop", "uninstall", "zls"], ["cargo", "uninstall", "zls"]]
+      : [["brew", "uninstall", "zls"], ["cargo", "uninstall", "zls"]]
+    },
+
+    // Dart
+    { name: "Dart", command: "dart", uninstallStrategies: isWindows
+      ? [["choco", "uninstall", "dart-sdk"], ["scoop", "uninstall", "dart"]]
+      : [["brew", "uninstall", "dart"]]
+    },
+
+    // Lua
+    { name: "Lua", command: "lua-language-server", uninstallStrategies: isWindows
+      ? [["scoop", "uninstall", "lua-language-server"]]
+      : [["brew", "uninstall", "lua-language-server"]]
+    },
+
+    // Kotlin
+    { name: "Kotlin", command: "kotlin-language-server", uninstallStrategies: isWindows
+      ? [["scoop", "uninstall", "kotlin-language-server"]]
+      : [["brew", "uninstall", "kotlin-language-server"]]
+    },
+
+    // Terraform
+    { name: "Terraform", command: "terraform-ls", uninstallStrategies: isWindows
+      ? [["winget", "uninstall", "HashiCorp.Terraform"]]
+      : [["brew", "uninstall", "terraform-ls"]]
+    },
+
+    // Elixir
+    { name: "Elixir", command: "elixir-ls", uninstallStrategies: isWindows
+      ? [["scoop", "uninstall", "elixir-ls"]]
+      : [["brew", "uninstall", "elixir-ls"]]
+    },
+
+    // Scala
+    { name: "Scala (metals)", command: "metals", uninstallStrategies: isWindows
+      ? [["cs", "uninstall", "metals"]]
+      : [["brew", "uninstall", "metals"], ["cs", "uninstall", "metals"]]
+    },
+  ];
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -225,22 +286,21 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
   console.log();
   heading("3. LSP Servers");
 
+  const lspServers = buildLspServers();
+
   if (keep) {
     info("--keep-lsp flag aktif. LSP servers dipertahankan.");
-    return { removed: [], skipped: LSP_SERVERS.map((s) => s.name) };
+    return { removed: [], skipped: lspServers.map((s) => s.name) };
   }
 
   // Check which LSP servers are actually installed
   info("Memeriksa LSP servers yang terinstall...");
   const installed: LspServerInfo[] = [];
-  const notInstalled: LspServerInfo[] = [];
 
-  for (const server of LSP_SERVERS) {
+  for (const server of lspServers) {
     const exists = await commandExists(server.command);
     if (exists) {
       installed.push(server);
-    } else {
-      notInstalled.push(server);
     }
   }
 
@@ -269,17 +329,27 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
 
   for (const server of installed) {
     info(`Menghapus ${server.name}...`);
-    const [cmd, ...args] = server.uninstallCmd;
-    const result = await runCommand(cmd, args);
-    if (result.ok) {
-      success(`${server.name} dihapus.`);
-      removed.push(server.name);
-    } else {
-      if (server.uninstallMethod === "system") {
-        warn(`${server.name} — diinstall via system package manager, hapus manual.`);
-      } else {
-        warn(`Gagal menghapus ${server.name}. Coba manual: ${server.uninstallCmd.join(" ")}`);
+
+    // Try each uninstall strategy in order until one succeeds
+    let uninstalled = false;
+    for (const strategy of server.uninstallStrategies) {
+      const [cmd, ...args] = strategy;
+      // Check if the uninstall tool exists first
+      const toolExists = await commandExists(cmd);
+      if (!toolExists) continue;
+
+      const result = await runCommand(cmd, args);
+      if (result.ok) {
+        success(`${server.name} dihapus.`);
+        removed.push(server.name);
+        uninstalled = true;
+        break;
       }
+    }
+
+    if (!uninstalled) {
+      const fallbackCmd = server.uninstallStrategies[0].join(" ");
+      warn(`Gagal menghapus ${server.name}. Coba manual: ${fallbackCmd}`);
       skipped.push(server.name);
     }
   }
