@@ -35,6 +35,7 @@ interface LspServerInfo {
  */
 function buildLspServers(): LspServerInfo[] {
   const isWindows = platform() === "win32";
+  const home = process.env.USERPROFILE || process.env.HOME || "";
 
   return [
     // npm-installed (cross-platform, always works)
@@ -51,32 +52,31 @@ function buildLspServers(): LspServerInfo[] {
     { name: "Tailwind CSS", command: "tailwindcss-language-server", uninstallStrategies: [["npm", "uninstall", "-g", "@tailwindcss/language-server"]] },
     { name: "GraphQL", command: "graphql-lsp", uninstallStrategies: [["npm", "uninstall", "-g", "graphql-language-service-cli"]] },
 
-    // Rust-analyzer: try multiple approaches
+    // Rust-analyzer: bundled with rustup toolchain — remove component or delete binary
     { name: "Rust (rust-analyzer)", command: "rust-analyzer", uninstallStrategies: isWindows
       ? [
           ["rustup", "component", "remove", "rust-analyzer"],
-          ["cargo", "uninstall", "rust-analyzer"],
-          ["winget", "uninstall", "rust-analyzer"],
+          ["cmd", "/c", "del", join(home, ".cargo", "bin", "rust-analyzer.exe")],
         ]
       : [
           ["rustup", "component", "remove", "rust-analyzer"],
-          ["cargo", "uninstall", "rust-analyzer"],
+          ["rm", "-f", join(home, ".cargo", "bin", "rust-analyzer")],
         ]
     },
 
-    // Go
+    // Go — delete the binary directly on Windows since go clean may not work
     { name: "Go (gopls)", command: "gopls", uninstallStrategies: isWindows
-      ? [["go", "clean", "-i", "golang.org/x/tools/gopls@latest"]]
-      : [["go", "clean", "-i", "golang.org/x/tools/gopls@latest"], ["rm", "-f", "$(which gopls)"]]
+      ? [["cmd", "/c", "del", join(home, "go", "bin", "gopls.exe")], ["go", "clean", "-i", "golang.org/x/tools/gopls@latest"]]
+      : [["go", "clean", "-i", "golang.org/x/tools/gopls@latest"]]
     },
 
     // Ruby
     { name: "Ruby (solargraph)", command: "solargraph", uninstallStrategies: [["gem", "uninstall", "solargraph", "-x"]] },
 
-    // .NET — try dotnet tool first, then winget
-    { name: "C# (OmniSharp)", command: "OmniSharp", uninstallStrategies: isWindows
-      ? [["dotnet", "tool", "uninstall", "-g", "csharp-ls"], ["winget", "uninstall", "OmniSharp.OmniSharp"]]
-      : [["dotnet", "tool", "uninstall", "-g", "omnisharp"]]
+    // .NET (csharp-ls on Windows, omnisharp on macOS/Linux)
+    { name: "C# (csharp-ls)", command: "csharp-ls", uninstallStrategies: isWindows
+      ? [["dotnet", "tool", "uninstall", "-g", "csharp-ls"]]
+      : [["dotnet", "tool", "uninstall", "-g", "csharp-ls"], ["dotnet", "tool", "uninstall", "-g", "omnisharp"]]
     },
 
     // C/C++ (clangd) — platform-specific
@@ -85,18 +85,18 @@ function buildLspServers(): LspServerInfo[] {
       : [["brew", "uninstall", "llvm"], ["apt-get", "remove", "-y", "clangd"]]
     },
 
-    // Java (jdtls)
+    // Java (jdtls) — on Windows installed as shim + downloaded LSP
     { name: "Java (jdtls)", command: "jdtls", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "jdtls"], ["scoop", "uninstall", "jdtls"], ["choco", "uninstall", "jdtls"]]
+      ? [["cmd", "/c", "del", join(home, ".opencode-jce", "bin", "jdtls.cmd")]]
       : [["brew", "uninstall", "jdtls"]]
     },
 
     // Cargo-installed tools
     { name: "TOML (taplo)", command: "taplo", uninstallStrategies: [["cargo", "uninstall", "taplo-cli"]] },
 
-    // Marksman — multiple strategies per platform
+    // Marksman — installed via winget on Windows (Artempyanykh.Marksman)
     { name: "Markdown (marksman)", command: "marksman", uninstallStrategies: isWindows
-      ? [["winget", "uninstall", "marksman"], ["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
+      ? [["winget", "uninstall", "Artempyanykh.Marksman"], ["scoop", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
       : [["brew", "uninstall", "marksman"], ["cargo", "uninstall", "marksman"]]
     },
 
@@ -112,9 +112,9 @@ function buildLspServers(): LspServerInfo[] {
       : [["brew", "uninstall", "dart"]]
     },
 
-    // Lua
+    // Lua — installed via winget on Windows
     { name: "Lua", command: "lua-language-server", uninstallStrategies: isWindows
-      ? [["scoop", "uninstall", "lua-language-server"]]
+      ? [["winget", "uninstall", "LuaLS.lua-language-server"], ["scoop", "uninstall", "lua-language-server"]]
       : [["brew", "uninstall", "lua-language-server"]]
     },
 
@@ -174,17 +174,26 @@ async function commandExists(cmd: string): Promise<boolean> {
 
     // Also check common Windows installation paths (matching install.ps1 behavior)
     const home = process.env.USERPROFILE || "";
-    const knownPaths = [
-      join(home, "go", "bin", `${cmd}.exe`),
-      join(home, ".dotnet", "tools", `${cmd}.exe`),
-      join(home, ".cargo", "bin", `${cmd}.exe`),
-      `C:\\Program Files\\LLVM\\bin\\${cmd}.exe`,
-      `C:\\Program Files\\Go\\bin\\${cmd}.exe`,
-      join(home, ".rustup", "toolchains", "stable-x86_64-pc-windows-msvc", "bin", `${cmd}.exe`),
+    const localAppData = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
+
+    // Check all possible extensions
+    const extensions = [".exe", ".cmd", ".bat", ""];
+    const basePaths = [
+      join(home, "go", "bin"),
+      join(home, ".dotnet", "tools"),
+      join(home, ".cargo", "bin"),
+      join(home, ".opencode-jce", "bin"),
+      `C:\\Program Files\\LLVM\\bin`,
+      `C:\\Program Files\\Go\\bin`,
+      join(home, ".rustup", "toolchains", "stable-x86_64-pc-windows-msvc", "bin"),
+      join(localAppData, "Programs", "lua-language-server", "bin"),
+      join(localAppData, "Microsoft", "WinGet", "Links"),
     ];
 
-    for (const p of knownPaths) {
-      if (existsSync(p)) return true;
+    for (const base of basePaths) {
+      for (const ext of extensions) {
+        if (existsSync(join(base, `${cmd}${ext}`))) return true;
+      }
     }
 
     return false;
