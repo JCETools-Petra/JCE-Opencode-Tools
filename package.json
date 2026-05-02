@@ -1,6 +1,6 @@
 {
   "name": "opencode-jce",
-  "version": "1.3.9",
+  "version": "1.4.0",
   "type": "module",
   "bin": {
     "opencode-jce": "./src/index.ts"

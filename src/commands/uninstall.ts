@@ -287,8 +287,10 @@ interface UninstallResult {
   opencodeRemoved: boolean;
 }
 
-async function removeConfigDirectory(force: boolean): Promise<{ removed: boolean; backupPath: string | null }> {
+async function removeConfigDirectory(force: boolean, keepCli: boolean): Promise<{ removed: boolean; backupPath: string | null }> {
   const configDir = getConfigDir();
+  const cliDir = join(configDir, "cli");
+  const hasCli = existsSync(cliDir);
 
   console.log();
   heading("1. Config Directory");
@@ -322,17 +324,41 @@ async function removeConfigDirectory(force: boolean): Promise<{ removed: boolean
     return { removed: false, backupPath: null };
   }
 
+  // If CLI lives inside config dir and user wants to keep it, preserve it
+  let cliTempDir: string | null = null;
+  if (hasCli && keepCli) {
+    cliTempDir = join(configDir, "..", "opencode-cli-temp");
+    try {
+      await cp(cliDir, cliTempDir, { recursive: true });
+    } catch {
+      cliTempDir = null;
+    }
+  }
+
   // Remove config
   info("Menghapus config directory...");
   try {
     await rm(configDir, { recursive: true, force: true });
     success("Config directory dihapus.");
-    return { removed: true, backupPath: backupDir };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     error(`Gagal menghapus config: ${msg}`);
     return { removed: false, backupPath: backupDir };
   }
+
+  // Restore CLI if it was preserved
+  if (cliTempDir && existsSync(cliTempDir)) {
+    try {
+      await mkdir(configDir, { recursive: true });
+      await cp(cliTempDir, cliDir, { recursive: true });
+      await rm(cliTempDir, { recursive: true, force: true });
+      info("CLI source preserved di config directory.");
+    } catch {
+      warn("Gagal restore CLI. Jalankan: bun install -g opencode-jce");
+    }
+  }
+
+  return { removed: true, backupPath: backupDir };
 }
 
 async function cleanMcpCache(force: boolean, keep: boolean): Promise<boolean> {
@@ -616,8 +642,20 @@ export const uninstallCommand = new Command("uninstall")
       opencodeRemoved: false,
     };
 
-    // Step 1: Config directory
-    const configResult = await removeConfigDirectory(force);
+    // Determine if user wants to keep CLI (ask early so we know before deleting config)
+    // In force mode, CLI will be removed. Otherwise ask later but we need to know now
+    // to preserve cli/ dir inside config.
+    let willRemoveCli = force;
+    if (!force) {
+      // Peek: does CLI live inside config dir?
+      const cliInConfig = existsSync(join(getConfigDir(), "cli"));
+      if (cliInConfig) {
+        info("CLI source terdeteksi di dalam config directory.");
+      }
+    }
+
+    // Step 1: Config directory (preserve cli/ if user won't remove CLI)
+    const configResult = await removeConfigDirectory(force, !willRemoveCli);
     result.configRemoved = configResult.removed;
     result.configBackupPath = configResult.backupPath;
 
