@@ -304,6 +304,68 @@ export async function fixLspConfig(): Promise<FixResult[]> {
   return results;
 }
 
+// ─── Fix: Missing context-keeper MCP ─────────────────────────
+
+export async function fixContextKeeper(): Promise<FixResult[]> {
+  const results: FixResult[] = [];
+  const configDir = getConfigDir();
+  const opencodeJsonPath = join(configDir, "opencode.json");
+  const contextKeeperPath = join(configDir, "cli", "src", "mcp", "context-keeper.ts");
+
+  // Check if context-keeper.ts exists
+  if (!existsSync(contextKeeperPath)) {
+    results.push({
+      name: "context-keeper file",
+      fixed: false,
+      message: `File missing: ${contextKeeperPath}. Run 'opencode-jce update' or reinstall.`,
+    });
+    return results;
+  }
+
+  // Check if opencode.json exists
+  if (!existsSync(opencodeJsonPath)) {
+    results.push({
+      name: "context-keeper",
+      fixed: false,
+      message: "opencode.json not found — run 'opencode' first to create it.",
+    });
+    return results;
+  }
+
+  try {
+    const content = await readFile(opencodeJsonPath, "utf-8");
+    const config = JSON.parse(content);
+
+    if (!config.mcp) config.mcp = {};
+
+    if (config.mcp["context-keeper"]) {
+      // Already registered — nothing to fix
+      return results;
+    }
+
+    // Normalize path (forward slashes)
+    const normalizedPath = contextKeeperPath.replace(/\\/g, "/");
+
+    config.mcp["context-keeper"] = {
+      type: "local",
+      command: ["bun", "run", normalizedPath],
+      enabled: true,
+    };
+
+    await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
+    results.push({
+      name: "context-keeper",
+      fixed: true,
+      message: "Registered in opencode.json. Restart OpenCode to activate.",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    results.push({ name: "context-keeper", fixed: false, message: `Failed: ${msg}` });
+  }
+
+  return results;
+}
+
 // ─── Master Fix Function ─────────────────────────────────────
 
 export async function runAllFixes(failedChecks: CheckResult[]): Promise<FixResult[]> {
@@ -316,8 +378,11 @@ export async function runAllFixes(failedChecks: CheckResult[]): Promise<FixResul
   const hasToolErrors = failedChecks.some(
     (r) => r.name === "OpenCode CLI" && r.status !== "pass"
   );
+  const hasContextKeeperError = failedChecks.some(
+    (r) => r.name.includes("context-keeper") && r.status !== "pass"
+  );
 
-  // Fix in order: configs → tools → LSP → merge
+  // Fix in order: configs → tools → context-keeper → LSP → merge
   if (hasConfigErrors) {
     info("Fixing missing configuration files...");
     const configResults = await fixMissingConfigs();
@@ -328,6 +393,12 @@ export async function runAllFixes(failedChecks: CheckResult[]): Promise<FixResul
     info("Fixing missing tools...");
     const toolResults = await fixMissingTools();
     allResults.push(...toolResults);
+  }
+
+  if (hasContextKeeperError) {
+    info("Fixing context-keeper MCP registration...");
+    const ckResults = await fixContextKeeper();
+    allResults.push(...ckResults);
   }
 
   if (hasLspErrors) {

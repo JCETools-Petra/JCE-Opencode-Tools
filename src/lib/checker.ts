@@ -172,24 +172,105 @@ export async function checkConfigFiles(): Promise<CheckResult[]> {
 
 // ─── MCP Server Checks ───────────────────────────────────────
 
+/**
+ * OpenCode MCP entry in opencode.json format.
+ */
+interface OpenCodeMcpEntry {
+  type: "local" | "remote";
+  command?: string[];
+  url?: string;
+  enabled?: boolean;
+  environment?: Record<string, string>;
+}
+
+interface OpenCodeConfig {
+  mcp?: Record<string, OpenCodeMcpEntry>;
+  [key: string]: unknown;
+}
+
 export async function checkMcpServers(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
+  const configDir = getConfigDir();
 
+  // 1. Check opencode.json (what OpenCode actually reads)
+  let opencodeMcp: Record<string, OpenCodeMcpEntry> = {};
+  try {
+    const opencodeJsonPath = join(configDir, "opencode.json");
+    if (existsSync(opencodeJsonPath)) {
+      const { readFileSync } = await import("fs");
+      const config: OpenCodeConfig = JSON.parse(readFileSync(opencodeJsonPath, "utf-8"));
+      opencodeMcp = config.mcp ?? {};
+    }
+  } catch {
+    results.push({ name: "OpenCode MCP", status: "warn", message: "Cannot parse opencode.json mcp section" });
+  }
+
+  // Check each MCP server registered in opencode.json
+  for (const [name, entry] of Object.entries(opencodeMcp)) {
+    if (entry.type === "remote") {
+      // Remote servers — just check they have a URL
+      if (entry.url) {
+        results.push({ name: `MCP: ${name}`, status: "pass", message: `remote → ${entry.url}` });
+      } else {
+        results.push({ name: `MCP: ${name}`, status: "warn", message: "remote server missing url" });
+      }
+    } else if (entry.type === "local" && entry.command?.length) {
+      const cmd = entry.command[0];
+      const exists = await commandExists(cmd);
+      if (exists) {
+        results.push({ name: `MCP: ${name}`, status: "pass", message: `${cmd} found` });
+      } else {
+        results.push({ name: `MCP: ${name}`, status: "warn", message: `${cmd} not found in PATH` });
+      }
+    }
+  }
+
+  // 2. Specifically check context-keeper registration + file existence
+  if (!opencodeMcp["context-keeper"]) {
+    results.push({
+      name: "MCP: context-keeper",
+      status: "error",
+      message: "Not registered in opencode.json. Run: opencode-jce update",
+    });
+  } else {
+    // Verify the .ts file actually exists at the path
+    const entry = opencodeMcp["context-keeper"];
+    if (entry.type === "local" && entry.command && entry.command.length >= 3) {
+      const scriptPath = entry.command[entry.command.length - 1];
+      if (existsSync(scriptPath)) {
+        results.push({ name: "MCP: context-keeper file", status: "pass", message: "context-keeper.ts exists" });
+      } else {
+        results.push({
+          name: "MCP: context-keeper file",
+          status: "error",
+          message: `File not found: ${scriptPath}. Run: opencode-jce update`,
+        });
+      }
+    }
+  }
+
+  // 3. Also check mcp.json for legacy/reference (non-critical)
   try {
     const mcpConfig = await loadConfigFile<McpConfig>("mcp.json");
     const servers = Object.entries(mcpConfig.mcpServers);
+    const registeredInOpencode = new Set(Object.keys(opencodeMcp));
 
-    for (const [name, server] of servers) {
-      // Only check if the command exists in PATH — don't spawn full servers
-      const exists = await commandExists(server.command);
-      if (exists) {
-        results.push({ name: `MCP: ${name}`, status: "pass", message: `${server.command} found` });
-      } else {
-        results.push({ name: `MCP: ${name}`, status: "warn", message: `${server.command} not found in PATH` });
+    // Warn about servers in mcp.json but not in opencode.json
+    for (const [name] of servers) {
+      if (!registeredInOpencode.has(name) && name !== "context-keeper") {
+        results.push({
+          name: `MCP: ${name}`,
+          status: "warn",
+          message: "In mcp.json but not in opencode.json (OpenCode won't load it)",
+        });
       }
     }
   } catch {
-    results.push({ name: "MCP Config", status: "error", message: "Cannot load mcp.json" });
+    // mcp.json is optional — not an error
+  }
+
+  if (results.length === 0) {
+    results.push({ name: "MCP Config", status: "warn", message: "No MCP servers configured" });
   }
 
   return results;
