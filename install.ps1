@@ -504,7 +504,10 @@ function Install-McpPackages {
         "@modelcontextprotocol/server-github",
         "@modelcontextprotocol/server-fetch",
         "@modelcontextprotocol/server-filesystem",
-        "@modelcontextprotocol/server-memory"
+        "@modelcontextprotocol/server-memory",
+        "@playwright/mcp@latest",
+        "@modelcontextprotocol/server-sequential-thinking",
+        "@modelcontextprotocol/server-postgres"
     )
 
     $cachedCount = 0

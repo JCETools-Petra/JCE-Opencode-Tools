@@ -157,6 +157,8 @@ const FILETYPE_TO_EXTENSIONS: Record<string, string[]> = {
   scala: [".scala", ".sbt"],
   sbt: [".sbt"],
   csharp: [".cs"],
+  json: [".json", ".jsonc"],
+  jsonc: [".jsonc"],
 };
 
 /**

@@ -39,8 +39,11 @@ async function runCommand(command: string, args: string[]): Promise<{ success: b
       stdout: "pipe",
       stderr: "pipe",
     });
-    const output = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
+    // Read stdout and stderr concurrently to avoid deadlock
+    const [output, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     const exitCode = await proc.exited;
     return { success: exitCode === 0, output: output || stderr };
   } catch (err: any) {
@@ -270,10 +273,21 @@ export async function fixLspConfig(): Promise<FixResult[]> {
   const results: FixResult[] = [];
 
   try {
+    // Try multiple ways to find the CLI
     const configDir = getConfigDir();
     const cliPath = join(configDir, "cli", "src", "index.ts");
+    const hasGlobalCli = await commandExists("opencode-jce");
 
-    if (existsSync(cliPath)) {
+    if (hasGlobalCli) {
+      // Prefer globally installed CLI
+      const result = await runCommand("opencode-jce", ["setup", "--merge-lsp"]);
+      if (result.success) {
+        results.push({ name: "opencode.json LSP", fixed: true, message: "LSP servers merged into opencode.json" });
+      } else {
+        results.push({ name: "opencode.json LSP", fixed: false, message: "Merge failed — run 'opencode-jce setup --merge-lsp' manually" });
+      }
+    } else if (existsSync(cliPath)) {
+      // Fallback to local CLI in config dir
       const result = await runCommand("bun", ["run", cliPath, "setup", "--merge-lsp"]);
       if (result.success) {
         results.push({ name: "opencode.json LSP", fixed: true, message: "LSP servers merged into opencode.json" });

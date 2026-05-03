@@ -180,31 +180,12 @@ export async function checkMcpServers(): Promise<CheckResult[]> {
     const servers = Object.entries(mcpConfig.mcpServers);
 
     for (const [name, server] of servers) {
-      try {
-        const proc = Bun.spawn([server.command, ...server.args], {
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-
-        // Wait up to 5 seconds for the process to start
-        const timeout = setTimeout(() => {
-          proc.kill();
-        }, 5000);
-
-        const exitCode = await proc.exited;
-        clearTimeout(timeout);
-
-        // Exit code 143 = killed by SIGTERM (we killed it after timeout = it started OK)
-        // Exit code 0 = exited normally
-        // Exit code 1 = may have started but exited (some servers do this without input)
-        // null = still running when killed
-        if (exitCode === 0 || exitCode === 143 || exitCode === null || exitCode === 1) {
-          results.push({ name: `MCP: ${name}`, status: "pass", message: "Available" });
-        } else {
-          results.push({ name: `MCP: ${name}`, status: "warn", message: `May have issues (exit code ${exitCode})` });
-        }
-      } catch {
-        results.push({ name: `MCP: ${name}`, status: "warn", message: `Cannot spawn: ${server.command}` });
+      // Only check if the command exists in PATH — don't spawn full servers
+      const exists = await commandExists(server.command);
+      if (exists) {
+        results.push({ name: `MCP: ${name}`, status: "pass", message: `${server.command} found` });
+      } else {
+        results.push({ name: `MCP: ${name}`, status: "warn", message: `${server.command} not found in PATH` });
       }
     }
   } catch {

@@ -198,9 +198,12 @@ async function isRunningAsAdmin(): Promise<boolean> {
  */
 async function runElevated(command: string, argsString: string): Promise<boolean> {
   try {
+    // Escape single quotes in args to prevent PowerShell injection
+    const safeCommand = command.replace(/'/g, "''");
+    const safeArgs = argsString.replace(/'/g, "''");
     const proc = Bun.spawn([
       "powershell.exe", "-NoProfile", "-Command",
-      `Start-Process ${command} -ArgumentList "${argsString}" -Verb RunAs -Wait`
+      `Start-Process '${safeCommand}' -ArgumentList '${safeArgs}' -Verb RunAs -Wait`
     ], { stdout: "pipe", stderr: "pipe" });
 
     const timeoutMs = 120_000;

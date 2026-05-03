@@ -38,6 +38,8 @@ interface MergeStats {
   skills: number;
   agentsMdUpdated: boolean;
   fallbackSkipped: boolean;
+  fetchFailed: number;
+  fetchAttempted: number;
 }
 
 // ─── GitHub Fetch Helpers ────────────────────────────────────
@@ -323,6 +325,17 @@ async function updateAgentsMd(configDir: string): Promise<boolean> {
   if (!content) return false;
 
   const localPath = join(configDir, "AGENTS.md");
+
+  // Preserve user edits: backup before overwriting
+  if (existsSync(localPath)) {
+    const localContent = await readFile(localPath, "utf-8");
+    if (localContent !== content) {
+      const backupPath = join(configDir, "AGENTS.md.backup");
+      await writeTextFile(backupPath, localContent);
+      info("  AGENTS.md changed — backup saved to AGENTS.md.backup");
+    }
+  }
+
   await writeTextFile(localPath, content);
   return true;
 }
@@ -367,31 +380,47 @@ async function mergeUpdatedConfigs(): Promise<MergeStats> {
     skills: 0,
     agentsMdUpdated: false,
     fallbackSkipped: false,
+    fetchFailed: 0,
+    fetchAttempted: 0,
   };
 
   // 1. Merge JSON config files
   info("Merging agents.json...");
+  stats.fetchAttempted++;
   stats.agents = await mergeAgents(configDir);
+  if (stats.agents < 0) { stats.fetchFailed++; stats.agents = 0; }
 
   info("Merging mcp.json...");
+  stats.fetchAttempted++;
   stats.mcpServers = await mergeMcpServers(configDir);
+  if (stats.mcpServers < 0) { stats.fetchFailed++; stats.mcpServers = 0; }
 
   info("Merging lsp.json...");
+  stats.fetchAttempted++;
   stats.lspEntries = await mergeLspEntries(configDir);
+  if (stats.lspEntries < 0) { stats.fetchFailed++; stats.lspEntries = 0; }
 
   // 2. Merge directories (only add new files)
   info("Merging profiles/...");
+  stats.fetchAttempted++;
   stats.profiles = await mergeDirectory(configDir, "profiles");
+  if (stats.profiles < 0) { stats.fetchFailed++; stats.profiles = 0; }
 
   info("Merging prompts/...");
+  stats.fetchAttempted++;
   stats.prompts = await mergeDirectory(configDir, "prompts");
+  if (stats.prompts < 0) { stats.fetchFailed++; stats.prompts = 0; }
 
   info("Merging skills/...");
+  stats.fetchAttempted++;
   stats.skills = await mergeDirectory(configDir, "skills");
+  if (stats.skills < 0) { stats.fetchFailed++; stats.skills = 0; }
 
-  // 3. AGENTS.md — always overwrite
+  // 3. AGENTS.md — overwrite only if remote is newer, preserve user edits otherwise
   info("Updating AGENTS.md...");
+  stats.fetchAttempted++;
   stats.agentsMdUpdated = await updateAgentsMd(configDir);
+  if (!stats.agentsMdUpdated && !existsSync(join(configDir, "AGENTS.md"))) { stats.fetchFailed++; }
 
   // 4. fallback.json — skip if exists
   info("Checking fallback.json...");
@@ -527,10 +556,10 @@ export const updateCommand = new Command("update")
       stats.skills +
       (stats.agentsMdUpdated ? 1 : 0);
 
-    if (totalChanges === 0 && !stats.fallbackSkipped) {
-      warn("No remote files could be fetched. Update may have failed.");
+    if (totalChanges === 0 && stats.fetchFailed > 0) {
+      warn(`${stats.fetchFailed}/${stats.fetchAttempted} fetch(es) failed. Update may have failed.`);
       warn("Check your internet connection or try again later.");
-      logCommandError("update", "No files fetched during merge");
+      logCommandError("update", `${stats.fetchFailed} fetches failed during merge`);
       process.exit(EXIT_ERROR);
     }
 
@@ -546,10 +575,10 @@ export const updateCommand = new Command("update")
         success(`Ran ${migrationsRun} migration(s).`);
       } else {
         info("No migrations needed.");
+        // runMigrations already calls updateVersion internally,
+        // but if no migrations ran, we still need to update the version file
+        await updateVersion(latestVersion);
       }
-
-      // Update version file
-      await updateVersion(latestVersion);
     }
 
     // Final summary

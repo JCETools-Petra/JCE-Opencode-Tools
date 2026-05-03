@@ -91,7 +91,13 @@ const showCommand = new Command("show")
       process.exit(EXIT_ERROR);
     }
 
-    const content = await readFile(contextPath, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(contextPath, "utf-8");
+    } catch (err: any) {
+      error(`Cannot read ${CONTEXT_FILENAME}: ${err.message}`);
+      process.exit(EXIT_ERROR);
+    }
 
     heading("Project Context");
     console.log();
@@ -156,7 +162,13 @@ const statusCommand = new Command("status")
       process.exit(EXIT_SUCCESS);
     }
 
-    const content = await readFile(contextPath, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(contextPath, "utf-8");
+    } catch (err: any) {
+      error(`Cannot read ${CONTEXT_FILENAME}: ${err.message}`);
+      process.exit(EXIT_ERROR);
+    }
     const lines = content.split("\n");
     const nonEmptyLines = lines.filter((l) => l.trim()).length;
     const estimatedTokens = Math.ceil(content.length / 4);
