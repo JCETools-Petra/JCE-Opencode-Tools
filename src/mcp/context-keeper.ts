@@ -186,7 +186,7 @@ export function replaceSection(
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "1.7.0",
+    version: "1.7.1",
   },
   {
     instructions: [
