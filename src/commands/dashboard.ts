@@ -1,11 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { TokenTracker } from "../lib/tokens.js";
+import { TokenTracker, detectOpenCodeDB } from "../lib/tokens.js";
 import { generateAnalytics, AnalyticsSummary } from "../lib/analytics.js";
 import { getConfigDir } from "../lib/config.js";
-import { info, formatCost } from "../lib/ui.js";
-import { logCommandStart, logCommandSuccess } from "../lib/logger.js";
-import { EXIT_SUCCESS } from "../types.js";
+import { error, info, formatCost } from "../lib/ui.js";
+import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
+import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -126,8 +126,16 @@ export const dashboardCommand = new Command("dashboard")
   .action(async (options: { period: string }) => {
     logCommandStart("dashboard", { period: options.period });
 
-    const configDir = getConfigDir();
-    const tracker = new TokenTracker(configDir);
+    getConfigDir(); // Keep config directory detection consistent with other commands.
+    const dbPath = detectOpenCodeDB();
+    if (!dbPath) {
+      console.log();
+      error("OpenCode database not found.");
+      info("Make sure OpenCode has been run at least once.");
+      logCommandError("dashboard", "Database not found");
+      process.exit(EXIT_ERROR);
+    }
+    const tracker = new TokenTracker(dbPath);
 
     // Determine period and get data
     let periodLabel: string;
@@ -140,8 +148,8 @@ export const dashboardCommand = new Command("dashboard")
         periodLabel = "This Week";
         break;
       case "all":
-        entries = tracker.getThisMonth(); // "all" still loads current month file
-        periodLabel = "All Time (Current Month)";
+        entries = tracker.getAll();
+        periodLabel = "All Time";
         break;
       case "month":
       default:

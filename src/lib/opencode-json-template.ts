@@ -9,7 +9,7 @@
 
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { platform } from "os";
 
 // ─── LSP Auto-Detection ──────────────────────────────────────
@@ -56,9 +56,11 @@ const FILETYPE_EXTENSIONS: Record<string, string[]> = {
 };
 
 function commandExists(cmd: string): boolean {
+  if (!/^[\w@./+:-]+$/.test(cmd)) return false;
+
   try {
     const checkCmd = platform() === "win32" ? "where" : "which";
-    execSync(`${checkCmd} ${cmd}`, { stdio: "pipe" });
+    execFileSync(checkCmd, [cmd], { stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -111,15 +113,74 @@ export function detectInstalledLsp(configDir: string): Record<string, LspEntry> 
 
 // ─── Template Builder ────────────────────────────────────────
 
+export function buildDefaultMcpConfig(configDir: string): Record<string, unknown> {
+  const contextKeeperPath = join(configDir, "cli", "src", "mcp", "context-keeper.ts")
+    .replace(/\\/g, "/");
+
+  return {
+    "context-keeper": {
+      type: "local",
+      command: ["bun", "run", contextKeeperPath],
+      env: {
+        PROJECT_ROOT: "${PROJECT_ROOT}",
+      },
+      enabled: true,
+    },
+    "context7": {
+      type: "remote",
+      url: "https://mcp.context7.com/mcp",
+      enabled: true,
+    },
+    "github-search": {
+      type: "local",
+      command: ["npx", "-y", "@modelcontextprotocol/server-github"],
+      env: {
+        GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}",
+      },
+      enabled: true,
+    },
+    "web-fetch": {
+      type: "local",
+      command: ["npx", "-y", "@modelcontextprotocol/server-fetch"],
+      enabled: true,
+    },
+    "filesystem": {
+      type: "local",
+      command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"],
+      enabled: true,
+    },
+    "memory": {
+      type: "local",
+      command: ["npx", "-y", "@modelcontextprotocol/server-memory"],
+      enabled: true,
+    },
+    "playwright": {
+      type: "local",
+      command: ["npx", "-y", "@playwright/mcp@0.0.28"],
+      enabled: true,
+    },
+    "sequential-thinking": {
+      type: "local",
+      command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+      enabled: true,
+    },
+    "postgres": {
+      type: "local",
+      command: ["npx", "-y", "@modelcontextprotocol/server-postgres"],
+      env: {
+        POSTGRES_CONNECTION_STRING: "${DATABASE_URL}",
+      },
+      enabled: true,
+    },
+  };
+}
+
 /**
  * Build the default opencode.json content.
  * @param configDir - The resolved config directory (e.g., ~/.config/opencode)
  *                    Used to compute the context-keeper path and detect LSP.
  */
 export function buildDefaultOpenCodeJson(configDir: string): Record<string, unknown> {
-  const contextKeeperPath = join(configDir, "cli", "src", "mcp", "context-keeper.ts")
-    .replace(/\\/g, "/");
-
   // Auto-detect installed LSP servers
   const lsp = detectInstalledLsp(configDir);
 
@@ -128,41 +189,7 @@ export function buildDefaultOpenCodeJson(configDir: string): Record<string, unkn
     plugin: [
       "superpowers@git+https://github.com/obra/superpowers.git",
     ],
-    mcp: {
-      "context7": {
-        type: "remote",
-        url: "https://mcp.context7.com/mcp",
-        enabled: true,
-      },
-      "sequential-thinking": {
-        type: "local",
-        command: ["mcp-server-sequential-thinking"],
-        enabled: true,
-      },
-      "playwright": {
-        type: "local",
-        command: ["playwright-mcp"],
-        enabled: true,
-      },
-      "github-search": {
-        type: "local",
-        command: ["mcp-server-github"],
-        env: {
-          GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}",
-        },
-        enabled: true,
-      },
-      "memory": {
-        type: "local",
-        command: ["mcp-server-memory"],
-        enabled: true,
-      },
-      "context-keeper": {
-        type: "local",
-        command: ["bun", "run", contextKeeperPath],
-        enabled: true,
-      },
-    },
+    mcp: buildDefaultMcpConfig(configDir),
     lsp,
   };
 }

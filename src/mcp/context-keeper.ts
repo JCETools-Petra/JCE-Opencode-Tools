@@ -181,12 +181,75 @@ export function replaceSection(
   return result.join("\n");
 }
 
+export interface ContextArchiveResult {
+  content: string;
+  archiveAppend: string;
+  actions: string[];
+}
+
+export function pruneAndArchiveContext(content: string, today = new Date().toISOString().split("T")[0]): ContextArchiveResult {
+  const actions: string[] = [];
+  let updated = pruneCompleted(content);
+  if (updated !== content) {
+    actions.push("Pruned completed/resolved items from Current Status and Important Notes");
+  }
+
+  let archiveAppend = "";
+  if (countLines(updated) > MAX_LINES_HARD) {
+    const archDecisions = getSection(updated, "Architecture Decisions");
+    const impNotes = getSection(updated, "Important Notes");
+
+    if (archDecisions.length > 3 || impNotes.length > 3) {
+      archiveAppend += `## Archived: ${today}\n`;
+
+      if (archDecisions.length > 3) {
+        const toArchive = archDecisions.slice(0, -3);
+        const toKeep = archDecisions.slice(-3);
+        archiveAppend += `### Architecture Decisions\n${toArchive.join("\n")}\n\n`;
+        updated = replaceSection(updated, "Architecture Decisions", toKeep);
+        actions.push(`Archived ${toArchive.length} old architecture decisions`);
+      }
+
+      if (impNotes.length > 3) {
+        const toArchive = impNotes.slice(0, -3);
+        const toKeep = impNotes.slice(-3);
+        archiveAppend += `### Important Notes\n${toArchive.join("\n")}\n\n`;
+        updated = replaceSection(updated, "Important Notes", toKeep);
+        actions.push(`Archived ${toArchive.length} old important notes`);
+      }
+
+      if (!updated.includes("see .opencode-context-archive.md")) {
+        updated = updated.replace(
+          "> Auto-maintained by AI.",
+          "> Auto-maintained by AI. Archived entries: see .opencode-context-archive.md"
+        );
+      }
+    }
+  }
+
+  return { content: updated, archiveAppend, actions };
+}
+
+async function appendArchive(content: string): Promise<void> {
+  if (!content) return;
+
+  let archiveContent = "";
+  if (await fileExists(archivePath())) {
+    archiveContent = await readFile(archivePath(), "utf-8");
+    archiveContent += "\n";
+  } else {
+    archiveContent = `# Context Archive\n> Historical decisions and notes. Reference only.\n\n`;
+  }
+  archiveContent += content;
+  await writeFile(archivePath(), archiveContent, "utf-8");
+}
+
 // ─── MCP Server ──────────────────────────────────────────────
 
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "1.8.8",
+    version: "1.8.9",
   },
   {
     instructions: [
@@ -207,20 +270,21 @@ server.tool(
     const existing = await readContext();
 
     if (existing) {
-      // Auto-prune completed tasks
-      const pruned = pruneCompleted(existing);
-      if (pruned !== existing) {
-        await writeContext(pruned);
+      // Auto-prune and archive at session start.
+      const pruned = pruneAndArchiveContext(existing);
+      if (pruned.content !== existing) {
+        await appendArchive(pruned.archiveAppend);
+        await writeContext(pruned.content);
       }
 
-      const lines = countLines(pruned);
+      const lines = countLines(pruned.content);
       return {
         content: [
           {
             type: "text" as const,
             text: [
               `--- .opencode-context.md (${lines} lines) ---`,
-              pruned,
+              pruned.content,
               "---",
               lines > MAX_LINES_TARGET
                 ? `WARNING: File has ${lines} lines (target: ${MAX_LINES_TARGET}). Consider archiving old entries.`
@@ -352,65 +416,10 @@ server.tool(
       };
     }
 
-    const actions: string[] = [];
-
-    // Step 1: Prune completed tasks
-    const pruned = pruneCompleted(content);
-    if (pruned !== content) {
-      actions.push("Pruned completed/resolved items from Current Status and Important Notes");
-      content = pruned;
-    }
-
-    // Step 2: Check if archive is needed
-    const lineCount = countLines(content);
-    if (lineCount > MAX_LINES_HARD) {
-      // Archive old Architecture Decisions and Important Notes
-      const archDecisions = getSection(content, "Architecture Decisions");
-      const impNotes = getSection(content, "Important Notes");
-
-      if (archDecisions.length > 3 || impNotes.length > 3) {
-        const today = new Date().toISOString().split("T")[0];
-        let archiveContent = "";
-
-        if (await fileExists(archivePath())) {
-          archiveContent = await readFile(archivePath(), "utf-8");
-          archiveContent += "\n";
-        } else {
-          archiveContent = `# Context Archive\n> Historical decisions and notes. Reference only.\n\n`;
-        }
-
-        archiveContent += `## Archived: ${today}\n`;
-
-        if (archDecisions.length > 3) {
-          // Keep last 3, archive the rest
-          const toArchive = archDecisions.slice(0, -3);
-          const toKeep = archDecisions.slice(-3);
-          archiveContent += `### Architecture Decisions\n${toArchive.join("\n")}\n\n`;
-          content = replaceSection(content, "Architecture Decisions", toKeep);
-          actions.push(
-            `Archived ${toArchive.length} old architecture decisions`
-          );
-        }
-
-        if (impNotes.length > 3) {
-          const toArchive = impNotes.slice(0, -3);
-          const toKeep = impNotes.slice(-3);
-          archiveContent += `### Important Notes\n${toArchive.join("\n")}\n\n`;
-          content = replaceSection(content, "Important Notes", toKeep);
-          actions.push(`Archived ${toArchive.length} old important notes`);
-        }
-
-        await writeFile(archivePath(), archiveContent, "utf-8");
-
-        // Add archive reference if not present
-        if (!content.includes("see .opencode-context-archive.md")) {
-          content = content.replace(
-            "> Auto-maintained by AI.",
-            "> Auto-maintained by AI. Archived entries: see .opencode-context-archive.md"
-          );
-        }
-      }
-    }
+    const pruned = pruneAndArchiveContext(content);
+    const actions: string[] = [...pruned.actions];
+    content = pruned.content;
+    await appendArchive(pruned.archiveAppend);
 
     await writeContext(content);
 
@@ -442,7 +451,9 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error("context-keeper failed to start:", err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("context-keeper failed to start:", err);
+    process.exit(1);
+  });
+}

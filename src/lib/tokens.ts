@@ -319,6 +319,11 @@ export class TokenTracker {
     return this.queryEntries(startOfMonth);
   }
 
+  /** Get all entries without a time filter. */
+  getAll(): TokenUsageEntry[] {
+    return this.queryEntries();
+  }
+
   /** Calculate total cost from entries. */
   getTotalCost(entries: TokenUsageEntry[]): number {
     return entries.reduce((sum, e) => sum + e.cost, 0);

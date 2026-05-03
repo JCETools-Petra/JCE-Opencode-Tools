@@ -1,4 +1,4 @@
-import { join, dirname } from "path";
+import { join, dirname, resolve, sep } from "path";
 import { existsSync, mkdirSync, rmSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 
@@ -31,6 +31,7 @@ export interface InstalledPlugin {
   type: "mcp" | "agent" | "prompt";
   description: string;
   source: string; // GitHub URL
+  installDir?: string;
   installedAt: string;
 }
 
@@ -104,17 +105,22 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     mkdirSync(pluginsDir, { recursive: true });
   }
 
-  // Extract repo name from URL
-  const repoName = extractRepoName(githubUrl);
-  if (!repoName) {
+  const parsedUrl = parseGitHubPluginUrl(githubUrl);
+  if (!parsedUrl) {
     return { success: false, error: "Invalid GitHub URL. Expected format: https://github.com/user/repo" };
   }
+  const repoName = parsedUrl.repo;
 
   const pluginDir = join(pluginsDir, repoName);
+  const resolvedPluginsDir = resolve(pluginsDir);
+  const resolvedPluginDir = resolve(pluginDir);
+  if (!resolvedPluginDir.startsWith(resolvedPluginsDir + sep)) {
+    return { success: false, error: "Invalid GitHub URL: resolved plugin path escapes plugins directory." };
+  }
 
   // Check if already installed
   const existing = await loadPluginsRegistry();
-  if (existing.some((p) => p.name === repoName || p.source === githubUrl)) {
+  if (existing.some((p) => p.installDir === repoName || p.source === githubUrl)) {
     return { success: false, error: `Plugin "${repoName}" is already installed.` };
   }
 
@@ -159,6 +165,11 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     return { success: false, error: "plugin.json is missing required fields (name, version, type)." };
   }
 
+  if (existing.some((p) => p.name === manifest.name)) {
+    removeDir(pluginDir);
+    return { success: false, error: `Plugin "${manifest.name}" is already installed.` };
+  }
+
   // Register the plugin
   const plugin: InstalledPlugin = {
     name: manifest.name,
@@ -166,6 +177,7 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     type: manifest.type,
     description: manifest.description || "",
     source: githubUrl,
+    installDir: repoName,
     installedAt: new Date().toISOString(),
   };
 
@@ -187,10 +199,15 @@ export async function removePlugin(name: string): Promise<{ success: boolean; er
   }
 
   // Remove the plugin directory
-  const pluginDir = join(getPluginsDir(), name);
+  const pluginDirName = plugins[index].installDir || name;
+  const pluginDir = join(getPluginsDir(), pluginDirName);
+  const resolvedPluginsDir = resolve(getPluginsDir());
+  const resolvedPluginDir = resolve(pluginDir);
   if (existsSync(pluginDir)) {
     try {
-      removeDir(pluginDir);
+      if (resolvedPluginDir.startsWith(resolvedPluginsDir + sep)) {
+        removeDir(pluginDir);
+      }
     } catch {
       // Non-fatal — registry will still be updated
     }
@@ -205,10 +222,29 @@ export async function removePlugin(name: string): Promise<{ success: boolean; er
 // ─── Helpers ─────────────────────────────────────────────────
 
 /**
- * Extract the repository name from a GitHub URL.
+ * Parse and validate a GitHub plugin URL.
  */
-function extractRepoName(url: string): string | null {
-  // Handle: https://github.com/user/repo or https://github.com/user/repo.git
-  const match = url.match(/github\.com\/[\w.-]+\/([\w.-]+?)(?:\.git)?$/);
-  return match ? match[1] : null;
+export function parseGitHubPluginUrl(url: string): { owner: string; repo: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== "https:" || parsed.hostname !== "github.com") {
+    return null;
+  }
+
+  const parts = parsed.pathname.replace(/^\/+|\/+$/g, "").split("/");
+  if (parts.length !== 2) return null;
+
+  const [owner, rawRepo] = parts;
+  const repo = rawRepo.endsWith(".git") ? rawRepo.slice(0, -4) : rawRepo;
+  const validName = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+
+  if (!validName.test(owner) || !validName.test(repo)) return null;
+  if ([".", ".."].includes(owner) || [".", ".."].includes(repo)) return null;
+
+  return { owner, repo };
 }

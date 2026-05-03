@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { TokenTracker } from "../lib/tokens.js";
+import { TokenTracker, detectOpenCodeDB } from "../lib/tokens.js";
 import { analyzeCostOptimizations } from "../lib/optimizer.js";
 import { listProfiles } from "../lib/profiles.js";
 import { getConfigDir } from "../lib/config.js";
-import { heading, info, success, warn } from "../lib/ui.js";
-import { logCommandStart, logCommandSuccess } from "../lib/logger.js";
-import { EXIT_SUCCESS } from "../types.js";
+import { heading, info, success, warn, error } from "../lib/ui.js";
+import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
+import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 
 export const optimizeCommand = new Command("optimize")
   .description("Analyze usage patterns and suggest cost optimizations")
@@ -14,8 +14,16 @@ export const optimizeCommand = new Command("optimize")
   .action(async (options: { period: string }) => {
     logCommandStart("optimize", { period: options.period });
 
-    const configDir = getConfigDir();
-    const tracker = new TokenTracker(configDir);
+    getConfigDir(); // Keep config directory detection consistent with other commands.
+    const dbPath = detectOpenCodeDB();
+    if (!dbPath) {
+      console.log();
+      error("OpenCode database not found.");
+      info("Make sure OpenCode has been run at least once.");
+      logCommandError("optimize", "Database not found");
+      process.exit(EXIT_ERROR);
+    }
+    const tracker = new TokenTracker(dbPath);
     const profiles = await listProfiles();
 
     let entries;

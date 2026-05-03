@@ -19,6 +19,16 @@ function formatDate(isoDate: string): string {
   return date.toLocaleDateString() + " " + date.toLocaleTimeString();
 }
 
+function validateCategoryOption(category: string | undefined): string | undefined {
+  if (!category) return undefined;
+  const valid = ["project", "preference", "fact", "context"];
+  if (!valid.includes(category)) {
+    error(`Invalid memory category: ${category}. Expected one of: ${valid.join(", ")}`);
+    process.exit(EXIT_ERROR);
+  }
+  return category;
+}
+
 // ─── Subcommands ─────────────────────────────────────────────
 
 const listCommand = new Command("list")
@@ -27,8 +37,9 @@ const listCommand = new Command("list")
   .action((opts: { category?: string }) => {
     logCommandStart("memory list", { category: opts.category });
 
+    const category = validateCategoryOption(opts.category);
     const store = getStore();
-    const entries = store.list(opts.category);
+    const entries = store.list(category);
 
     heading("Stored Memories");
     console.log();
@@ -61,8 +72,9 @@ const setCommand = new Command("set")
   .action((key: string, value: string, opts: { category: string; agent?: string }) => {
     logCommandStart("memory set", { key, category: opts.category });
 
+    const category = validateCategoryOption(opts.category) || "context";
     const store = getStore();
-    store.set(key, value, opts.category, opts.agent);
+    store.set(key, value, category, opts.agent);
 
     success(`Memory stored: ${chalk.bold(key)} = ${value}`);
     logCommandSuccess("memory set", `key=${key}`);

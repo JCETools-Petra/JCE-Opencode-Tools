@@ -6,12 +6,12 @@
 
 [![CI](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.8.8-green)]()
+[![Version](https://img.shields.io/badge/Version-1.8.9-green)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen)]()
 
 **One command. Full setup. Zero hassle.**
 
-Install, configure, and manage your entire AI coding environment — 42 agents, 20 model profiles, 50 advanced skills, 8 MCP tools, 28 LSP servers, and 17 CLI commands.
+Install, configure, and manage your entire AI coding environment — 42 agents, 19 model profiles, 50 advanced skills, 9 MCP tools, 28 LSP servers, and 17 CLI commands.
 
 [Install](#-install) · [Features](#-features) · [CLI](#-cli-commands) · [Tutorial](#-installation-tutorial)
 
@@ -106,7 +106,7 @@ Every agent includes deep system prompts (4000-6000 chars), structured workflows
 
 ---
 
-### 20 Model Profiles
+### 19 Model Profiles
 
 Switch between providers and models instantly.
 
@@ -174,7 +174,7 @@ Skills are detected from context and work with prompts in any language including
 
 ---
 
-### 8 MCP Tools
+### 9 MCP Tools
 
 Pre-configured Model Context Protocol servers that extend AI capabilities beyond text generation.
 

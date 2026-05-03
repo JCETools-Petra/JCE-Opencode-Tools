@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import { existsSync } from "fs";
 import { join } from "path";
-import { cp, mkdir, writeFile, readFile } from "fs/promises";
+import { cp, mkdir, writeFile, readFile, chmod, rename } from "fs/promises";
+import { platform } from "os";
 import chalk from "chalk";
 import { getConfigDir } from "../lib/config.js";
 import { banner, heading, info, success, warn, error } from "../lib/ui.js";
@@ -163,40 +164,60 @@ async function updateLocalCliFolder(): Promise<void> {
     throw new Error("Could not clone repo from GitHub.");
   }
 
-  // Prepare cli directory
-  if (!existsSync(cliDir)) {
-    await mkdir(cliDir, { recursive: true });
-  }
-
-  // Remove old src, schemas, and scripts
-  for (const dir of ["src", "schemas", "scripts"]) {
-    const target = join(cliDir, dir);
-    if (existsSync(target)) {
-      await rm(target, { recursive: true, force: true });
+  const stagingDir = join(configDir, ".cli-update-new");
+  const backupDir = join(configDir, ".cli-update-backup");
+  for (const dir of [stagingDir, backupDir]) {
+    if (existsSync(dir)) {
+      await rm(dir, { recursive: true, force: true });
     }
   }
+  await mkdir(stagingDir, { recursive: true });
 
-  // Copy new files
-  await cp(join(tempDir, "src"), join(cliDir, "src"), { recursive: true });
-  await cp(join(tempDir, "schemas"), join(cliDir, "schemas"), { recursive: true });
+  // Copy new files into staging first. The active CLI is not touched until
+  // dependencies are installed and all required source files are present.
+  await cp(join(tempDir, "src"), join(stagingDir, "src"), { recursive: true });
+  await cp(join(tempDir, "schemas"), join(stagingDir, "schemas"), { recursive: true });
   if (existsSync(join(tempDir, "scripts"))) {
-    await cp(join(tempDir, "scripts"), join(cliDir, "scripts"), { recursive: true });
+    await cp(join(tempDir, "scripts"), join(stagingDir, "scripts"), { recursive: true });
   }
 
   for (const file of ["package.json", "tsconfig.json"]) {
     const src = join(tempDir, file);
     if (existsSync(src)) {
       const content = await readFile(src, "utf-8");
-      await writeTextFile(join(cliDir, file), content);
+      await writeTextFile(join(stagingDir, file), content);
     }
+  }
+
+  if (!existsSync(join(stagingDir, "src", "index.ts"))) {
+    throw new Error("Downloaded CLI source is missing src/index.ts.");
   }
 
   // Install dependencies
   const installProc = Bun.spawn(
     ["bun", "install"],
-    { stdout: "pipe", stderr: "pipe", cwd: cliDir }
+    { stdout: "pipe", stderr: "pipe", cwd: stagingDir }
   );
-  await installProc.exited;
+  const installExit = await installProc.exited;
+  if (installExit !== 0) {
+    const stderr = await new Response(installProc.stderr).text();
+    throw new Error(`bun install failed while updating CLI dependencies.${stderr ? ` ${stderr}` : ""}`);
+  }
+
+  try {
+    if (existsSync(cliDir)) {
+      await rename(cliDir, backupDir);
+    }
+    await rename(stagingDir, cliDir);
+    if (existsSync(backupDir)) {
+      await rm(backupDir, { recursive: true, force: true });
+    }
+  } catch (err) {
+    if (!existsSync(cliDir) && existsSync(backupDir)) {
+      await rename(backupDir, cliDir);
+    }
+    throw err;
+  }
 
   // Cleanup temp
   await rm(tempDir, { recursive: true, force: true });
@@ -209,7 +230,7 @@ async function updateLocalCliFolder(): Promise<void> {
  * take precedence on Windows. The .exe is created by `bun install -g` but
  * points to stale code in bun's global cache instead of our local cli/ folder.
  */
-async function ensureCliShim(): Promise<void> {
+export async function ensureCliShim(): Promise<void> {
   const configDir = getConfigDir();
   const cliDir = join(configDir, "cli");
   const bunBinDir = join(process.env.USERPROFILE || process.env.HOME || "", ".bun", "bin");
@@ -218,19 +239,29 @@ async function ensureCliShim(): Promise<void> {
     await mkdir(bunBinDir, { recursive: true });
   }
 
-  // Remove .exe and other bun artifacts that take precedence over .cmd
   const { rm } = await import("fs/promises");
-  for (const file of ["opencode-jce", "opencode-jce.exe", "opencode-jce.bunx"]) {
+  const isWindows = platform() === "win32";
+  const staleFiles = isWindows
+    ? ["opencode-jce", "opencode-jce.exe", "opencode-jce.bunx"]
+    : ["opencode-jce.cmd", "opencode-jce.exe", "opencode-jce.bunx"];
+
+  for (const file of staleFiles) {
     const filePath = join(bunBinDir, file);
     if (existsSync(filePath)) {
       await rm(filePath, { force: true });
     }
   }
 
-  // Write/overwrite the .cmd shim to point to our local cli folder
-  const cmdPath = join(bunBinDir, "opencode-jce.cmd");
-  const cmdContent = `@echo off\r\nbun run "${join(cliDir, "src", "index.ts")}" %*`;
-  await writeFile(cmdPath, cmdContent, "ascii");
+  if (isWindows) {
+    const cmdPath = join(bunBinDir, "opencode-jce.cmd");
+    const cmdContent = `@echo off\r\nbun run "${join(cliDir, "src", "index.ts")}" %*`;
+    await writeFile(cmdPath, cmdContent, "ascii");
+  } else {
+    const shimPath = join(bunBinDir, "opencode-jce");
+    const shimContent = `#!/usr/bin/env sh\nexec bun run "${join(cliDir, "src", "index.ts")}" "$@"\n`;
+    await writeFile(shimPath, shimContent, "utf-8");
+    await chmod(shimPath, 0o755);
+  }
 
   info("CLI shim updated.");
 }
@@ -457,11 +488,31 @@ async function handleFallback(configDir: string): Promise<boolean> {
  */
 async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
   const localPath = join(configDir, "opencode.json");
-  if (existsSync(localPath)) return false;
+  const { buildDefaultMcpConfig, buildDefaultOpenCodeJson } = await import("../lib/opencode-json-template.js");
+  if (!existsSync(localPath)) {
+    await writeJson(localPath, buildDefaultOpenCodeJson(configDir));
+    return true;
+  }
 
-  const { buildDefaultOpenCodeJson } = await import("../lib/opencode-json-template.js");
-  await writeJson(localPath, buildDefaultOpenCodeJson(configDir));
-  return true;
+  const existing = await readLocalJson<Record<string, any>>(localPath);
+  if (!existing) return false;
+
+  if (!existing.mcp || typeof existing.mcp !== "object") {
+    existing.mcp = {};
+  }
+
+  let changed = false;
+  for (const [key, value] of Object.entries(buildDefaultMcpConfig(configDir))) {
+    if (!(key in existing.mcp)) {
+      existing.mcp[key] = value;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await writeJson(localPath, existing);
+  }
+  return changed;
 }
 
 // ─── Main Merge Orchestrator ─────────────────────────────────
@@ -612,6 +663,11 @@ export const updateCommand = new Command("update")
 
     if (comparison > 0) {
       info(`${chalk.yellow("Update available:")} ${localVersion} → ${latestVersion}`);
+    } else if (comparison < 0) {
+      warn(`Local version (${localVersion}) is newer than remote (${latestVersion}).`);
+      if (!options.force) {
+        info("Skipping self-update to avoid downgrading. Use --force only if you intentionally want to sync remote main.");
+      }
     } else {
       info("Version is current. Syncing latest files...");
     }
@@ -620,6 +676,8 @@ export const updateCommand = new Command("update")
     if (options.check) {
       if (comparison > 0) {
         info("Run `opencode-jce update` to apply the update.");
+      } else if (comparison < 0) {
+        info("No update applied because local version is newer than remote.");
       } else {
         info("Run `opencode-jce update` to sync latest files.");
       }
@@ -627,10 +685,19 @@ export const updateCommand = new Command("update")
       process.exit(EXIT_SUCCESS);
     }
 
+    if (comparison < 0 && !options.force) {
+      logCommandSuccess("update", `skipped downgrade, local=${localVersion}, remote=${latestVersion}`);
+      process.exit(EXIT_SUCCESS);
+    }
+
     // Step 1: Self-update CLI
     console.log();
     heading("Step 1: Update CLI");
-    await selfUpdateCli(latestVersion);
+    const cliUpdated = await selfUpdateCli(latestVersion);
+    if (!cliUpdated) {
+      logCommandError("update", "CLI self-update failed");
+      process.exit(EXIT_ERROR);
+    }
 
     // Step 2: Merge config files
     console.log();

@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.8.8"
+$Version = "1.8.9"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -434,8 +434,12 @@ function Deploy-Config {
         $prevErrorAction2 = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         bun install 2>$null
+        $bunInstallExit = $LASTEXITCODE
         $ErrorActionPreference = $prevErrorAction2
         Pop-Location
+        if ($bunInstallExit -ne 0) {
+            throw "bun install failed while preparing opencode-jce CLI dependencies"
+        }
 
         # Create .cmd wrapper in bun bin directory
         $bunPath = Join-Path $env:USERPROFILE ".bun\bin"
@@ -447,15 +451,33 @@ function Deploy-Config {
         Remove-Item (Join-Path $bunPath "opencode-jce.exe") -Force -ErrorAction SilentlyContinue
 
         $installDir = Join-Path $ConfigDir "cli"
+        $stagingDir = Join-Path $ConfigDir ".cli-install-new"
+        $backupDir = Join-Path $ConfigDir ".cli-install-backup"
         
-        # Copy CLI source to persistent location
-        if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
-        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-        Copy-Item (Join-Path $TempDir "src") (Join-Path $installDir "src") -Recurse
-        Copy-Item (Join-Path $TempDir "schemas") (Join-Path $installDir "schemas") -Recurse
-        Copy-Item (Join-Path $TempDir "package.json") $installDir
-        Copy-Item (Join-Path $TempDir "tsconfig.json") $installDir
-        Copy-Item (Join-Path $TempDir "node_modules") (Join-Path $installDir "node_modules") -Recurse
+        # Copy CLI source to staging first; only swap after verification succeeds.
+        Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+        Copy-Item (Join-Path $TempDir "src") (Join-Path $stagingDir "src") -Recurse
+        Copy-Item (Join-Path $TempDir "schemas") (Join-Path $stagingDir "schemas") -Recurse
+        $scriptsDir = Join-Path $TempDir "scripts"
+        if (Test-Path $scriptsDir) { Copy-Item $scriptsDir (Join-Path $stagingDir "scripts") -Recurse }
+        Copy-Item (Join-Path $TempDir "package.json") $stagingDir
+        Copy-Item (Join-Path $TempDir "tsconfig.json") $stagingDir
+        Copy-Item (Join-Path $TempDir "node_modules") (Join-Path $stagingDir "node_modules") -Recurse
+        if (-not (Test-Path (Join-Path $stagingDir "src\index.ts"))) {
+            throw "Downloaded CLI source is missing src/index.ts"
+        }
+        if (Test-Path $installDir) { Rename-Item $installDir $backupDir -Force }
+        try {
+            Rename-Item $stagingDir $installDir -Force
+            Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {
+            if ((-not (Test-Path $installDir)) -and (Test-Path $backupDir)) {
+                Rename-Item $backupDir $installDir -Force
+            }
+            throw "Could not install CLI source; previous CLI restored. $($_.Exception.Message)"
+        }
 
         # Create .cmd wrapper
         $cmdContent = "@echo off`r`nbun run `"$installDir\src\index.ts`" %*"
@@ -618,53 +640,52 @@ function Register-ContextKeeper {
     # Normalize path for JSON (forward slashes)
     $normalizedPath = $contextKeeperPath -replace "\\", "/"
 
-    if (-not (Test-Path $opencodeJson)) {
-        Write-Info "opencode.json not found. Creating with default MCP servers..."
-        $defaultConfig = [PSCustomObject]@{
-            '$schema' = "https://opencode.ai/config.json"
-            plugin = @("superpowers@git+https://github.com/obra/superpowers.git")
-            mcp = [PSCustomObject]@{
-                "context7" = [PSCustomObject]@{ type = "remote"; url = "https://mcp.context7.com/mcp"; enabled = $true }
-                "sequential-thinking" = [PSCustomObject]@{ type = "local"; command = @("mcp-server-sequential-thinking"); enabled = $true }
-                "playwright" = [PSCustomObject]@{ type = "local"; command = @("playwright-mcp"); enabled = $true }
-                "github-search" = [PSCustomObject]@{ type = "local"; command = @("mcp-server-github"); env = [PSCustomObject]@{ GITHUB_PERSONAL_ACCESS_TOKEN = '${GITHUB_TOKEN}' }; enabled = $true }
-                "memory" = [PSCustomObject]@{ type = "local"; command = @("mcp-server-memory"); enabled = $true }
-                "context-keeper" = [PSCustomObject]@{ type = "local"; command = @("bun", "run", $normalizedPath); enabled = $true }
-            }
-            lsp = [PSCustomObject]@{}
-        }
-        $jsonOut = $defaultConfig | ConvertTo-Json -Depth 10
-        [System.IO.File]::WriteAllText($opencodeJson, $jsonOut, [System.Text.UTF8Encoding]::new($false))
-        Write-Ok "opencode.json created with MCP servers pre-configured"
-        return
-    }
-
     try {
-        $config = Get-Content $opencodeJson -Raw | ConvertFrom-Json
+        if (Test-Path $opencodeJson) {
+            $config = Get-Content $opencodeJson -Raw | ConvertFrom-Json
+        } else {
+            Write-Info "opencode.json not found. Creating with default MCP servers..."
+            $config = [PSCustomObject]@{
+                '$schema' = "https://opencode.ai/config.json"
+                plugin = @("superpowers@git+https://github.com/obra/superpowers.git")
+                mcp = [PSCustomObject]@{}
+                lsp = [PSCustomObject]@{}
+            }
+        }
 
         # Ensure mcp section exists
         if (-not $config.mcp) {
             $config | Add-Member -NotePropertyName "mcp" -NotePropertyValue ([PSCustomObject]@{})
         }
 
-        # Check if context-keeper already registered
-        if ($config.mcp.PSObject.Properties["context-keeper"]) {
-            Write-Skip "context-keeper already registered in opencode.json"
-            return
+        $defaults = [ordered]@{
+            "context-keeper" = [PSCustomObject]@{ type = "local"; command = @("bun", "run", $normalizedPath); env = [PSCustomObject]@{ PROJECT_ROOT = '${PROJECT_ROOT}' }; enabled = $true }
+            "context7" = [PSCustomObject]@{ type = "remote"; url = "https://mcp.context7.com/mcp"; enabled = $true }
+            "github-search" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-github"); env = [PSCustomObject]@{ GITHUB_PERSONAL_ACCESS_TOKEN = '${GITHUB_TOKEN}' }; enabled = $true }
+            "web-fetch" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-fetch"); enabled = $true }
+            "filesystem" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-filesystem", "./"); enabled = $true }
+            "memory" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-memory"); enabled = $true }
+            "playwright" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@playwright/mcp@0.0.28"); enabled = $true }
+            "sequential-thinking" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-sequential-thinking"); enabled = $true }
+            "postgres" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-postgres"); env = [PSCustomObject]@{ POSTGRES_CONNECTION_STRING = '${DATABASE_URL}' }; enabled = $true }
         }
 
-        # Add context-keeper entry
-        $contextKeeperEntry = [PSCustomObject]@{
-            type = "local"
-            command = @("bun", "run", $normalizedPath)
-            enabled = $true
+        $added = 0
+        foreach ($entry in $defaults.GetEnumerator()) {
+            if (-not $config.mcp.PSObject.Properties[$entry.Key]) {
+                $config.mcp | Add-Member -NotePropertyName $entry.Key -NotePropertyValue $entry.Value
+                $added++
+            }
         }
-        $config.mcp | Add-Member -NotePropertyName "context-keeper" -NotePropertyValue $contextKeeperEntry
 
         # Write back
         $jsonOut = $config | ConvertTo-Json -Depth 10
         [System.IO.File]::WriteAllText($opencodeJson, $jsonOut, [System.Text.UTF8Encoding]::new($false))
-        Write-Ok "context-keeper registered in opencode.json"
+        if ($added -gt 0) {
+            Write-Ok "opencode.json MCP defaults registered ($added added)"
+        } else {
+            Write-Skip "opencode.json MCP defaults already present"
+        }
     } catch {
         Write-Warn "Failed to register context-keeper: $($_.Exception.Message)"
         Write-Info "Add manually to opencode.json: mcp.context-keeper = {type:'local', command:['bun','run','$normalizedPath'], enabled:true}"

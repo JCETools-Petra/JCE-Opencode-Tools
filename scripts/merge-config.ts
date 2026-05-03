@@ -19,7 +19,8 @@ import {
   renameSync,
 } from "fs";
 import { join, basename } from "path";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { buildDefaultMcpConfig } from "../src/lib/opencode-json-template.js";
 
 /** Write JSON atomically: write to .tmp then rename */
 function writeJsonAtomic(filePath: string, data: unknown): void {
@@ -281,9 +282,11 @@ function copyIfMissing(filename: string) {
 
 // --- Check if a command exists in PATH ---
 function commandExists(cmd: string): boolean {
+  if (!/^[\w@./+:-]+$/.test(cmd)) return false;
+
   try {
     const checkCmd = process.platform === "win32" ? "where" : "which";
-    execSync(`${checkCmd} ${cmd}`, { stdio: "pipe" });
+    execFileSync(checkCmd, [cmd], { stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -378,7 +381,23 @@ function ensureOpenCodeJson() {
   const targetFile = join(targetDir, "opencode.json");
 
   if (existsSync(targetFile)) {
-    console.log(`  [=] opencode.json exists, skipped`);
+    const config = JSON.parse(readFileSync(targetFile, "utf8"));
+    if (!config.mcp || typeof config.mcp !== "object") config.mcp = {};
+
+    let added = 0;
+    for (const [key, value] of Object.entries(buildDefaultMcpConfig(targetDir))) {
+      if (!(key in config.mcp)) {
+        config.mcp[key] = value;
+        added++;
+      }
+    }
+
+    if (added > 0) {
+      writeJsonAtomic(targetFile, config);
+      console.log(`  [+] opencode.json: ${added} MCP server(s) merged`);
+    } else {
+      console.log(`  [=] opencode.json exists, all MCP defaults present`);
+    }
     return;
   }
 
@@ -395,41 +414,7 @@ function ensureOpenCodeJson() {
     plugin: [
       "superpowers@git+https://github.com/obra/superpowers.git",
     ],
-    mcp: {
-      "context7": {
-        type: "remote",
-        url: "https://mcp.context7.com/mcp",
-        enabled: true,
-      },
-      "sequential-thinking": {
-        type: "local",
-        command: ["mcp-server-sequential-thinking"],
-        enabled: true,
-      },
-      "playwright": {
-        type: "local",
-        command: ["playwright-mcp"],
-        enabled: true,
-      },
-      "github-search": {
-        type: "local",
-        command: ["mcp-server-github"],
-        env: {
-          GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}",
-        },
-        enabled: true,
-      },
-      "memory": {
-        type: "local",
-        command: ["mcp-server-memory"],
-        enabled: true,
-      },
-      "context-keeper": {
-        type: "local",
-        command: ["bun", "run", contextKeeperPath],
-        enabled: true,
-      },
-    },
+    mcp: buildDefaultMcpConfig(targetDir),
     lsp: detectedLsp,
   });
 

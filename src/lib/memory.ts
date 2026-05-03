@@ -221,6 +221,6 @@ export class MemoryStore {
     if (valid.includes(category)) {
       return category as "project" | "preference" | "fact" | "context";
     }
-    return "context"; // Default fallback
+    throw new Error(`Invalid memory category: ${category}. Expected one of: ${valid.join(", ")}`);
   }
 }

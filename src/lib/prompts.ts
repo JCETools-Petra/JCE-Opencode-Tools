@@ -1,4 +1,4 @@
-import { join, basename, resolve } from "path";
+import { join, basename, resolve, relative, isAbsolute } from "path";
 import { existsSync, readdirSync } from "fs";
 import { readFile } from "fs/promises";
 import { getConfigDir } from "./config.js";
@@ -32,11 +32,16 @@ export function listPromptTemplates(): string[] {
  */
 export async function loadPromptTemplate(name: string): Promise<string | null> {
   const promptsDir = getPromptsDir();
+  if (!/^[\w-]+$/.test(name)) {
+    throw new Error(`Invalid template name: only letters, numbers, underscores, and hyphens are allowed`);
+  }
+
   const promptPath = join(promptsDir, `${name}.txt`);
 
   const resolvedPath = resolve(promptPath);
   const resolvedDir = resolve(promptsDir);
-  if (!resolvedPath.startsWith(resolvedDir)) {
+  const rel = relative(resolvedDir, resolvedPath);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Invalid template name: path traversal detected`);
   }
 

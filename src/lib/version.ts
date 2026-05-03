@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.8.8";
+export const CURRENT_CONFIG_VERSION = "1.8.9";
 
 /**
  * Get the path to the version.json file.
@@ -153,14 +153,53 @@ const migrations: Migration[] = [
  * Returns -1 if a < b, 0 if a == b, 1 if a > b.
  */
 export function compareVersions(a: string, b: string): number {
-  const partsA = a.split(".").map(Number);
-  const partsB = b.split(".").map(Number);
+  const parse = (version: string) => {
+    const withoutBuild = version.split("+")[0];
+    const [core, prerelease] = withoutBuild.split("-", 2);
+    const parts = core.split(".").map((part) => {
+      const parsed = Number(part);
+      return Number.isFinite(parsed) ? parsed : 0;
+    });
+    return { parts, prerelease };
+  };
+
+  const parsedA = parse(a);
+  const parsedB = parse(b);
 
   for (let i = 0; i < 3; i++) {
-    const numA = partsA[i] || 0;
-    const numB = partsB[i] || 0;
+    const numA = parsedA.parts[i] || 0;
+    const numB = parsedB.parts[i] || 0;
     if (numA < numB) return -1;
     if (numA > numB) return 1;
+  }
+
+  if (parsedA.prerelease && !parsedB.prerelease) return -1;
+  if (!parsedA.prerelease && parsedB.prerelease) return 1;
+  if (parsedA.prerelease && parsedB.prerelease) {
+    const idsA = parsedA.prerelease.split(".");
+    const idsB = parsedB.prerelease.split(".");
+    const len = Math.max(idsA.length, idsB.length);
+
+    for (let i = 0; i < len; i++) {
+      const idA = idsA[i];
+      const idB = idsB[i];
+      if (idA === undefined) return -1;
+      if (idB === undefined) return 1;
+      if (idA === idB) continue;
+
+      const numA = /^[0-9]+$/.test(idA) ? Number(idA) : null;
+      const numB = /^[0-9]+$/.test(idB) ? Number(idB) : null;
+
+      if (numA !== null && numB !== null) {
+        if (numA < numB) return -1;
+        if (numA > numB) return 1;
+        continue;
+      }
+      if (numA !== null) return -1;
+      if (numB !== null) return 1;
+      const lexical = idA.localeCompare(idB);
+      if (lexical !== 0) return lexical < 0 ? -1 : 1;
+    }
   }
 
   return 0;

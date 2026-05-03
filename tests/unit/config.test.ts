@@ -191,7 +191,7 @@ describe("config/profiles/", () => {
     "speed",
   ];
 
-  test("all 20 profile files exist", () => {
+  test("all 19 profile files exist", () => {
     for (const name of expectedProfiles) {
       const filePath = join(profileDir, `${name}.json`);
       expect(existsSync(filePath)).toBe(true);
@@ -222,7 +222,7 @@ describe("config/profiles/", () => {
     }
   });
 
-  test("exactly 20 profile files in directory", () => {
+  test("exactly 19 profile files in directory", () => {
     const files = readdirSync(profileDir).filter((f) => f.endsWith(".json"));
     expect(files).toHaveLength(19);
   });

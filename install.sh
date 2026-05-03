@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.8.8"
+VERSION="1.8.9"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -327,28 +327,51 @@ deploy_config() {
 
     # Install opencode-jce CLI globally
     info "Installing opencode-jce CLI..."
-    (cd "$TEMP_DIR" && bun install) 2>/dev/null
+    if ! (cd "$TEMP_DIR" && bun install) 2>/dev/null; then
+        error "bun install failed while preparing opencode-jce CLI dependencies"
+    fi
 
     # Copy CLI source to persistent location (same as PS1 installer)
     local install_dir="${CONFIG_DIR}/cli"
-    rm -rf "$install_dir"
-    mkdir -p "$install_dir"
-    cp -r "$TEMP_DIR/src" "$install_dir/src"
-    cp -r "$TEMP_DIR/schemas" "$install_dir/schemas"
-    cp "$TEMP_DIR/package.json" "$install_dir/"
-    cp "$TEMP_DIR/tsconfig.json" "$install_dir/"
-    cp -r "$TEMP_DIR/node_modules" "$install_dir/node_modules"
+    local staging_dir="${CONFIG_DIR}/.cli-install-new"
+    local backup_dir="${CONFIG_DIR}/.cli-install-backup"
+    rm -rf "$staging_dir" "$backup_dir"
+    mkdir -p "$staging_dir"
+    cp -r "$TEMP_DIR/src" "$staging_dir/src"
+    cp -r "$TEMP_DIR/schemas" "$staging_dir/schemas"
+    [ -d "$TEMP_DIR/scripts" ] && cp -r "$TEMP_DIR/scripts" "$staging_dir/scripts"
+    cp "$TEMP_DIR/package.json" "$staging_dir/"
+    cp "$TEMP_DIR/tsconfig.json" "$staging_dir/"
+    cp -r "$TEMP_DIR/node_modules" "$staging_dir/node_modules"
+    if [ ! -f "$staging_dir/src/index.ts" ]; then
+        rm -rf "$staging_dir"
+        error "Downloaded CLI source is missing src/index.ts"
+    fi
+    if [ -d "$install_dir" ]; then
+        mv "$install_dir" "$backup_dir"
+    fi
+    if mv "$staging_dir" "$install_dir"; then
+        rm -rf "$backup_dir"
+    else
+        [ -d "$backup_dir" ] && mv "$backup_dir" "$install_dir"
+        error "Could not install CLI source; previous CLI restored"
+    fi
     success "CLI source copied to: $install_dir"
 
-    # Install globally via bun
-    if (cd "$TEMP_DIR" && bun install -g .) 2>/dev/null; then
-        if command -v opencode-jce &>/dev/null; then
-            success "opencode-jce CLI installed globally"
-        else
-            warn "opencode-jce installed. Restart your terminal to use it."
-        fi
+    # Install a stable shim that points to the persistent CLI folder.
+    local bun_bin="${HOME}/.bun/bin"
+    mkdir -p "$bun_bin"
+    rm -f "$bun_bin/opencode-jce.cmd" "$bun_bin/opencode-jce.exe" "$bun_bin/opencode-jce.bunx"
+    cat > "$bun_bin/opencode-jce" <<EOF
+#!/usr/bin/env sh
+exec bun run "$install_dir/src/index.ts" "\$@"
+EOF
+    chmod 755 "$bun_bin/opencode-jce"
+
+    if command -v opencode-jce &>/dev/null; then
+        success "opencode-jce CLI installed globally"
     else
-        warn "opencode-jce CLI global install failed. You can use: bun run $install_dir/src/index.ts"
+        warn "opencode-jce installed. Add $bun_bin to PATH or restart your terminal."
     fi
 
     # Cleanup
@@ -369,56 +392,34 @@ register_context_keeper() {
         return
     fi
 
-    if [ ! -f "$opencode_json" ]; then
-        info "opencode.json not found. Creating with default MCP servers..."
-        bun -e "
-const fs = require('fs');
-const path = require('path');
-const contextKeeperPath = path.join('${cli_dir}', 'src', 'mcp', 'context-keeper.ts').replace(/\\\\/g, '/');
-const config = {
-    '\$schema': 'https://opencode.ai/config.json',
-    plugin: ['superpowers@git+https://github.com/obra/superpowers.git'],
-    mcp: {
-        'context7': { type: 'remote', url: 'https://mcp.context7.com/mcp', enabled: true },
-        'sequential-thinking': { type: 'local', command: ['mcp-server-sequential-thinking'], enabled: true },
-        'playwright': { type: 'local', command: ['playwright-mcp'], enabled: true },
-        'github-search': { type: 'local', command: ['mcp-server-github'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: '\${GITHUB_TOKEN}' }, enabled: true },
-        'memory': { type: 'local', command: ['mcp-server-memory'], enabled: true },
-        'context-keeper': { type: 'local', command: ['bun', 'run', contextKeeperPath], enabled: true }
-    },
-    lsp: {}
+    OPENCODE_JSON="$opencode_json" CLI_DIR="$cli_dir" bun -e '
+const fs = require("fs");
+const path = require("path");
+const opencodeJson = process.env.OPENCODE_JSON;
+const cliDir = process.env.CLI_DIR;
+const contextKeeperPath = path.join(cliDir, "src", "mcp", "context-keeper.ts").replace(/\\/g, "/");
+const defaults = {
+  "context-keeper": { type: "local", command: ["bun", "run", contextKeeperPath], env: { PROJECT_ROOT: "${PROJECT_ROOT}" }, enabled: true },
+  "context7": { type: "remote", url: "https://mcp.context7.com/mcp", enabled: true },
+  "github-search": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-github"], env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}" }, enabled: true },
+  "web-fetch": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-fetch"], enabled: true },
+  "filesystem": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"], enabled: true },
+  "memory": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-memory"], enabled: true },
+  "playwright": { type: "local", command: ["npx", "-y", "@playwright/mcp@0.0.28"], enabled: true },
+  "sequential-thinking": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], enabled: true },
+  "postgres": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-postgres"], env: { POSTGRES_CONNECTION_STRING: "${DATABASE_URL}" }, enabled: true }
 };
-fs.writeFileSync('${opencode_json}', JSON.stringify(config, null, 2) + '\\n');
-console.log('CREATED');
-" 2>/dev/null && success "opencode.json created with MCP servers pre-configured" \
-            || warn "Could not create opencode.json. Run 'opencode-jce doctor --fix' after install."
-        return
-    fi
-
-    # Check if already registered
-    if grep -q '"context-keeper"' "$opencode_json" 2>/dev/null; then
-        skip "context-keeper already registered in opencode.json"
-        return
-    fi
-
-    # Use bun/node to safely merge JSON
-    bun -e "
-const fs = require('fs');
-const config = JSON.parse(fs.readFileSync('${opencode_json}', 'utf8'));
-if (!config.mcp) config.mcp = {};
-if (!config.mcp['context-keeper']) {
-    config.mcp['context-keeper'] = {
-        type: 'local',
-        command: ['bun', 'run', '${context_keeper_path}'],
-        enabled: true
-    };
-    fs.writeFileSync('${opencode_json}', JSON.stringify(config, null, 2) + '\\n');
-    console.log('REGISTERED');
-} else {
-    console.log('ALREADY_EXISTS');
+let config = { "$schema": "https://opencode.ai/config.json", plugin: ["superpowers@git+https://github.com/obra/superpowers.git"], mcp: {}, lsp: {} };
+if (fs.existsSync(opencodeJson)) config = JSON.parse(fs.readFileSync(opencodeJson, "utf8"));
+if (!config.mcp || typeof config.mcp !== "object") config.mcp = {};
+let added = 0;
+for (const [key, value] of Object.entries(defaults)) {
+  if (!(key in config.mcp)) { config.mcp[key] = value; added++; }
 }
-" 2>/dev/null && success "context-keeper registered in opencode.json" \
-    || warn "Failed to register context-keeper. Add manually to opencode.json."
+fs.writeFileSync(opencodeJson, JSON.stringify(config, null, 2) + "\n");
+console.log(added);
+' 2>/dev/null && success "opencode.json MCP defaults registered" \
+    || warn "Failed to register MCP defaults. Run 'opencode-jce doctor --fix' after install."
 }
 
 # API keys are managed by OpenCode CLI directly - no setup needed here
@@ -679,19 +680,20 @@ merge_lsp_to_opencode_config() {
     # Detect which LSP commands are actually installed
     # Use bun to reliably parse JSON and check installed commands
     local installed_json
-    installed_json=$(bun -e "
-const fs = require('fs');
-const { execSync } = require('child_process');
-const lsp = JSON.parse(fs.readFileSync('$lsp_json', 'utf8'));
+    installed_json=$(LSP_JSON_PATH="$lsp_json" bun -e '
+const fs = require("fs");
+const { execFileSync } = require("child_process");
+const lsp = JSON.parse(fs.readFileSync(process.env.LSP_JSON_PATH, "utf8"));
 const installed = [];
 for (const [key, entry] of Object.entries(lsp.lsp || {})) {
     try {
-        execSync('command -v ' + entry.command, { stdio: 'ignore' });
+        if (!/^[\\w@./+:-]+$/.test(entry.command)) continue;
+        execFileSync("which", [entry.command], { stdio: "ignore" });
         installed.push(key);
     } catch {}
 }
-console.log(installed.join(' '));
-" 2>/dev/null || true)
+console.log(installed.join(" "));
+' 2>/dev/null || true)
 
     if [ -z "$installed_json" ]; then
         info "Could not detect installed LSP servers. Nothing to merge."

@@ -14,6 +14,7 @@ mkdir -p "$BUNDLE_DIR"
 cp -r config/ "$BUNDLE_DIR/"
 cp -r src/ "$BUNDLE_DIR/"
 cp -r schemas/ "$BUNDLE_DIR/"
+cp -r scripts/ "$BUNDLE_DIR/"
 cp package.json bun.lock tsconfig.json "$BUNDLE_DIR/"
 cp install.sh install.ps1 "$BUNDLE_DIR/"
 
@@ -34,12 +35,27 @@ cp config/mcp.json "$CONFIG_DIR/"
 cp config/lsp.json "$CONFIG_DIR/"
 cp config/profiles/*.json "$CONFIG_DIR/profiles/"
 
-# Install CLI globally (requires bun)
+# Install CLI through a stable shim that points at the persistent config copy.
 if command -v bun &>/dev/null; then
-    bun install -g .
+    INSTALL_DIR="$CONFIG_DIR/cli"
+    STAGING_DIR="$CONFIG_DIR/.cli-install-new"
+    BACKUP_DIR="$CONFIG_DIR/.cli-install-backup"
+    rm -rf "$STAGING_DIR" "$BACKUP_DIR"
+    mkdir -p "$STAGING_DIR"
+    cp -r src schemas scripts package.json tsconfig.json node_modules "$STAGING_DIR/"
+    if [ -d "$INSTALL_DIR" ]; then mv "$INSTALL_DIR" "$BACKUP_DIR"; fi
+    mv "$STAGING_DIR" "$INSTALL_DIR"
+    rm -rf "$BACKUP_DIR"
+    BUN_BIN="$HOME/.bun/bin"
+    mkdir -p "$BUN_BIN"
+    cat > "$BUN_BIN/opencode-jce" <<EOF
+#!/usr/bin/env sh
+exec bun run "$INSTALL_DIR/src/index.ts" "\$@"
+EOF
+    chmod 755 "$BUN_BIN/opencode-jce"
     echo "✅ OpenCode JCE installed!"
 else
-    echo "⚠️  Bun not found. Install Bun first, then run: bun install -g ."
+    echo "⚠️  Bun not found. Install Bun first, then rerun ./install-offline.sh"
 fi
 INSTALLER
 chmod +x "$BUNDLE_DIR/install-offline.sh"

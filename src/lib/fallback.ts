@@ -23,6 +23,61 @@ export interface ProviderHealthResult {
   reason?: string;
 }
 
+const TRUSTED_PROVIDER_ENDPOINTS: Record<string, string[]> = {
+  anthropic: ["https://api.anthropic.com/v1/messages"],
+  openai: ["https://api.openai.com/v1/models"],
+  ollama: ["http://localhost:11434/api/tags", "http://127.0.0.1:11434/api/tags"],
+};
+
+function isLocalEndpoint(url: URL): boolean {
+  return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+}
+
+function validateFallbackConfig(config: FallbackConfig): FallbackConfig {
+  if (!Array.isArray(config.providers)) {
+    throw new Error("Invalid fallback config: providers must be an array");
+  }
+  if (!Number.isFinite(config.maxRetries) || config.maxRetries < 0) {
+    throw new Error("Invalid fallback config: maxRetries must be a non-negative number");
+  }
+  if (!Number.isFinite(config.timeoutMs) || config.timeoutMs <= 0) {
+    throw new Error("Invalid fallback config: timeoutMs must be a positive number");
+  }
+
+  for (const provider of config.providers) {
+    if (!provider.name || !provider.apiKeyEnv || !provider.healthEndpoint) {
+      throw new Error("Invalid fallback config: provider is missing required fields");
+    }
+
+    let endpoint: URL;
+    try {
+      endpoint = new URL(provider.healthEndpoint);
+    } catch {
+      throw new Error(`Invalid fallback healthEndpoint for ${provider.name}`);
+    }
+
+    const trustedEndpoints = TRUSTED_PROVIDER_ENDPOINTS[provider.name];
+    const isTrusted = trustedEndpoints?.includes(provider.healthEndpoint) ?? false;
+    const isTrustedLocal = provider.name === "ollama" && isLocalEndpoint(endpoint);
+    if (!isTrusted && !isTrustedLocal) {
+      throw new Error(`Untrusted fallback healthEndpoint for ${provider.name}: ${provider.healthEndpoint}`);
+    }
+    if (!isLocalEndpoint(endpoint) && endpoint.protocol !== "https:") {
+      throw new Error(`Untrusted fallback healthEndpoint for ${provider.name}: HTTPS is required`);
+    }
+  }
+
+  return config;
+}
+
+function parseFallbackJson(content: string, filePath: string): FallbackConfig {
+  try {
+    return JSON.parse(content) as FallbackConfig;
+  } catch {
+    throw new Error(`Failed to parse ${filePath}: invalid JSON`);
+  }
+}
+
 // ─── Config Loading ──────────────────────────────────────────
 
 /**
@@ -34,26 +89,18 @@ export async function loadFallbackConfig(configDir: string): Promise<FallbackCon
 
   if (existsSync(userPath)) {
     const content = await readFile(userPath, "utf-8");
-    try {
-      return JSON.parse(content) as FallbackConfig;
-    } catch {
-      throw new Error(`Failed to parse ${userPath}: invalid JSON`);
-    }
+    return validateFallbackConfig(parseFallbackJson(content, userPath));
   }
 
   // Fallback to bundled config (relative to project root)
   const bundledPath = join(import.meta.dir, "../../config/fallback.json");
   if (existsSync(bundledPath)) {
     const content = await readFile(bundledPath, "utf-8");
-    try {
-      return JSON.parse(content) as FallbackConfig;
-    } catch {
-      throw new Error(`Failed to parse ${bundledPath}: invalid JSON`);
-    }
+    return validateFallbackConfig(parseFallbackJson(content, bundledPath));
   }
 
   // Default config if nothing found
-  return {
+  return validateFallbackConfig({
     providers: [
       {
         name: "anthropic",
@@ -70,7 +117,7 @@ export async function loadFallbackConfig(configDir: string): Promise<FallbackCon
     ],
     maxRetries: 3,
     timeoutMs: 5000,
-  };
+  });
 }
 
 // ─── Health Checks ───────────────────────────────────────────
@@ -104,19 +151,35 @@ export async function checkProviderHealth(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+    const endpoint = new URL(provider.healthEndpoint);
+    const headers: Record<string, string> = {};
+    if (!isLocalEndpoint(endpoint)) {
+      headers.Authorization = `Bearer ${process.env[provider.apiKeyEnv]}`;
+    }
+
     const response = await fetch(provider.healthEndpoint, {
       method: "HEAD",
       signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${process.env[provider.apiKeyEnv]}`,
-      },
+      headers,
     });
 
     clearTimeout(timeout);
 
-    // 401/403 means the endpoint is reachable (auth issue is separate)
-    // 429 means rate limited but reachable
-    // 2xx/4xx = reachable, 5xx = unhealthy
+    if (response.status === 401 || response.status === 403) {
+      return {
+        provider,
+        healthy: false,
+        reason: `Authentication failed (${response.status})`,
+      };
+    }
+    if (response.status === 429) {
+      return {
+        provider,
+        healthy: false,
+        reason: "Rate limited (429)",
+      };
+    }
+
     const reachable = response.status < 500;
 
     return {
