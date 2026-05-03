@@ -509,6 +509,13 @@ async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
     }
   }
 
+  // Repair context-keeper if it exists but is missing required env.PROJECT_ROOT
+  if (existing.mcp["context-keeper"] && (!existing.mcp["context-keeper"].env || !existing.mcp["context-keeper"].env.PROJECT_ROOT)) {
+    const defaults = buildDefaultMcpConfig(configDir);
+    existing.mcp["context-keeper"] = defaults["context-keeper"];
+    changed = true;
+  }
+
   if (changed) {
     await writeJson(localPath, existing);
   }
@@ -742,20 +749,15 @@ export const updateCommand = new Command("update")
     // Print merge report
     printMergeReport(stats);
 
-    // Run migrations if version changed
-    if (comparison > 0) {
-      console.log();
-      info("Running migrations...");
-      const migrationsRun = await runMigrations(latestVersion);
-      if (migrationsRun > 0) {
-        success(`Ran ${migrationsRun} migration(s).`);
-      } else {
-        info("No migrations needed.");
-      }
+    // Run migrations based on version.json state (independent of binary version)
+    console.log();
+    info("Running migrations...");
+    const migrationsRun = await runMigrations(latestVersion);
+    if (migrationsRun > 0) {
+      success(`Ran ${migrationsRun} migration(s).`);
+    } else {
+      info("No migrations needed.");
     }
-
-    // Always update version.json to match the latest version
-    await updateVersion(latestVersion);
 
     // Final summary
     console.log();

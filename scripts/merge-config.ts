@@ -392,11 +392,26 @@ function ensureOpenCodeJson() {
       }
     }
 
+    // Repair context-keeper if it exists but is missing required env.PROJECT_ROOT
+    if (config.mcp["context-keeper"] && (!config.mcp["context-keeper"].env || !config.mcp["context-keeper"].env.PROJECT_ROOT)) {
+      const defaults = buildDefaultMcpConfig(targetDir);
+      config.mcp["context-keeper"] = defaults["context-keeper"];
+      added++;
+    }
+
+    // Ensure plugin array includes default plugin
+    if (!config.plugin || !Array.isArray(config.plugin)) config.plugin = [];
+    const defaultPlugin = "superpowers@git+https://github.com/obra/superpowers.git";
+    if (!config.plugin.includes(defaultPlugin)) {
+      config.plugin.push(defaultPlugin);
+      added++;
+    }
+
     if (added > 0) {
       writeJsonAtomic(targetFile, config);
-      console.log(`  [+] opencode.json: ${added} MCP server(s) merged`);
+      console.log(`  [+] opencode.json: ${added} default(s) merged`);
     } else {
-      console.log(`  [=] opencode.json exists, all MCP defaults present`);
+      console.log(`  [=] opencode.json exists, all defaults present`);
     }
     return;
   }

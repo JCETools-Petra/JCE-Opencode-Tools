@@ -64,6 +64,12 @@ const createCommand = new Command("create")
       process.exit(EXIT_ERROR);
     }
 
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(fields.id)) {
+      error("Agent ID must be lowercase alphanumeric with hyphens only (e.g. 'my-agent').");
+      logCommandError("agent create", "Invalid ID format");
+      process.exit(EXIT_ERROR);
+    }
+
     const agent: Agent = {
       id: fields.id!,
       name: fields.name,

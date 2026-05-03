@@ -72,11 +72,16 @@ export class MemoryStore {
       return [];
     }
 
+    const content = readFileSync(filePath, "utf-8");
     try {
-      const content = readFileSync(filePath, "utf-8");
       const data = JSON.parse(content) as MemoryFile;
       return data.entries || [];
     } catch {
+      // Backup corrupted file before returning empty
+      const backupPath = filePath + ".corrupted";
+      if (!existsSync(backupPath)) {
+        writeFileSync(backupPath, content, "utf-8");
+      }
       return [];
     }
   }

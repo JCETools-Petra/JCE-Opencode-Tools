@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import { TokenTracker, detectOpenCodeDB } from "../lib/tokens.js";
 import { generateAnalytics, AnalyticsSummary } from "../lib/analytics.js";
@@ -122,7 +122,7 @@ function padLine(text: string, width: number): string {
 
 export const dashboardCommand = new Command("dashboard")
   .description("Show a terminal-based analytics dashboard")
-  .option("-p, --period <period>", "Time period: week, month, all", "month")
+  .addOption(new Option("-p, --period <period>", "Time period").default("month").choices(["week", "month", "all"]))
   .action(async (options: { period: string }) => {
     logCommandStart("dashboard", { period: options.period });
 

@@ -30,10 +30,18 @@ echo "Installing OpenCode JCE (offline)..."
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 mkdir -p "$CONFIG_DIR/profiles"
 
-cp config/agents.json "$CONFIG_DIR/"
-cp config/mcp.json "$CONFIG_DIR/"
-cp config/lsp.json "$CONFIG_DIR/"
-cp config/profiles/*.json "$CONFIG_DIR/profiles/"
+# Deploy config safely (never overwrite existing files)
+if command -v bun &>/dev/null && [ -f "scripts/merge-config.ts" ]; then
+    bun run scripts/merge-config.ts config "$CONFIG_DIR"
+else
+    [ ! -f "$CONFIG_DIR/agents.json" ] && cp config/agents.json "$CONFIG_DIR/"
+    [ ! -f "$CONFIG_DIR/mcp.json" ] && cp config/mcp.json "$CONFIG_DIR/"
+    [ ! -f "$CONFIG_DIR/lsp.json" ] && cp config/lsp.json "$CONFIG_DIR/"
+    for f in config/profiles/*.json; do
+        fname=$(basename "$f")
+        [ ! -f "$CONFIG_DIR/profiles/$fname" ] && cp "$f" "$CONFIG_DIR/profiles/"
+    done
+fi
 
 # Install CLI through a stable shim that points at the persistent config copy.
 if command -v bun &>/dev/null; then

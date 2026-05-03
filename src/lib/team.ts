@@ -2,6 +2,7 @@ import { join } from "path";
 import { existsSync } from "fs";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { getConfigDir } from "./config.js";
+import { sanitizeGitUrl } from "./plugins.js";
 
 export interface TeamConfig {
   repoUrl: string;
@@ -55,7 +56,7 @@ export async function initTeamSync(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const config: TeamConfig = {
-      repoUrl,
+      repoUrl: sanitizeGitUrl(repoUrl),
       lastSync: new Date().toISOString(),
       branch,
     };
@@ -81,7 +82,12 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
   const tempDir = join(configDir, ".team-sync");
 
   try {
-    // Clone or pull the team repo
+    // Always remove stale .team-sync before clone
+    if (existsSync(tempDir)) {
+      await cleanup(tempDir);
+    }
+
+    // Clone the team repo
     const proc = Bun.spawn(["git", "clone", "--depth", "1", "--branch", teamConfig.branch, teamConfig.repoUrl, tempDir], {
       stdout: "pipe",
       stderr: "pipe",
@@ -89,18 +95,8 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
     await proc.exited;
 
     if (proc.exitCode !== 0) {
-      // Try pulling if already exists
-      if (existsSync(tempDir)) {
-        const pullProc = Bun.spawn(["git", "pull", "origin", teamConfig.branch], {
-          cwd: tempDir,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        await pullProc.exited;
-      } else {
-        const stderr = await new Response(proc.stderr).text();
-        return { success: false, error: `Failed to clone team repo: ${stderr}` };
-      }
+      const stderr = await new Response(proc.stderr).text();
+      return { success: false, error: `Failed to clone team repo: ${stderr}` };
     }
 
     // Copy config files to the team repo
@@ -204,9 +200,18 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
     const filesToSync = ["agents.json", "mcp.json", "lsp.json"];
     for (const file of filesToSync) {
       const srcPath = join(tempDir, file);
+      const dstPath = join(configDir, file);
       if (existsSync(srcPath)) {
+        // Backup existing before overwrite
+        if (existsSync(dstPath)) {
+          const backupPath = dstPath + ".team-backup";
+          const existing = await readFile(dstPath, "utf-8");
+          await writeFile(backupPath, existing, "utf-8");
+        }
+        // Validate JSON before writing
         const content = await readFile(srcPath, "utf-8");
-        await writeFile(join(configDir, file), content, "utf-8");
+        try { JSON.parse(content); } catch { continue; } // skip invalid JSON
+        await writeFile(dstPath, content, "utf-8");
       }
     }
 
@@ -220,8 +225,18 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
       const { readdirSync } = await import("fs");
       const profiles = readdirSync(tempProfilesDir).filter((f) => f.endsWith(".json"));
       for (const profile of profiles) {
-        const content = await readFile(join(tempProfilesDir, profile), "utf-8");
-        await writeFile(join(profilesDir, profile), content, "utf-8");
+        const srcProfile = join(tempProfilesDir, profile);
+        const dstProfile = join(profilesDir, profile);
+        // Backup existing before overwrite
+        if (existsSync(dstProfile)) {
+          const backupPath = dstProfile + ".team-backup";
+          const existing = await readFile(dstProfile, "utf-8");
+          await writeFile(backupPath, existing, "utf-8");
+        }
+        // Validate JSON before writing
+        const content = await readFile(srcProfile, "utf-8");
+        try { JSON.parse(content); } catch { continue; } // skip invalid JSON
+        await writeFile(dstProfile, content, "utf-8");
       }
     }
 

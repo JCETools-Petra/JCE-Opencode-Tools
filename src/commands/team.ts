@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { initTeamSync, pushTeamConfig, pullTeamConfig, getTeamStatus } from "../lib/team.js";
+import { sanitizeGitUrl } from "../lib/plugins.js";
 import { heading, info, success, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
@@ -12,9 +13,9 @@ const initCommand = new Command("init")
   .argument("<git-url>", "Git repository URL for team config sharing")
   .option("-b, --branch <branch>", "Branch to use", "main")
   .action(async (gitUrl: string, opts: { branch: string }) => {
-    logCommandStart("team init", { url: gitUrl, branch: opts.branch });
+    logCommandStart("team init", { url: sanitizeGitUrl(gitUrl), branch: opts.branch });
 
-    info(`Initializing team sync with: ${gitUrl}`);
+    info(`Initializing team sync with: ${sanitizeGitUrl(gitUrl)}`);
     console.log();
 
     const result = await initTeamSync(gitUrl, opts.branch);

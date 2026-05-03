@@ -154,7 +154,12 @@ export async function checkProviderHealth(
     const endpoint = new URL(provider.healthEndpoint);
     const headers: Record<string, string> = {};
     if (!isLocalEndpoint(endpoint)) {
-      headers.Authorization = `Bearer ${process.env[provider.apiKeyEnv]}`;
+      if (provider.name === "anthropic") {
+        headers["x-api-key"] = process.env[provider.apiKeyEnv] || "";
+        headers["anthropic-version"] = "2023-06-01";
+      } else {
+        headers.Authorization = `Bearer ${process.env[provider.apiKeyEnv]}`;
+      }
     }
 
     const response = await fetch(provider.healthEndpoint, {

@@ -42,7 +42,7 @@
     },
     "timeoutMs": {
       "type": "number",
-      "minimum": 0
+      "exclusiveMinimum": 0
     },
     "healthCheckIntervalMs": {
       "type": "number",

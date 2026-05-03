@@ -53,6 +53,13 @@ const FILETYPE_EXTENSIONS: Record<string, string[]> = {
   scala: [".scala", ".sbt"],
   csharp: [".cs"],
   json: [".json", ".jsonc"],
+  zsh: [".zsh"],
+  yml: [".yaml", ".yml"],
+  less: [".less"],
+  hcl: [".hcl"],
+  htm: [".html"],
+  sbt: [".sbt"],
+  jsonc: [".jsonc"],
 };
 
 function commandExists(cmd: string): boolean {

@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.8.9"
+$Version = "1.8.10"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -19,6 +19,7 @@ $GitStatus = "skip"
 $BunStatus = "skip"
 $OpenCodeStatus = "skip"
 $LspInstalled = 0
+$CliInstallFailed = $false
 
 # --- Helper Functions ---
 
@@ -497,6 +498,7 @@ function Deploy-Config {
         }
     } catch {
         Write-Warn "Could not install opencode-jce CLI globally: $_"
+        $script:CliInstallFailed = $true
     }
 
     # Cleanup
@@ -906,6 +908,7 @@ function Merge-LspToOpenCodeConfig {
             $ErrorActionPreference = "Continue"
             $output = bun run (Join-Path $installDir "src\index.ts") setup --merge-lsp 2>&1
             $ErrorActionPreference = $prevEA
+            if ($LASTEXITCODE -ne 0) { throw "LSP merge failed (exit $LASTEXITCODE): $output" }
             Write-Ok "LSP servers merged into opencode.json"
         } catch {
             Write-Warn "Could not merge LSP config. Run 'opencode-jce setup --merge-lsp' manually."
@@ -942,8 +945,8 @@ function Write-Summary {
     Write-Host "  [OK] 42 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
     Write-Host "  [OK] 50 Skills      - on-demand workflows" -ForegroundColor Green
-    Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
-    Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
+    Write-Host "  [OK] 19 Profiles    - ready" -ForegroundColor Green
+    Write-Host "  [OK] 9 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {
         Write-Host "  [OK] LSP Servers    - $LspInstalled installed" -ForegroundColor Green
     } else {
@@ -957,6 +960,13 @@ function Write-Summary {
 
     if ($BunStatus -eq "installed" -or $OpenCodeStatus -eq "installed") {
         Write-Warn "You may need to restart PowerShell for PATH changes to take effect."
+    }
+
+    if ($CliInstallFailed) {
+        Write-Host ""
+        Write-Host "  [WARN] opencode-jce CLI install failed. Config was deployed but CLI is not available." -ForegroundColor Yellow
+        Write-Host "         Re-run the installer or install manually." -ForegroundColor Yellow
+        exit 1
     }
 }
 

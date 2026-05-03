@@ -121,9 +121,12 @@ async function configureApiKeys(rl: ReturnType<typeof createInterface>): Promise
       await mkdir(configDir, { recursive: true });
     }
 
+    const shellEscape = (value: string): string => {
+      return "'" + value.replace(/'/g, "'\\''") + "'";
+    };
     const envLines: string[] = ["# OpenCode JCE API Keys", "# Source this file or add to your shell profile", ""];
-    if (openai) envLines.push(`export OPENAI_API_KEY="${openai}"`);
-    if (anthropic) envLines.push(`export ANTHROPIC_API_KEY="${anthropic}"`);
+    if (openai) envLines.push(`export OPENAI_API_KEY=${shellEscape(openai)}`);
+    if (anthropic) envLines.push(`export ANTHROPIC_API_KEY=${shellEscape(anthropic)}`);
     envLines.push("");
 
     const envPath = join(configDir, "api-keys.env");
@@ -133,7 +136,7 @@ async function configureApiKeys(rl: ReturnType<typeof createInterface>): Promise
       await chmod(envPath, 0o600);
     }
     success(`API keys saved to: ${envPath}`);
-    info("Add `source ${envPath}` to your shell profile to load them automatically.");
+    info(`Add \`source ${envPath}\` to your shell profile to load them automatically.`);
   } else {
     info("No API keys provided. Skipping.");
   }

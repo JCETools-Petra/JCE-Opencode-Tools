@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { loadPluginsRegistry, installPlugin, removePlugin } from "../lib/plugins.js";
+import { loadPluginsRegistry, installPlugin, removePlugin, sanitizeGitUrl } from "../lib/plugins.js";
 import { heading, info, success, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
@@ -11,9 +11,9 @@ const installCommand = new Command("install")
   .description("Install a plugin from a GitHub repository")
   .argument("<github-url>", "GitHub repository URL (e.g. https://github.com/user/repo)")
   .action(async (githubUrl: string) => {
-    logCommandStart("plugin install", { url: githubUrl });
+    logCommandStart("plugin install", { url: sanitizeGitUrl(githubUrl) });
 
-    info(`Installing plugin from: ${githubUrl}`);
+    info(`Installing plugin from: ${sanitizeGitUrl(githubUrl)}`);
     console.log();
 
     const result = await installPlugin(githubUrl);

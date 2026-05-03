@@ -176,7 +176,7 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     version: manifest.version,
     type: manifest.type,
     description: manifest.description || "",
-    source: githubUrl,
+    source: sanitizeGitUrl(githubUrl),
     installDir: repoName,
     installedAt: new Date().toISOString(),
   };
@@ -222,6 +222,20 @@ export async function removePlugin(name: string): Promise<{ success: boolean; er
 // ─── Helpers ─────────────────────────────────────────────────
 
 /**
+ * Sanitize a Git URL by stripping any embedded username/password.
+ */
+export function sanitizeGitUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Parse and validate a GitHub plugin URL.
  */
 export function parseGitHubPluginUrl(url: string): { owner: string; repo: string } | null {
@@ -233,6 +247,11 @@ export function parseGitHubPluginUrl(url: string): { owner: string; repo: string
   }
 
   if (parsed.protocol !== "https:" || parsed.hostname !== "github.com") {
+    return null;
+  }
+
+  // Reject URLs with embedded credentials
+  if (parsed.username || parsed.password) {
     return null;
   }
 

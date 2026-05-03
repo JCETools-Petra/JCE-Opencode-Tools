@@ -10,7 +10,7 @@ export const routeCommand = new Command("route")
   .description("Analyze a prompt and show which profile would be selected")
   .argument("<prompt>", "The prompt/task to analyze")
   .action(async (prompt: string) => {
-    logCommandStart("route", { prompt: prompt.substring(0, 50) });
+    logCommandStart("route", { promptLength: prompt.length });
 
     const profiles = await listProfiles();
 

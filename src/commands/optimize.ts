@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import { TokenTracker, detectOpenCodeDB } from "../lib/tokens.js";
 import { analyzeCostOptimizations } from "../lib/optimizer.js";
@@ -10,7 +10,7 @@ import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 
 export const optimizeCommand = new Command("optimize")
   .description("Analyze usage patterns and suggest cost optimizations")
-  .option("-p, --period <period>", "Time period to analyze: today, week, month", "week")
+  .addOption(new Option("-p, --period <period>", "Time period to analyze").default("week").choices(["today", "week", "month"]))
   .action(async (options: { period: string }) => {
     logCommandStart("optimize", { period: options.period });
 
