@@ -225,6 +225,10 @@ server.tool(
               lines > MAX_LINES_TARGET
                 ? `WARNING: File has ${lines} lines (target: ${MAX_LINES_TARGET}). Consider archiving old entries.`
                 : `File size OK (${lines}/${MAX_LINES_TARGET} target lines).`,
+              "",
+              "REMINDER: You MUST call context_update after completing any task.",
+              "REMINDER: You MUST call context_checkpoint before the session ends or before committing.",
+              "Failure to do so will result in lost context for the next session.",
             ].join("\n"),
           },
         ],
@@ -321,7 +325,7 @@ server.tool(
       content: [
         {
           type: "text" as const,
-          text: `Updated ## ${section} (${action}). File: ${lineCount} lines.${warning}`,
+          text: `Updated ## ${section} (${action}). File: ${lineCount} lines.${warning}\nREMINDER: Call context_checkpoint before session ends or before committing.`,
         },
       ],
     };

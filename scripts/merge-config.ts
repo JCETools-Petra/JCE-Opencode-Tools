@@ -19,6 +19,7 @@ import {
   renameSync,
 } from "fs";
 import { join, basename } from "path";
+import { execSync } from "child_process";
 
 /** Write JSON atomically: write to .tmp then rename */
 function writeJsonAtomic(filePath: string, data: unknown): void {
@@ -278,6 +279,99 @@ function copyIfMissing(filename: string) {
   }
 }
 
+// --- Check if a command exists in PATH ---
+function commandExists(cmd: string): boolean {
+  try {
+    const checkCmd = process.platform === "win32" ? "where" : "which";
+    execSync(`${checkCmd} ${cmd}`, { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// --- Filetype to extensions mapping (subset for LSP) ---
+const FILETYPE_EXTENSIONS: Record<string, string[]> = {
+  python: [".py", ".pyi"],
+  typescript: [".ts", ".tsx"],
+  javascript: [".js", ".jsx", ".mjs", ".cjs"],
+  typescriptreact: [".tsx"],
+  javascriptreact: [".jsx"],
+  rust: [".rs"],
+  go: [".go"],
+  dockerfile: [".dockerfile"],
+  sql: [".sql"],
+  java: [".java"],
+  c: [".c", ".h"],
+  cpp: [".cpp", ".cc", ".cxx", ".hpp", ".hh"],
+  objc: [".m", ".mm"],
+  php: [".php"],
+  ruby: [".rb"],
+  bash: [".sh", ".bash"],
+  sh: [".sh"],
+  zsh: [".zsh"],
+  yaml: [".yaml", ".yml"],
+  yml: [".yaml", ".yml"],
+  html: [".html", ".htm"],
+  css: [".css"],
+  scss: [".scss"],
+  less: [".less"],
+  kotlin: [".kt", ".kts"],
+  dart: [".dart"],
+  lua: [".lua"],
+  svelte: [".svelte"],
+  vue: [".vue"],
+  terraform: [".tf", ".tfvars"],
+  hcl: [".hcl"],
+  zig: [".zig"],
+  markdown: [".md"],
+  toml: [".toml"],
+  graphql: [".graphql", ".gql"],
+  gql: [".graphql", ".gql"],
+  elixir: [".ex", ".exs"],
+  eelixir: [".eex", ".heex"],
+  scala: [".scala", ".sbt"],
+  csharp: [".cs"],
+  json: [".json", ".jsonc"],
+};
+
+// --- Auto-detect installed LSP servers from lsp.json ---
+function detectInstalledLsp(): Record<string, { command: string[]; extensions: string[] }> {
+  const lspFile = join(sourceDir, "lsp.json");
+  if (!existsSync(lspFile)) return {};
+
+  let lspData: { lsp: Record<string, { command: string; args: string[]; filetypes: string[] }> };
+  try {
+    lspData = JSON.parse(readFileSync(lspFile, "utf8"));
+  } catch {
+    return {};
+  }
+
+  const result: Record<string, { command: string[]; extensions: string[] }> = {};
+
+  for (const [name, entry] of Object.entries(lspData.lsp || {})) {
+    if (!commandExists(entry.command)) continue;
+
+    const extensions: string[] = [];
+    for (const ft of entry.filetypes) {
+      const exts = FILETYPE_EXTENSIONS[ft];
+      if (exts) {
+        for (const ext of exts) {
+          if (!extensions.includes(ext)) extensions.push(ext);
+        }
+      }
+    }
+    if (extensions.length === 0) continue;
+
+    result[name] = {
+      command: [entry.command, ...entry.args],
+      extensions,
+    };
+  }
+
+  return result;
+}
+
 // --- Create OpenCode's primary config file if it does not exist ---
 function ensureOpenCodeJson() {
   const targetFile = join(targetDir, "opencode.json");
@@ -290,6 +384,10 @@ function ensureOpenCodeJson() {
   // Build context-keeper path relative to target config dir
   const contextKeeperPath = join(targetDir, "cli", "src", "mcp", "context-keeper.ts")
     .replace(/\\/g, "/");
+
+  // Auto-detect installed LSP servers
+  const detectedLsp = detectInstalledLsp();
+  const lspCount = Object.keys(detectedLsp).length;
 
   writeJsonAtomic(targetFile, {
     $schema: "https://opencode.ai/config.json",
@@ -331,9 +429,10 @@ function ensureOpenCodeJson() {
         enabled: true,
       },
     },
-    lsp: {},
+    lsp: detectedLsp,
   });
-  console.log(`  [+] opencode.json created (new) — MCP servers pre-configured`);
+
+  console.log(`  [+] opencode.json created (new) — MCP servers pre-configured, ${lspCount} LSP server(s) auto-detected`);
 }
 
 // --- Run all merges ---
