@@ -7,12 +7,10 @@ import { getConfigDir } from "../lib/config.js";
 import { banner, heading, info, success, warn, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import {
-  getVersionInfo,
   initVersionFile,
   updateVersion,
   runMigrations,
   compareVersions,
-  CURRENT_CONFIG_VERSION,
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 import { GITHUB_RAW_BASE, GITHUB_REPO, VERSION } from "../lib/constants.js";
@@ -575,8 +573,11 @@ export const updateCommand = new Command("update")
 
     // Ensure version file exists
     await initVersionFile();
-    const versionInfo = await getVersionInfo();
-    const localVersion = versionInfo?.version || CURRENT_CONFIG_VERSION;
+
+    // Use the actual binary version (VERSION) as the authoritative local version.
+    // version.json tracks config schema, but the binary version is what determines
+    // whether the CLI itself needs updating.
+    const localVersion = VERSION;
 
     info(`Current local version: ${chalk.bold(localVersion)}`);
 
@@ -670,11 +671,11 @@ export const updateCommand = new Command("update")
         success(`Ran ${migrationsRun} migration(s).`);
       } else {
         info("No migrations needed.");
-        // runMigrations already calls updateVersion internally,
-        // but if no migrations ran, we still need to update the version file
-        await updateVersion(latestVersion);
       }
     }
+
+    // Always update version.json to match the latest version
+    await updateVersion(latestVersion);
 
     // Final summary
     console.log();
