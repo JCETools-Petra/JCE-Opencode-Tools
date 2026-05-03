@@ -618,7 +618,22 @@ function Register-ContextKeeper {
     $normalizedPath = $contextKeeperPath -replace "\\", "/"
 
     if (-not (Test-Path $opencodeJson)) {
-        Write-Skip "opencode.json not found. context-keeper will be registered on next 'opencode-jce update'."
+        Write-Info "opencode.json not found. Creating with default MCP servers..."
+        $defaultConfig = [PSCustomObject]@{
+            '$schema' = "https://opencode.ai/config.json"
+            plugin = @("superpowers@git+https://github.com/obra/superpowers.git")
+            mcp = [PSCustomObject]@{
+                "context7" = [PSCustomObject]@{ type = "remote"; url = "https://mcp.context7.com/mcp"; enabled = $true }
+                "sequential-thinking" = [PSCustomObject]@{ type = "local"; command = @("mcp-server-sequential-thinking"); enabled = $true }
+                "playwright" = [PSCustomObject]@{ type = "local"; command = @("playwright-mcp"); enabled = $true }
+                "github-search" = [PSCustomObject]@{ type = "local"; command = @("mcp-server-github"); env = [PSCustomObject]@{ GITHUB_PERSONAL_ACCESS_TOKEN = '${GITHUB_TOKEN}' }; enabled = $true }
+                "memory" = [PSCustomObject]@{ type = "local"; command = @("mcp-server-memory"); enabled = $true }
+                "context-keeper" = [PSCustomObject]@{ type = "local"; command = @("bun", "run", $normalizedPath); enabled = $true }
+            }
+            lsp = [PSCustomObject]@{}
+        }
+        $defaultConfig | ConvertTo-Json -Depth 10 | Set-Content $opencodeJson -Encoding UTF8
+        Write-Ok "opencode.json created with MCP servers pre-configured"
         return
     }
 

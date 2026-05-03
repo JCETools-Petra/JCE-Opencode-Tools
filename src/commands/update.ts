@@ -364,11 +364,8 @@ async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
   const localPath = join(configDir, "opencode.json");
   if (existsSync(localPath)) return false;
 
-  await writeJson(localPath, {
-    $schema: "https://opencode.ai/config.json",
-    mcp: {},
-    lsp: {},
-  });
+  const { buildDefaultOpenCodeJson } = await import("../lib/opencode-json-template.js");
+  await writeJson(localPath, buildDefaultOpenCodeJson(configDir));
   return true;
 }
 

@@ -323,23 +323,17 @@ export async function fixContextKeeper(): Promise<FixResult[]> {
   }
 
   if (!existsSync(opencodeJsonPath)) {
+    const { buildDefaultOpenCodeJson } = await import("./opencode-json-template.js");
+    const template = buildDefaultOpenCodeJson(configDir);
     await writeFile(
       opencodeJsonPath,
-      JSON.stringify(
-        {
-          $schema: "https://opencode.ai/config.json",
-          mcp: {},
-          lsp: {},
-        },
-        null,
-        2
-      ) + "\n",
+      JSON.stringify(template, null, 2) + "\n",
       "utf-8"
     );
     results.push({
       name: "opencode.json",
       fixed: true,
-      message: "Created OpenCode config file.",
+      message: "Created OpenCode config with MCP servers pre-configured.",
     });
   }
 

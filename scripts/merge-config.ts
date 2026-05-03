@@ -287,12 +287,53 @@ function ensureOpenCodeJson() {
     return;
   }
 
+  // Build context-keeper path relative to target config dir
+  const contextKeeperPath = join(targetDir, "cli", "src", "mcp", "context-keeper.ts")
+    .replace(/\\/g, "/");
+
   writeJsonAtomic(targetFile, {
     $schema: "https://opencode.ai/config.json",
-    mcp: {},
+    plugin: [
+      "superpowers@git+https://github.com/obra/superpowers.git",
+    ],
+    mcp: {
+      "context7": {
+        type: "remote",
+        url: "https://mcp.context7.com/mcp",
+        enabled: true,
+      },
+      "sequential-thinking": {
+        type: "local",
+        command: ["mcp-server-sequential-thinking"],
+        enabled: true,
+      },
+      "playwright": {
+        type: "local",
+        command: ["playwright-mcp"],
+        enabled: true,
+      },
+      "github-search": {
+        type: "local",
+        command: ["mcp-server-github"],
+        env: {
+          GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}",
+        },
+        enabled: true,
+      },
+      "memory": {
+        type: "local",
+        command: ["mcp-server-memory"],
+        enabled: true,
+      },
+      "context-keeper": {
+        type: "local",
+        command: ["bun", "run", contextKeeperPath],
+        enabled: true,
+      },
+    },
     lsp: {},
   });
-  console.log(`  [+] opencode.json created (new)`);
+  console.log(`  [+] opencode.json created (new) — MCP servers pre-configured`);
 }
 
 // --- Run all merges ---
