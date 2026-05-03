@@ -109,7 +109,9 @@ async function fetchDirectoryListing(dir: string): Promise<string[]> {
 
 /**
  * Update the opencode-jce CLI itself to the latest version.
- * Runs `bun install -g opencode-jce` to pull the latest from npm/GitHub.
+ * 1. Runs `bun install -g opencode-jce` to pull the latest from npm/GitHub.
+ * 2. Updates the local cli/ folder in the config directory so that
+ *    context-keeper and other local tools use the latest code.
  * Returns true if the CLI was updated successfully.
  */
 async function selfUpdateCli(latestVersion: string): Promise<boolean> {
@@ -130,6 +132,8 @@ async function selfUpdateCli(latestVersion: string): Promise<boolean> {
 
     if (exitCode === 0) {
       success(`CLI updated to v${latestVersion}.`);
+      // Also update the local cli/ folder in config dir
+      await updateLocalCliFolder();
       return true;
     } else {
       const stderr = await new Response(proc.stderr).text();
@@ -142,6 +146,83 @@ async function selfUpdateCli(latestVersion: string): Promise<boolean> {
     warn(`CLI self-update failed: ${msg}`);
     warn("You can update manually: bun install -g opencode-jce");
     return false;
+  }
+}
+
+/**
+ * Update the local cli/ folder in the config directory.
+ * This ensures context-keeper and other MCP tools use the latest code.
+ * Downloads src/, schemas/, package.json, tsconfig.json from GitHub
+ * and installs dependencies.
+ */
+async function updateLocalCliFolder(): Promise<void> {
+  const configDir = getConfigDir();
+  const cliDir = join(configDir, "cli");
+
+  info("Updating local CLI folder (for context-keeper)...");
+
+  try {
+    // Clone to temp, copy relevant files
+    const tempDir = join(configDir, ".cli-update-tmp");
+
+    // Clean up any previous temp
+    if (existsSync(tempDir)) {
+      const { rm } = await import("fs/promises");
+      await rm(tempDir, { recursive: true, force: true });
+    }
+
+    // Clone latest
+    const cloneProc = Bun.spawn(
+      ["git", "clone", "--depth", "1", `https://github.com/${GITHUB_REPO}.git`, tempDir],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    const cloneExit = await cloneProc.exited;
+    if (cloneExit !== 0) {
+      warn("Could not clone repo for CLI update. context-keeper may use old version.");
+      return;
+    }
+
+    // Copy src/, schemas/, package.json, tsconfig.json
+    if (!existsSync(cliDir)) {
+      await mkdir(cliDir, { recursive: true });
+    }
+
+    const { rm: rmDir } = await import("fs/promises");
+
+    // Remove old src and schemas
+    for (const dir of ["src", "schemas"]) {
+      const target = join(cliDir, dir);
+      if (existsSync(target)) {
+        await rmDir(target, { recursive: true, force: true });
+      }
+    }
+
+    // Copy new files
+    await cp(join(tempDir, "src"), join(cliDir, "src"), { recursive: true });
+    await cp(join(tempDir, "schemas"), join(cliDir, "schemas"), { recursive: true });
+
+    for (const file of ["package.json", "tsconfig.json"]) {
+      const src = join(tempDir, file);
+      if (existsSync(src)) {
+        const content = await readFile(src, "utf-8");
+        await writeTextFile(join(cliDir, file), content);
+      }
+    }
+
+    // Install dependencies
+    const installProc = Bun.spawn(
+      ["bun", "install"],
+      { stdout: "pipe", stderr: "pipe", cwd: cliDir }
+    );
+    await installProc.exited;
+
+    // Cleanup temp
+    await rmDir(tempDir, { recursive: true, force: true });
+
+    success("Local CLI folder updated.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    warn(`Local CLI update failed: ${msg}. context-keeper may use old version.`);
   }
 }
 

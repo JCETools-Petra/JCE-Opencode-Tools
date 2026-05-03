@@ -534,7 +534,8 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
                 }
             }
             if ($added -gt 0) {
-                $dstJson | ConvertTo-Json -Depth 10 | Set-Content $mcpDst -Encoding UTF8
+                $jsonOut = $dstJson | ConvertTo-Json -Depth 10
+                [System.IO.File]::WriteAllText($mcpDst, $jsonOut, [System.Text.UTF8Encoding]::new($false))
                 Write-Ok "  mcp.json: $added new server(s) merged"
             } else {
                 Write-Skip "  mcp.json: all servers already present"
@@ -632,7 +633,8 @@ function Register-ContextKeeper {
             }
             lsp = [PSCustomObject]@{}
         }
-        $defaultConfig | ConvertTo-Json -Depth 10 | Set-Content $opencodeJson -Encoding UTF8
+        $jsonOut = $defaultConfig | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($opencodeJson, $jsonOut, [System.Text.UTF8Encoding]::new($false))
         Write-Ok "opencode.json created with MCP servers pre-configured"
         return
     }
@@ -660,7 +662,8 @@ function Register-ContextKeeper {
         $config.mcp | Add-Member -NotePropertyName "context-keeper" -NotePropertyValue $contextKeeperEntry
 
         # Write back
-        $config | ConvertTo-Json -Depth 10 | Set-Content $opencodeJson -Encoding UTF8
+        $jsonOut = $config | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($opencodeJson, $jsonOut, [System.Text.UTF8Encoding]::new($false))
         Write-Ok "context-keeper registered in opencode.json"
     } catch {
         Write-Warn "Failed to register context-keeper: $($_.Exception.Message)"
