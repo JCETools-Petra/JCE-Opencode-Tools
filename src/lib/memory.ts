@@ -1,6 +1,6 @@
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -113,10 +113,7 @@ export class MemoryStore {
    * Generate a unique ID for a memory entry.
    */
   private generateId(): string {
-    return createHash("sha256")
-      .update(Date.now().toString() + Math.random().toString())
-      .digest("hex")
-      .slice(0, 8);
+    return randomBytes(8).toString("hex");
   }
 
   /**

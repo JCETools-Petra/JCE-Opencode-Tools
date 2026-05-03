@@ -108,9 +108,14 @@ const clearCommand = new Command("clear")
       process.exit(EXIT_ERROR);
     }
 
-    await writeFile(contextPath, getContextTemplate(), "utf-8");
+    try {
+      await writeFile(contextPath, getContextTemplate(), "utf-8");
+      success("Context file cleared and reset to template.");
+    } catch (err: any) {
+      error(`Failed to clear context file: ${err.message}`);
+      process.exit(EXIT_ERROR);
+    }
 
-    success(`${CONTEXT_FILENAME} reset to empty template.`);
     logCommandSuccess("context clear");
     process.exit(EXIT_SUCCESS);
   });

@@ -71,17 +71,17 @@ export async function applyPromptToAgent(templateName: string, agentId: string):
   }
 
   // Prepend template to system prompt (avoid duplicating if already applied)
-  const marker = `[${templateName}] `;
-  if (agent.systemPrompt.startsWith(marker)) {
-    // Already has a template marker — replace it
-    const existingEnd = agent.systemPrompt.indexOf("\n\n");
-    if (existingEnd !== -1) {
-      agent.systemPrompt = `${marker}${template}\n\n${agent.systemPrompt.substring(existingEnd + 2)}`;
-    } else {
-      agent.systemPrompt = `${marker}${template}`;
-    }
+  const startMarker = `[template:${templateName}]\n`;
+  const endMarker = `\n[/template]\n\n`;
+
+  if (agent.systemPrompt.includes("[template:")) {
+    // Replace existing template
+    agent.systemPrompt = agent.systemPrompt.replace(
+      /\[template:[\w-]+\][\s\S]*?\[\/template\]\n\n/,
+      `${startMarker}${template}${endMarker}`
+    );
   } else {
-    agent.systemPrompt = `${marker}${template}\n\n${agent.systemPrompt}`;
+    agent.systemPrompt = `${startMarker}${template}${endMarker}${agent.systemPrompt}`;
   }
 
   await saveAgents(agents);
@@ -101,7 +101,7 @@ export async function resetAgentPrompt(agentId: string): Promise<{ success: bool
   }
 
   // Remove template marker prefix if present
-  const markerMatch = agent.systemPrompt.match(/^\[[\w-]+\] .+?\n\n/s);
+  const markerMatch = agent.systemPrompt.match(/\[template:[\w-]+\][\s\S]*?\[\/template\]\n\n/);
   if (markerMatch) {
     agent.systemPrompt = agent.systemPrompt.substring(markerMatch[0].length);
     await saveAgents(agents);

@@ -82,5 +82,11 @@
         }
       }
     }
+  },
+  "if": {
+    "not": { "properties": { "provider": { "const": "auto" } } }
+  },
+  "then": {
+    "required": ["model", "maxTokens"]
   }
 }

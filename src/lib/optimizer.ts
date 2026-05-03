@@ -84,7 +84,7 @@ export function analyzeCostOptimizations(
 
       // Find the profile using this model
       const currentProfile = profiles.find((p) => p.model === model);
-      const suggestedProfile = profiles.find((p) => p.model === cheaperModel) || profiles.find((p) => p.id === "speed" || p.id === "budget");
+      const suggestedProfile = profiles.find((p) => p.model === cheaperModel) || profiles.find((p) => p.provider === "auto") || profiles[0];
 
       if (currentProfile && suggestedProfile) {
         suggestions.push({
@@ -99,7 +99,7 @@ export function analyzeCostOptimizations(
     // Suggestion 2: Moderate model used for very simple requests
     if (tier === "moderate" && avgTokens.input < 200 && avgTokens.output < 200) {
       const currentProfile = profiles.find((p) => p.model === model);
-      const suggestedProfile = profiles.find((p) => p.id === "budget" || p.id === "speed");
+      const suggestedProfile = profiles.find((p) => p.provider === "auto") || profiles[0];
 
       if (currentProfile && suggestedProfile && currentProfile.id !== suggestedProfile.id) {
         suggestions.push({
@@ -114,7 +114,7 @@ export function analyzeCostOptimizations(
     // Suggestion 3: High volume on expensive model — suggest batching or downgrade
     if (tier === "expensive" && entries.length > 20) {
       const currentProfile = profiles.find((p) => p.model === model);
-      const suggestedProfile = profiles.find((p) => p.id === "sonnet-4.6");
+      const suggestedProfile = profiles.find((p) => p.provider === "anthropic" && p.model?.includes("sonnet"));
 
       if (currentProfile && suggestedProfile && currentProfile.id !== suggestedProfile.id) {
         suggestions.push({

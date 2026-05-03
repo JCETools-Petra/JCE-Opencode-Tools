@@ -55,6 +55,16 @@ export async function initTeamSync(
   branch: string = "main"
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Validate URL format
+    try {
+      const parsed = new URL(repoUrl);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "git:") {
+        return { success: false, error: "Repository URL must use https: or git: protocol" };
+      }
+    } catch {
+      return { success: false, error: "Invalid repository URL format" };
+    }
+
     const config: TeamConfig = {
       repoUrl: sanitizeGitUrl(repoUrl),
       lastSync: new Date().toISOString(),
@@ -76,6 +86,19 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
 
   if (!teamConfig) {
     return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
+  }
+
+  // Validate repo URL and branch
+  try {
+    const parsed = new URL(teamConfig.repoUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "git:") {
+      return { success: false, error: "Team repo URL must use https: or git: protocol" };
+    }
+  } catch {
+    return { success: false, error: "Team repo URL is not a valid URL" };
+  }
+  if (!/^[a-zA-Z0-9._\/-]+$/.test(teamConfig.branch)) {
+    return { success: false, error: "Team branch name contains invalid characters" };
   }
 
   const configDir = getConfigDir();
@@ -174,6 +197,19 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
 
   if (!teamConfig) {
     return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
+  }
+
+  // Validate repo URL and branch
+  try {
+    const parsed = new URL(teamConfig.repoUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "git:") {
+      return { success: false, error: "Team repo URL must use https: or git: protocol" };
+    }
+  } catch {
+    return { success: false, error: "Team repo URL is not a valid URL" };
+  }
+  if (!/^[a-zA-Z0-9._\/-]+$/.test(teamConfig.branch)) {
+    return { success: false, error: "Team branch name contains invalid characters" };
   }
 
   const configDir = getConfigDir();

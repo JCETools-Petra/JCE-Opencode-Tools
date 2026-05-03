@@ -225,11 +225,17 @@ export async function fixMissingLsp(): Promise<FixResult[]> {
 
   for (const server of selected) {
     process.stdout.write(`  Installing ${server.name}... `);
-    const parts = server.installCommand.split(" ");
-    const cmd = parts[0];
-    const args = parts.slice(1);
-
-    const result = await runCommand(cmd, args);
+    const isWindows = platform() === "win32";
+    const proc = Bun.spawn(
+      isWindows ? ["cmd", "/c", server.installCommand] : ["sh", "-c", server.installCommand],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    const [output, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    const exitCode = await proc.exited;
+    const result = { success: exitCode === 0, output: output || stderr };
     if (result.success) {
       console.log(chalk.green("[OK]"));
       results.push({ name: `LSP: ${server.name}`, fixed: true, message: "Installed via npm" });

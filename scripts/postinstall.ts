@@ -14,7 +14,7 @@ if (!isWindows) process.exit(0);
 
 const home = process.env.USERPROFILE || process.env.HOME || "";
 const bunBinDir = join(home, ".bun", "bin");
-const configCliDir = join(home, ".config", "opencode", "cli");
+const configCliDir = join(process.env.XDG_CONFIG_HOME || join(home, ".config"), "opencode", "cli");
 
 // Remove .exe and .bunx that take precedence over .cmd
 for (const file of ["opencode-jce.exe", "opencode-jce.bunx", "opencode-jce"]) {

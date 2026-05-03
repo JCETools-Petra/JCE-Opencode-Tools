@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.8.10"
+$Version = "1.8.11"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -710,7 +710,6 @@ function Install-McpPackages {
     Write-Host ""
 
     $mcpPackages = @(
-        "@upstash/context7-mcp@latest",
         "@modelcontextprotocol/server-github",
         "@modelcontextprotocol/server-fetch",
         "@modelcontextprotocol/server-filesystem",

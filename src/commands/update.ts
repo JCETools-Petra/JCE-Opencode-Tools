@@ -9,7 +9,6 @@ import { banner, heading, info, success, warn, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import {
   initVersionFile,
-  updateVersion,
   runMigrations,
   compareVersions,
 } from "../lib/version.js";

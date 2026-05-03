@@ -38,7 +38,7 @@ async function collectAgentFields(existing?: Agent): Promise<Omit<Agent, "id"> &
   const systemPrompt = await prompt("System prompt", existing?.systemPrompt);
   const preferredProfile = await prompt("Preferred profile ID", existing?.preferredProfile || "sonnet-4.6");
   const maxTokensStr = await prompt("Max tokens", String(existing?.maxTokens || 4096));
-  const toolsStr = await prompt("Tools (comma-separated)", existing?.tools.join(", ") || "read, grep, bash");
+  const toolsStr = await prompt("Tools (comma-separated)", existing?.tools?.join(", ") || "read, grep, bash");
 
   const maxTokens = parseInt(maxTokensStr, 10) || 4096;
   const tools = toolsStr.split(",").map((t) => t.trim()).filter(Boolean);

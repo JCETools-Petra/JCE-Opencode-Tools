@@ -1,6 +1,6 @@
 {
   "name": "opencode-jce",
-  "version": "1.8.10",
+  "version": "1.8.11",
   "type": "module",
   "bin": {
     "opencode-jce": "./src/index.ts"
@@ -9,7 +9,7 @@
     "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "postinstall": "node -e \"if(process.platform==='win32'){const fs=require('fs'),p=require('path'),h=process.env.USERPROFILE||'',b=p.join(h,'.bun','bin');fs.mkdirSync(b,{recursive:true});['opencode-jce.exe','opencode-jce.bunx','opencode-jce'].forEach(f=>{try{fs.unlinkSync(p.join(b,f))}catch{}});const c=p.join(h,'.config','opencode','cli','src','index.ts');fs.writeFileSync(p.join(b,'opencode-jce.cmd'),'@echo off\\r\\nbun run \"'+c+'\" %*\\r\\n','ascii')}\""
+    "postinstall": "node -e \"if(process.platform==='win32'){const fs=require('fs'),p=require('path'),h=process.env.USERPROFILE||'',b=p.join(h,'.bun','bin');fs.mkdirSync(b,{recursive:true});['opencode-jce.exe','opencode-jce.bunx','opencode-jce'].forEach(f=>{try{fs.unlinkSync(p.join(b,f))}catch{}});const c=p.join(process.env.XDG_CONFIG_HOME||p.join(h,'.config'),'opencode','cli','src','index.ts');fs.writeFileSync(p.join(b,'opencode-jce.cmd'),'@echo off\\r\\nbun run \"'+c+'\" %*\\r\\n','ascii')}\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -21,5 +21,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.4.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
   }
 }

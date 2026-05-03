@@ -163,6 +163,7 @@ export function replaceSection(
     }
     if (line.startsWith("## ") && inSection) {
       inSection = false;
+      result.push(""); // Preserve blank separator line
     }
     if (!inSection) {
       result.push(line);
@@ -219,10 +220,9 @@ export function pruneAndArchiveContext(content: string, today = new Date().toISO
       }
 
       if (!updated.includes("see .opencode-context-archive.md")) {
-        const archiveNote = "\n> Archived entries: see .opencode-context-archive.md";
         updated = updated.replace(
-          "> Auto-maintained by AI.",
-          "> Auto-maintained by AI." + archiveNote
+          /^> Auto-maintained by AI\..*$/m,
+          "> Auto-maintained by AI. You can edit this file freely.\n> Archived entries: see .opencode-context-archive.md"
         );
       }
     }
@@ -250,7 +250,7 @@ async function appendArchive(content: string): Promise<void> {
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "1.8.10",
+    version: "1.8.11",
   },
   {
     instructions: [

@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.8.10";
+export const CURRENT_CONFIG_VERSION = "1.8.11";
 
 /**
  * Get the path to the version.json file.
@@ -135,6 +135,7 @@ const migrations: Migration[] = [
         config.mcp["context-keeper"] = {
           type: "local",
           command: ["bun", "run", normalizedPath],
+          env: { PROJECT_ROOT: "${PROJECT_ROOT}" },
           enabled: true,
         };
 

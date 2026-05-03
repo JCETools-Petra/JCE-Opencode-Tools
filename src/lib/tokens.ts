@@ -282,8 +282,11 @@ export class TokenTracker {
         const output = data.tokens.output || 0;
         if (input === 0 && output === 0) continue;
 
+        // Normalize timestamp: if value looks like seconds (< 1e12), convert to ms
+        const timeMs = row.time_created < 1e12 ? row.time_created * 1000 : row.time_created;
+
         entries.push({
-          timestamp: new Date(row.time_created).toISOString(),
+          timestamp: new Date(timeMs).toISOString(),
           provider: data.providerID || "unknown",
           model: data.modelID || "unknown",
           agent: data.agent || "default",

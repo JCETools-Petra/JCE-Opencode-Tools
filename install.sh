@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.8.10"
+VERSION="1.8.11"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -34,7 +34,7 @@ LSP_INSTALLED=0
 print_banner() {
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════╗"
-    echo "║       OpenCode JCE Installer v${VERSION}       ║"
+    echo "║      OpenCode JCE Installer v${VERSION}     ║"
     echo "╠══════════════════════════════════════════╣"
     echo "║  Installing: Git, Bun, OpenCode CLI     ║"
     echo "║  Configuring: Agents, Profiles, MCP,LSP ║"
@@ -439,7 +439,6 @@ precache_mcp_packages() {
 
     # List of MCP packages to pre-cache (npm package names)
     local -a MCP_PACKAGES=(
-        "@upstash/context7-mcp@latest"
         "@modelcontextprotocol/server-github"
         "@modelcontextprotocol/server-fetch"
         "@modelcontextprotocol/server-filesystem"
@@ -809,8 +808,8 @@ print_summary() {
     echo "║ ✅ 42 AI Agents   — configured           ║"
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
     echo "║ ✅ 50 Skills      — on-demand workflows  ║"
-    echo "║ ✅ 20 Profiles    — ready                ║"
-    echo "║ ✅ 8 MCP Servers  — cached & ready        ║"
+    echo "║ ✅ 19 Profiles    — ready                ║"
+    echo "║ ✅ 9 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
         echo "║ ✅ LSP Servers    — ${LSP_INSTALLED} installed             ║"
     else
