@@ -168,8 +168,8 @@ async function updateLocalCliFolder(): Promise<void> {
     await mkdir(cliDir, { recursive: true });
   }
 
-  // Remove old src and schemas
-  for (const dir of ["src", "schemas"]) {
+  // Remove old src, schemas, and scripts
+  for (const dir of ["src", "schemas", "scripts"]) {
     const target = join(cliDir, dir);
     if (existsSync(target)) {
       await rm(target, { recursive: true, force: true });
@@ -179,6 +179,9 @@ async function updateLocalCliFolder(): Promise<void> {
   // Copy new files
   await cp(join(tempDir, "src"), join(cliDir, "src"), { recursive: true });
   await cp(join(tempDir, "schemas"), join(cliDir, "schemas"), { recursive: true });
+  if (existsSync(join(tempDir, "scripts"))) {
+    await cp(join(tempDir, "scripts"), join(cliDir, "scripts"), { recursive: true });
+  }
 
   for (const file of ["package.json", "tsconfig.json"]) {
     const src = join(tempDir, file);
