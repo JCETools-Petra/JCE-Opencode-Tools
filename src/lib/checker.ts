@@ -198,7 +198,10 @@ export async function checkMcpServers(): Promise<CheckResult[]> {
     const opencodeJsonPath = join(configDir, "opencode.json");
     if (existsSync(opencodeJsonPath)) {
       const { readFileSync } = await import("fs");
-      const config: OpenCodeConfig = JSON.parse(readFileSync(opencodeJsonPath, "utf-8"));
+      let raw = readFileSync(opencodeJsonPath, "utf-8");
+      // Strip UTF-8 BOM if present
+      if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+      const config: OpenCodeConfig = JSON.parse(raw);
       opencodeMcp = config.mcp ?? {};
     }
   } catch {

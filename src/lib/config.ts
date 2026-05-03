@@ -99,7 +99,11 @@ export async function loadOpenCodeConfig(): Promise<Record<string, any>> {
   const configPath = getOpenCodeConfigPath();
 
   try {
-    const content = await readFile(configPath, "utf-8");
+    let content = await readFile(configPath, "utf-8");
+    // Strip UTF-8 BOM if present (Windows editors add this)
+    if (content.charCodeAt(0) === 0xFEFF) {
+      content = content.slice(1);
+    }
     return JSON.parse(content) ?? {};
   } catch (err: any) {
     if (err.code === "ENOENT") {
