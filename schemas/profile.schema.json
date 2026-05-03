@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Profile Configuration",
   "type": "object",
-  "required": ["id", "name", "description", "provider", "model", "maxTokens", "temperature", "tokenSaving"],
+  "required": ["id", "name", "description", "provider", "temperature", "tokenSaving"],
   "additionalProperties": false,
   "properties": {
     "id": {
