@@ -328,7 +328,7 @@ opencode-jce uninstall           # Clean removal (with backup)
 ### Config location
 
 ```
-%APPDATA%\opencode\
+~/.config/opencode/  # Windows: C:\Users\<you>\.config\opencode\
 ├── opencode.json    # Main config (LSP, MCP, providers)
 ├── agents.json      # 30 AI agents
 ├── profiles\        # 20 model profiles

@@ -278,6 +278,23 @@ function copyIfMissing(filename: string) {
   }
 }
 
+// --- Create OpenCode's primary config file if it does not exist ---
+function ensureOpenCodeJson() {
+  const targetFile = join(targetDir, "opencode.json");
+
+  if (existsSync(targetFile)) {
+    console.log(`  [=] opencode.json exists, skipped`);
+    return;
+  }
+
+  writeJsonAtomic(targetFile, {
+    $schema: "https://opencode.ai/config.json",
+    mcp: {},
+    lsp: {},
+  });
+  console.log(`  [+] opencode.json created (new)`);
+}
+
 // --- Run all merges ---
 console.log("");
 console.log("Merging configuration (preserving existing settings)...");
@@ -341,6 +358,8 @@ console.log("");
 
 console.log("Other configs:");
 try {
+  ensureOpenCodeJson();
+  copyIfMissing("AGENTS.md");
   copyIfMissing("fallback.json");
 } catch (err: any) {
   console.error(`  [ERROR] Copy failed: ${err.message}`);

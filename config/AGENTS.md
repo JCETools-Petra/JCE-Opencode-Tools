@@ -129,7 +129,7 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 
 ## On-Demand Skills
 
-**You have access to specialized skill files in the OpenCode config directory (`~/.config/opencode/skills/` on Linux/macOS, `%APPDATA%\opencode\skills\` on Windows).** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
+**You have access to specialized skill files in the OpenCode config directory (`~/.config/opencode/skills/` on all platforms, including Windows).** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
 
 ### Available Skills (36 files)
 

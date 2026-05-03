@@ -357,6 +357,21 @@ async function handleFallback(configDir: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Ensure OpenCode's primary config exists before migrations register MCP/LSP.
+ */
+async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
+  const localPath = join(configDir, "opencode.json");
+  if (existsSync(localPath)) return false;
+
+  await writeJson(localPath, {
+    $schema: "https://opencode.ai/config.json",
+    mcp: {},
+    lsp: {},
+  });
+  return true;
+}
+
 // ─── Main Merge Orchestrator ─────────────────────────────────
 
 /**
@@ -385,6 +400,9 @@ async function mergeUpdatedConfigs(): Promise<MergeStats> {
   };
 
   // 1. Merge JSON config files
+  info("Ensuring opencode.json...");
+  await ensureOpenCodeJson(configDir);
+
   info("Merging agents.json...");
   stats.fetchAttempted++;
   stats.agents = await mergeAgents(configDir);

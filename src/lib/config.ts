@@ -5,8 +5,7 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 
 /**
  * Returns the cross-platform config directory for OpenCode JCE.
- * - Linux/macOS: $XDG_CONFIG_HOME/opencode or ~/.config/opencode
- * - Windows: %APPDATA%\opencode
+ * - All platforms: $XDG_CONFIG_HOME/opencode or ~/.config/opencode
  */
 /**
  * Auto-detect the OpenCode config directory.
@@ -24,11 +23,6 @@ export function getConfigDir(): string {
 
   // 2. ~/.config/opencode (OpenCode standard on all platforms)
   candidates.push(join(homedir(), ".config", "opencode"));
-
-  // 3. %APPDATA%\opencode (legacy Windows path)
-  if (platform() === "win32" && process.env.APPDATA) {
-    candidates.push(join(process.env.APPDATA, "opencode"));
-  }
 
   // Search for existing config (opencode.json is the marker)
   for (const path of candidates) {

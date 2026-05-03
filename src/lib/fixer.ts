@@ -322,14 +322,25 @@ export async function fixContextKeeper(): Promise<FixResult[]> {
     return results;
   }
 
-  // Check if opencode.json exists
   if (!existsSync(opencodeJsonPath)) {
+    await writeFile(
+      opencodeJsonPath,
+      JSON.stringify(
+        {
+          $schema: "https://opencode.ai/config.json",
+          mcp: {},
+          lsp: {},
+        },
+        null,
+        2
+      ) + "\n",
+      "utf-8"
+    );
     results.push({
-      name: "context-keeper",
-      fixed: false,
-      message: "opencode.json not found — run 'opencode' first to create it.",
+      name: "opencode.json",
+      fixed: true,
+      message: "Created OpenCode config file.",
     });
-    return results;
   }
 
   try {

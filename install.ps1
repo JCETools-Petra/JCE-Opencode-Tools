@@ -137,13 +137,14 @@ function Install-Jdtls {
     }
 
     $shim = Join-Path $JceBinDir "jdtls.cmd"
-    @'
+    $shimContent = @'
 @echo off
 setlocal
 set JDTLS_HOME=%LOCALAPPDATA%\opencode-jce\lsp\jdtls
 for %%f in ("%JDTLS_HOME%\plugins\org.eclipse.equinox.launcher_*.jar") do set JDTLS_LAUNCHER=%%f
 java -Declipse.application=org.eclipse.jdt.ls.core.id1 -Dosgi.bundles.defaultStartLevel=4 -Declipse.product=org.eclipse.jdt.ls.core.product -Dlog.protocol=true -Dlog.level=ALL -Xmx1G --add-modules=ALL-SYSTEM --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED -jar "%JDTLS_LAUNCHER%" -configuration "%JDTLS_HOME%\config_win" -data "%USERPROFILE%\.jdtls-workspace" %*
-'@ | Set-Content -Path $shim -Encoding ASCII
+'@
+    Set-Content -Path $shim -Value $shimContent -Encoding ASCII
 
     if (-not (Test-Command "jdtls")) { throw "jdtls shim created but not found on PATH" }
 }
@@ -272,11 +273,6 @@ function Detect-OpenCodeConfig {
     # 2. ~/.config/opencode (OpenCode standard on all platforms)
     $candidates += Join-Path $env:USERPROFILE ".config\opencode"
 
-    # 3. %APPDATA%\opencode (legacy Windows path)
-    if ($env:APPDATA) {
-        $candidates += Join-Path $env:APPDATA "opencode"
-    }
-
     # Search for existing OpenCode config (opencode.json is the marker)
     foreach ($path in $candidates) {
         $marker = Join-Path $path "opencode.json"
@@ -286,7 +282,7 @@ function Detect-OpenCodeConfig {
         }
     }
 
-    # No existing config found — try to ask OpenCode CLI directly
+    # No existing config found - try to ask OpenCode CLI directly
     if (Test-Command "opencode") {
         try {
             $prevEA = $ErrorActionPreference
@@ -321,7 +317,7 @@ function Backup-ExistingConfig {
         Copy-Item $configPath $backupDir -Recurse -Force
         Write-Ok "Backup created: $backupDir"
     } catch {
-        Write-Warn "Backup failed: $($_.Exception.Message) — continuing anyway."
+        Write-Warn "Backup failed: $($_.Exception.Message) - continuing anyway."
     }
 }
 
@@ -494,10 +490,13 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
             $prevEA = $ErrorActionPreference
             $ErrorActionPreference = "Continue"
             $output = bun run $mergeScript $sourceDir $targetDir 2>&1
+            $exitCode = $LASTEXITCODE
             $ErrorActionPreference = $prevEA
+            if ($exitCode -ne 0) {
+                throw "exit code $exitCode. $output"
+            }
             Write-Ok "Configuration merged via merge-config.ts"
-            # Still need to handle profiles/prompts/skills/AGENTS.md below
-            # but merge-config.ts already handles mcp.json, agents.json, lsp.json, profiles, prompts, skills
+            # merge-config.ts handles mcp.json, opencode.json, agents.json, lsp.json, profiles, prompts, skills, and AGENTS.md
             return
         } catch {
             Write-Warn "merge-config.ts failed: $($_.Exception.Message). Falling back to manual merge..."
