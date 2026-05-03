@@ -115,13 +115,11 @@ async function fetchDirectoryListing(dir: string): Promise<string[]> {
  * Returns true if the CLI was updated successfully.
  */
 async function selfUpdateCli(latestVersion: string): Promise<boolean> {
-  // Check if CLI is already at the latest version
   if (VERSION === latestVersion) {
-    info("CLI already at latest version.");
-    return true;
+    info("Syncing CLI to latest build...");
+  } else {
+    info(`Updating CLI: ${VERSION} → ${latestVersion}...`);
   }
-
-  info(`Updating CLI: ${VERSION} → ${latestVersion}...`);
 
   try {
     const proc = Bun.spawn(
@@ -569,7 +567,7 @@ function printMergeReport(stats: MergeStats): void {
 export const updateCommand = new Command("update")
   .description("Update CLI and merge latest configuration from GitHub")
   .option("--check", "Only check for updates without applying them")
-  .option("--force", "Force update even if already on latest version")
+  .option("--force", "Force update (deprecated — update always syncs latest files)")
   .action(async (options: { check?: boolean; force?: boolean }) => {
     logCommandStart("update", options);
     banner();
@@ -598,22 +596,18 @@ export const updateCommand = new Command("update")
 
     const comparison = compareVersions(latestVersion, localVersion);
 
-    if (comparison <= 0 && !options.force) {
-      success("You are already on the latest version!");
-      logCommandSuccess("update", "already up to date");
-      process.exit(EXIT_SUCCESS);
-    }
-
     if (comparison > 0) {
       info(`${chalk.yellow("Update available:")} ${localVersion} → ${latestVersion}`);
-    } else if (options.force) {
-      info("Forcing merge of remote config files...");
+    } else {
+      info("Version is current. Syncing latest files...");
     }
 
     // Check-only mode
     if (options.check) {
       if (comparison > 0) {
         info("Run `opencode-jce update` to apply the update.");
+      } else {
+        info("Run `opencode-jce update` to sync latest files.");
       }
       logCommandSuccess("update", `check complete, latest=${latestVersion}`);
       process.exit(EXIT_SUCCESS);
@@ -685,10 +679,14 @@ export const updateCommand = new Command("update")
     // Final summary
     console.log();
     heading("Update Complete");
-    success(`Version: ${localVersion} → ${latestVersion || localVersion}`);
+    if (comparison > 0) {
+      success(`Version: ${localVersion} → ${latestVersion}`);
+    } else {
+      success(`Synced to latest build (v${latestVersion}).`);
+    }
     info("Your existing customizations have been preserved.");
     info("Run `opencode-jce doctor` to verify your installation.");
 
-    logCommandSuccess("update", `merged to ${latestVersion}, added ${totalChanges} item(s)`);
+    logCommandSuccess("update", `synced to ${latestVersion}, added ${totalChanges} item(s)`);
     process.exit(EXIT_SUCCESS);
   });

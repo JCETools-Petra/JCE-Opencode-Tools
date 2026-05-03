@@ -2,9 +2,17 @@ import chalk from "chalk";
 import { VERSION } from "./constants.js";
 
 export function banner(): void {
-  console.log(chalk.cyan("╔═══════════════════════════════════════════╗"));
-  console.log(chalk.cyan(`║         OpenCode JCE CLI v${VERSION}           ║`));
-  console.log(chalk.cyan("╚═══════════════════════════════════════════╝"));
+  const title = `OpenCode JCE CLI v${VERSION}`;
+  const boxWidth = Math.max(title.length + 6, 43); // min 43 inner width
+  const padding = boxWidth - title.length;
+  const padLeft = Math.floor(padding / 2);
+  const padRight = padding - padLeft;
+  const top = "╔" + "═".repeat(boxWidth) + "╗";
+  const mid = "║" + " ".repeat(padLeft) + title + " ".repeat(padRight) + "║";
+  const bot = "╚" + "═".repeat(boxWidth) + "╝";
+  console.log(chalk.cyan(top));
+  console.log(chalk.cyan(mid));
+  console.log(chalk.cyan(bot));
   console.log();
 }
 
