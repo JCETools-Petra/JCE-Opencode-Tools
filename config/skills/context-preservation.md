@@ -4,6 +4,21 @@ Panduan untuk menjaga context antar sesi agar AI tidak pernah kehilangan informa
 
 ---
 
+## Enforcement: MCP Server `context-keeper`
+
+**Jika MCP server `context-keeper` tersedia, WAJIB gunakan tools-nya:**
+
+| Kapan | Tool | Deskripsi |
+|-------|------|-----------|
+| Awal sesi | `context_read` | Baca + auto-prune file. PANGGIL SEBELUM kerja apapun. |
+| Setelah task selesai | `context_update` | Update section tertentu (Stack, Current Status, dll) |
+| Sebelum sesi berakhir | `context_checkpoint` | Validasi, prune, archive jika perlu |
+
+**Jika MCP tidak tersedia, gunakan IRON RULE:**
+> Setiap kali TodoWrite dipanggil untuk mark items `completed`, WAJIB juga update `.opencode-context.md` di response yang SAMA.
+
+---
+
 ## Prinsip Utama
 
 1. **Baca dulu, kerja kemudian** — Selalu baca `.opencode-context.md` di awal sesi sebelum mulai kerja

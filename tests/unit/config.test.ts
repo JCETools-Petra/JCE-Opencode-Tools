@@ -92,8 +92,8 @@ describe("config/mcp.json", () => {
     mcpServers: Record<string, { command: string; args: string[] }>;
   };
 
-  test("has exactly 8 MCP servers", () => {
-    expect(Object.keys(mcp.mcpServers)).toHaveLength(8);
+  test("has exactly 9 MCP servers", () => {
+    expect(Object.keys(mcp.mcpServers)).toHaveLength(9);
   });
 
   test("each MCP server has 'command' field", () => {
@@ -173,7 +173,6 @@ describe("config/profiles/", () => {
     "budget",
     "claude-haiku",
     "codestral",
-    "codex-5.3",
     "deepseek-coder",
     "deepseek-v3",
     "gemini-2.5",
@@ -225,7 +224,7 @@ describe("config/profiles/", () => {
 
   test("exactly 20 profile files in directory", () => {
     const files = readdirSync(profileDir).filter((f) => f.endsWith(".json"));
-    expect(files).toHaveLength(20);
+    expect(files).toHaveLength(19);
   });
 });
 

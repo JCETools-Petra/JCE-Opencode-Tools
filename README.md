@@ -100,7 +100,6 @@ Switch between providers and models instantly.
 | `sonnet-4.6` | Anthropic | Balanced quality/speed |
 | `opus-latest` | Anthropic | Maximum quality |
 | `claude-haiku` | Anthropic | Fast & cheap |
-| `codex-5.3` | OpenAI | Full power coding |
 | `gpt-4o` | OpenAI | All-rounder |
 | `o3` | OpenAI | Deep reasoning |
 | `gemini-2.5` | Google | 1M context window |

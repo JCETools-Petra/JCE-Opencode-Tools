@@ -1,5 +1,13 @@
 {
   "mcpServers": {
+    "context-keeper": {
+      "command": "bun",
+      "args": ["run", "${OPENCODE_CONFIG_DIR}/cli/src/mcp/context-keeper.ts"],
+      "env": {
+        "PROJECT_ROOT": "${PROJECT_ROOT}"
+      },
+      "description": "Auto-maintains .opencode-context.md — MUST call context_read at session start, context_update after tasks, context_checkpoint before session end"
+    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@1"],

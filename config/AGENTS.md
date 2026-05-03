@@ -37,6 +37,17 @@ Fail fast, fail loud, typed errors, actionable messages, never swallow silently.
 
 **Context file is PER-PROJECT** — each project root has its own `.opencode-context.md`. Not global.
 
+**ENFORCEMENT VIA MCP (context-keeper server):**
+If the `context-keeper` MCP server is available, you MUST use its tools:
+1. **Session start:** Call `context_read` BEFORE doing anything else
+2. **After completing tasks:** Call `context_update` with the relevant section and changes
+3. **Before session ends / before committing:** Call `context_checkpoint`
+
+**ENFORCEMENT VIA TODOWRITE (backup rule — if MCP not available):**
+> **IRON RULE:** Every time you call TodoWrite to mark items as `completed`, you MUST ALSO update `.opencode-context.md` in the SAME response. No exceptions. TodoWrite completion = context update. They are coupled.
+
+**Manual fallback (if neither MCP nor TodoWrite is used):**
+
 1. **Start of session (MANDATORY):**
    - Check if `.opencode-context.md` exists in project root.
    - **If it exists:** READ IT FIRST before doing anything else. Do NOT overwrite or recreate it.

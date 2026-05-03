@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.5.0"
+$Version = "1.6.0"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -486,9 +486,27 @@ function Deploy-Config {
 }
 
 function Deploy-ConfigSafe($sourceDir, $targetDir) {
-    # Safe copy: only copy files that do not already exist
-    $files = @("agents.json", "mcp.json", "lsp.json", "fallback.json")
-    foreach ($file in $files) {
+    # First try merge-config.ts (handles JSON-level merging properly)
+    $installDir = Join-Path $targetDir "cli"
+    $mergeScript = Join-Path $TempDir "scripts\merge-config.ts"
+    if ((Test-Path $mergeScript) -and (Test-Command "bun")) {
+        try {
+            $prevEA = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            $output = bun run $mergeScript $sourceDir $targetDir 2>&1
+            $ErrorActionPreference = $prevEA
+            Write-Ok "Configuration merged via merge-config.ts"
+            # Still need to handle profiles/prompts/skills/AGENTS.md below
+            # but merge-config.ts already handles mcp.json, agents.json, lsp.json, profiles, prompts, skills
+            return
+        } catch {
+            Write-Warn "merge-config.ts failed: $($_.Exception.Message). Falling back to manual merge..."
+        }
+    }
+
+    # Fallback: manual merge with JSON-level merging for mcp.json
+    $simpleFiles = @("agents.json", "lsp.json", "fallback.json")
+    foreach ($file in $simpleFiles) {
         $src = Join-Path $sourceDir $file
         $dst = Join-Path $targetDir $file
         if ((Test-Path $src) -and !(Test-Path $dst)) {
@@ -496,6 +514,34 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
             Write-Ok "  Created: $file"
         } elseif ((Test-Path $src) -and (Test-Path $dst)) {
             Write-Skip "  Exists, preserved: $file"
+        }
+    }
+
+    # mcp.json: merge missing servers into existing file
+    $mcpSrc = Join-Path $sourceDir "mcp.json"
+    $mcpDst = Join-Path $targetDir "mcp.json"
+    if ((Test-Path $mcpSrc) -and !(Test-Path $mcpDst)) {
+        Copy-Item $mcpSrc $mcpDst
+        Write-Ok "  Created: mcp.json"
+    } elseif ((Test-Path $mcpSrc) -and (Test-Path $mcpDst)) {
+        try {
+            $srcJson = Get-Content $mcpSrc -Raw | ConvertFrom-Json
+            $dstJson = Get-Content $mcpDst -Raw | ConvertFrom-Json
+            $added = 0
+            foreach ($server in $srcJson.mcpServers.PSObject.Properties) {
+                if (-not $dstJson.mcpServers.PSObject.Properties[$server.Name]) {
+                    $dstJson.mcpServers | Add-Member -NotePropertyName $server.Name -NotePropertyValue $server.Value
+                    $added++
+                }
+            }
+            if ($added -gt 0) {
+                $dstJson | ConvertTo-Json -Depth 10 | Set-Content $mcpDst -Encoding UTF8
+                Write-Ok "  mcp.json: $added new server(s) merged"
+            } else {
+                Write-Skip "  mcp.json: all servers already present"
+            }
+        } catch {
+            Write-Warn "  mcp.json merge failed: $($_.Exception.Message). Preserved existing."
         }
     }
 
@@ -552,6 +598,59 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
         }
         $count = (Get-ChildItem $skillsDst -Filter "*.md").Count
         Write-Ok "  Skills deployed ($count files)"
+    }
+}
+
+function Register-ContextKeeper {
+    Write-Info "Registering context-keeper MCP server in opencode.json..."
+
+    $opencodeJson = Join-Path $ConfigDir "opencode.json"
+    $cliDir = Join-Path $ConfigDir "cli"
+    $contextKeeperPath = Join-Path $cliDir "src\mcp\context-keeper.ts"
+
+    # Verify context-keeper.ts exists
+    if (-not (Test-Path $contextKeeperPath)) {
+        Write-Warn "context-keeper.ts not found at: $contextKeeperPath"
+        Write-Warn "Skipping MCP registration. Run 'opencode-jce update' to fix."
+        return
+    }
+
+    # Normalize path for JSON (forward slashes)
+    $normalizedPath = $contextKeeperPath -replace "\\", "/"
+
+    if (-not (Test-Path $opencodeJson)) {
+        Write-Skip "opencode.json not found. context-keeper will be registered on next 'opencode-jce update'."
+        return
+    }
+
+    try {
+        $config = Get-Content $opencodeJson -Raw | ConvertFrom-Json
+
+        # Ensure mcp section exists
+        if (-not $config.mcp) {
+            $config | Add-Member -NotePropertyName "mcp" -NotePropertyValue ([PSCustomObject]@{})
+        }
+
+        # Check if context-keeper already registered
+        if ($config.mcp.PSObject.Properties["context-keeper"]) {
+            Write-Skip "context-keeper already registered in opencode.json"
+            return
+        }
+
+        # Add context-keeper entry
+        $contextKeeperEntry = [PSCustomObject]@{
+            type = "local"
+            command = @("bun", "run", $normalizedPath)
+            enabled = $true
+        }
+        $config.mcp | Add-Member -NotePropertyName "context-keeper" -NotePropertyValue $contextKeeperEntry
+
+        # Write back
+        $config | ConvertTo-Json -Depth 10 | Set-Content $opencodeJson -Encoding UTF8
+        Write-Ok "context-keeper registered in opencode.json"
+    } catch {
+        Write-Warn "Failed to register context-keeper: $($_.Exception.Message)"
+        Write-Info "Add manually to opencode.json: mcp.context-keeper = {type:'local', command:['bun','run','$normalizedPath'], enabled:true}"
     }
 }
 
@@ -850,6 +949,7 @@ Install-Bun
 Install-OpenCode
 Write-Host ""
 Deploy-Config
+Register-ContextKeeper
 Install-McpPackages
 Install-LspServers
 Write-Summary

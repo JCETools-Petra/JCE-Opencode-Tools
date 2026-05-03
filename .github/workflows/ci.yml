@@ -104,6 +104,7 @@ jobs:
               ['schemas/agents.schema.json', 'config/agents.json'],
               ['schemas/mcp.schema.json', 'config/mcp.json'],
               ['schemas/lsp.schema.json', 'config/lsp.json'],
+              ['schemas/fallback.schema.json', 'config/fallback.json'],
             ];
 
             let failed = false;

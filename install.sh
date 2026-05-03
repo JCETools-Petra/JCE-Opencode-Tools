@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.5.0"
+VERSION="1.6.0"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -322,6 +322,51 @@ deploy_config() {
 
     # Cleanup
     rm -rf "$TEMP_DIR"
+}
+
+register_context_keeper() {
+    info "Registering context-keeper MCP server in opencode.json..."
+
+    local opencode_json="${CONFIG_DIR}/opencode.json"
+    local cli_dir="${CONFIG_DIR}/cli"
+    local context_keeper_path="${cli_dir}/src/mcp/context-keeper.ts"
+
+    # Verify context-keeper.ts exists
+    if [ ! -f "$context_keeper_path" ]; then
+        warn "context-keeper.ts not found at: $context_keeper_path"
+        warn "Skipping MCP registration. Run 'opencode-jce update' to fix."
+        return
+    fi
+
+    if [ ! -f "$opencode_json" ]; then
+        skip "opencode.json not found. context-keeper will be registered on next 'opencode-jce update'."
+        return
+    fi
+
+    # Check if already registered
+    if grep -q '"context-keeper"' "$opencode_json" 2>/dev/null; then
+        skip "context-keeper already registered in opencode.json"
+        return
+    fi
+
+    # Use bun/node to safely merge JSON
+    bun -e "
+const fs = require('fs');
+const config = JSON.parse(fs.readFileSync('${opencode_json}', 'utf8'));
+if (!config.mcp) config.mcp = {};
+if (!config.mcp['context-keeper']) {
+    config.mcp['context-keeper'] = {
+        type: 'local',
+        command: ['bun', 'run', '${context_keeper_path}'],
+        enabled: true
+    };
+    fs.writeFileSync('${opencode_json}', JSON.stringify(config, null, 2) + '\\n');
+    console.log('REGISTERED');
+} else {
+    console.log('ALREADY_EXISTS');
+}
+" 2>/dev/null && success "context-keeper registered in opencode.json" \
+    || warn "Failed to register context-keeper. Add manually to opencode.json."
 }
 
 # API keys are managed by OpenCode CLI directly - no setup needed here
@@ -750,6 +795,7 @@ main() {
     echo ""
 
     deploy_config
+    register_context_keeper
     precache_mcp_packages
     select_and_install_lsp
     print_summary

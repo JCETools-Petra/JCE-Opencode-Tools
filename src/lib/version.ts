@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.5.0";
+export const CURRENT_CONFIG_VERSION = "1.6.0";
 
 /**
  * Get the path to the version.json file.
@@ -100,13 +100,52 @@ export async function updateVersion(newVersion: string): Promise<VersionInfo> {
  * Registry of all migrations, ordered by version.
  */
 const migrations: Migration[] = [
-  // Example migration for future use:
-  // {
-  //   fromVersion: "1.0.0",
-  //   toVersion: "1.1.0",
-  //   description: "Add token saving fields to profiles",
-  //   migrate: async () => { ... },
-  // },
+  {
+    fromVersion: "1.4.0",
+    toVersion: "1.6.0",
+    description: "Register context-keeper MCP server in opencode.json",
+    migrate: async () => {
+      const configDir = getConfigDir();
+      const opencodeJsonPath = join(configDir, "opencode.json");
+      const contextKeeperPath = join(configDir, "cli", "src", "mcp", "context-keeper.ts");
+
+      if (!existsSync(opencodeJsonPath)) {
+        log("INFO", "migration", "opencode.json not found, skipping context-keeper registration");
+        return;
+      }
+
+      if (!existsSync(contextKeeperPath)) {
+        log("INFO", "migration", "context-keeper.ts not found, skipping registration");
+        return;
+      }
+
+      try {
+        const content = await readFile(opencodeJsonPath, "utf-8");
+        const config = JSON.parse(content);
+
+        if (!config.mcp) config.mcp = {};
+        if (config.mcp["context-keeper"]) {
+          log("INFO", "migration", "context-keeper already registered");
+          return;
+        }
+
+        // Normalize path (forward slashes for cross-platform)
+        const normalizedPath = contextKeeperPath.replace(/\\/g, "/");
+
+        config.mcp["context-keeper"] = {
+          type: "local",
+          command: ["bun", "run", normalizedPath],
+          enabled: true,
+        };
+
+        await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
+        log("INFO", "migration", "context-keeper registered in opencode.json");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log("ERROR", "migration", `Failed to register context-keeper: ${msg}`);
+      }
+    },
+  },
 ];
 
 /**

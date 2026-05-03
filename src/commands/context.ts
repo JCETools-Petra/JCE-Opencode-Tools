@@ -6,36 +6,7 @@ import chalk from "chalk";
 import { heading, info, success, warn, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
-
-// ─── Constants ───────────────────────────────────────────────
-
-const CONTEXT_FILENAME = ".opencode-context.md";
-
-function getContextTemplate(): string {
-  return `# Project Context
-> Auto-maintained by AI. You can edit this file freely.
-> Last updated: ${new Date().toISOString().split("T")[0]}
-
-## Stack
-- [language/framework]
-- [database]
-- [key tools]
-
-## Architecture Decisions
-- [decision]: [brief reason]
-
-## Conventions
-- [rule 1]
-- [rule 2]
-
-## Current Status
-- [ ] [task 1]
-- [ ] [task 2]
-
-## Important Notes
-- [anything the AI should always remember]
-`;
-}
+import { CONTEXT_FILENAME, getContextTemplate } from "../lib/context-template.js";
 
 // ─── Helpers ─────────────────────────────────────────────────
 

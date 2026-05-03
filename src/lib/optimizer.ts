@@ -47,7 +47,7 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
  */
 function getModelTier(model: string): "expensive" | "moderate" | "cheap" {
   if (model.includes("opus") || model.includes("gpt-4-turbo")) return "expensive";
-  if (model.includes("sonnet") || model.includes("gpt-4o") && !model.includes("mini")) return "moderate";
+  if (model.includes("sonnet") || (model.includes("gpt-4o") && !model.includes("mini"))) return "moderate";
   return "cheap";
 }
 

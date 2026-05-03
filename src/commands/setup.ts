@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { createInterface } from "readline";
 import { existsSync } from "fs";
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir, chmod } from "fs/promises";
 import { join } from "path";
 import chalk from "chalk";
 import {
@@ -128,6 +128,10 @@ async function configureApiKeys(rl: ReturnType<typeof createInterface>): Promise
 
     const envPath = join(configDir, "api-keys.env");
     await writeFile(envPath, envLines.join("\n"), "utf-8");
+    // Restrict file permissions to owner-only (prevents other users from reading API keys)
+    if (process.platform !== "win32") {
+      await chmod(envPath, 0o600);
+    }
     success(`API keys saved to: ${envPath}`);
     info("Add `source ${envPath}` to your shell profile to load them automatically.");
   } else {
