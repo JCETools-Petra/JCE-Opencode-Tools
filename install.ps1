@@ -8,7 +8,8 @@ $ErrorActionPreference = "Stop"
 $Version = "1.5.0"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
-$ConfigDir = Join-Path $env:APPDATA "opencode"
+# OpenCode uses ~/.config/opencode/ on ALL platforms including Windows
+$ConfigDir = Join-Path $env:USERPROFILE ".config\opencode"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
 $JceLspDir = Join-Path $env:LOCALAPPDATA "opencode-jce\lsp"
 

@@ -9,8 +9,21 @@ import { readFile, writeFile, mkdir } from "fs/promises";
  * - Windows: %APPDATA%\opencode
  */
 export function getConfigDir(): string {
-  const os = platform();
+  // OpenCode uses ~/.config/opencode/ on ALL platforms (including Windows).
+  // Check XDG_CONFIG_HOME first, then fall back to ~/.config/opencode.
+  const xdgConfig = process.env.XDG_CONFIG_HOME;
+  if (xdgConfig) {
+    return join(xdgConfig, "opencode");
+  }
+  return join(homedir(), ".config", "opencode");
+}
 
+/**
+ * Returns the legacy config directory (%APPDATA%\opencode on Windows).
+ * Used for migration purposes only.
+ */
+export function getLegacyConfigDir(): string {
+  const os = platform();
   if (os === "win32") {
     const appData = process.env.APPDATA;
     if (appData) {
@@ -18,13 +31,7 @@ export function getConfigDir(): string {
     }
     return join(homedir(), "AppData", "Roaming", "opencode");
   }
-
-  // Linux / macOS
-  const xdgConfig = process.env.XDG_CONFIG_HOME;
-  if (xdgConfig) {
-    return join(xdgConfig, "opencode");
-  }
-  return join(homedir(), ".config", "opencode");
+  return getConfigDir(); // No legacy path on Linux/macOS
 }
 
 /**
