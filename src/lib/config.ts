@@ -91,6 +91,9 @@ export function getOpenCodeConfigPath(): string {
 
 /**
  * Load OpenCode's opencode.json config.
+ * If the file does not exist, creates it with the full default template
+ * (MCP servers, plugin, LSP auto-detect) so that subsequent writes
+ * never produce a partial config.
  */
 export async function loadOpenCodeConfig(): Promise<Record<string, any>> {
   const configPath = getOpenCodeConfigPath();
@@ -99,7 +102,15 @@ export async function loadOpenCodeConfig(): Promise<Record<string, any>> {
     const content = await readFile(configPath, "utf-8");
     return JSON.parse(content) ?? {};
   } catch (err: any) {
-    if (err.code === "ENOENT") return {};
+    if (err.code === "ENOENT") {
+      // Auto-create with full template
+      const { buildDefaultOpenCodeJson } = await import("./opencode-json-template.js");
+      const configDir = getConfigDir();
+      const template = buildDefaultOpenCodeJson(configDir);
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
+      return template as Record<string, any>;
+    }
     throw new Error(`Invalid JSON in OpenCode config: ${configPath}`);
   }
 }
