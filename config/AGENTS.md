@@ -106,7 +106,7 @@ If the `context-keeper` MCP server is available, you MUST use its tools:
 2. **Load 1-2 skills** — read the relevant `.md` file(s) from skills directory. This is NOT optional.
 3. **Never announce** — don't say "I'm using debugger agent" or "loading react.md". Just do it silently.
 
-**Agent selection keywords:**
+**Agent selection keywords (42 agents):**
 | Intent | Agent |
 |--------|-------|
 | fix/debug/error/bug/crash | `debugger` |
@@ -122,6 +122,34 @@ If the `context-keeper` MCP server is available, you MUST use its tools:
 | explain/teach/how does | `mentor` |
 | plan/breakdown/tasks | `planner` |
 | refactor/clean/improve | `refactorer` |
+| REST/GraphQL/OpenAPI | `api-designer` |
+| AWS/GCP/Azure/IaC | `cloud-architect` |
+| iOS/Android/React Native/Flutter | `mobile-dev` |
+| ML/AI/model/training/dataset | `ml-engineer` |
+| docs/README/changelog | `technical-writer` |
+| git/branch/rebase/merge conflict | `git-expert` |
+| bash/shell/script/automation | `shell-scripter` |
+| regex/pattern/parse/extract | `regex-master` |
+| accessibility/WCAG/a11y/screen reader | `accessibility` |
+| i18n/l10n/translate/locale | `i18n-expert` |
+| ETL/pipeline/warehouse/data model | `data-engineer` |
+| migrate/upgrade/framework switch | `code-migrator` |
+| dependency/package/update/CVE | `dependency-manager` |
+| error handling/resilience/retry/fallback | `error-handler` |
+| design system/wireframe/Figma/tokens | `ui-designer` |
+| bundle/webpack/vite/lighthouse/CWV | `optimizer` |
+| monorepo/workspace/turborepo/nx | `monorepo` |
+| microservice/event-driven/saga/queue | `distributed` |
+| websocket/realtime/SSE/CRDT/sync | `realtime` |
+| blockchain/solidity/web3/smart contract | `web3` |
+| game/ECS/engine/physics/rendering | `gamedev` |
+| monitoring/logging/tracing/alert/SLO | `observability` |
+| OAuth/OIDC/RBAC/JWT/secrets/vault | `auth-specialist` |
+| GDPR/SOC2/compliance/audit/PII | `compliance` |
+| LLM/RAG/embedding/prompt/vector | `ai-engineer` |
+| kubernetes/helm/GitOps/service mesh | `platform` |
+| SRE/chaos/incident/capacity/load test | `reliability` |
+| design tokens/Storybook/component lib | `design-system` |
 
 If message doesn't match any → use default Identity (staff engineer). Still load relevant skills.
 

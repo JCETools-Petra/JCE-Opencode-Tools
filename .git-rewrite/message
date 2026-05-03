@@ -1,0 +1,6 @@
+fix(installer): resolve Rust and Lua LSP installation failures on Windows
+
+- Rust: add Install-RustAnalyzer handler with rustup auto-install, stable toolchain setup, and ~/.cargo/bin PATH registration
+- Lua: expand path detection to scan winget Packages/LinkPackages dirs recursively, refresh PATH from registry after install
+- Add ~/.cargo/bin to Get-KnownCommandPath candidates
+- Update README with v1.4.3 changelog and troubleshooting entries

@@ -26,8 +26,8 @@ describe("config/agents.json", () => {
     }>;
   };
 
-  test("has exactly 30 agents", () => {
-    expect(agents.agents).toHaveLength(30);
+  test("has exactly 42 agents", () => {
+    expect(agents.agents).toHaveLength(42);
   });
 
   test("each agent has required field 'id'", () => {
