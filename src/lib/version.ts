@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.7.1";
+export const CURRENT_CONFIG_VERSION = "1.7.2";
 
 /**
  * Get the path to the version.json file.
@@ -171,7 +171,9 @@ export function compareVersions(a: string, b: string): number {
  */
 export function getPendingMigrations(currentVersion: string, targetVersion: string): Migration[] {
   return migrations.filter((m) => {
-    return compareVersions(m.fromVersion, currentVersion) >= 0 &&
+    // Run migration if user's current version is below the migration's target
+    // AND the migration's target is within the update target
+    return compareVersions(currentVersion, m.toVersion) < 0 &&
            compareVersions(m.toVersion, targetVersion) <= 0;
   });
 }

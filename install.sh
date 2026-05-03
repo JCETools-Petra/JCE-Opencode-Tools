@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.7.1"
+VERSION="1.7.2"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -281,6 +281,23 @@ deploy_config() {
             done
             success "  Prompts copied"
         fi
+        # Copy AGENTS.md if not present (fallback)
+        if [ -f "$TEMP_DIR/config/AGENTS.md" ] && [ ! -f "$CONFIG_DIR/AGENTS.md" ]; then
+            cp "$TEMP_DIR/config/AGENTS.md" "$CONFIG_DIR/AGENTS.md"
+            success "  AGENTS.md deployed"
+        fi
+        # Copy skills that don't exist (fallback)
+        if [ -d "$TEMP_DIR/config/skills" ]; then
+            mkdir -p "$CONFIG_DIR/skills"
+            for f in "$TEMP_DIR/config/skills"/*.md; do
+                [ -f "$f" ] || continue
+                fname=$(basename "$f")
+                if [ ! -f "$CONFIG_DIR/skills/$fname" ]; then
+                    cp "$f" "$CONFIG_DIR/skills/$fname"
+                fi
+            done
+            success "  Skills deployed"
+        fi
     fi
 
     # Deploy AGENTS.md (only if not already present)
@@ -310,14 +327,28 @@ deploy_config() {
 
     # Install opencode-jce CLI globally
     info "Installing opencode-jce CLI..."
-    if (cd "$TEMP_DIR" && bun install && bun install -g .) 2>/dev/null; then
+    (cd "$TEMP_DIR" && bun install) 2>/dev/null
+
+    # Copy CLI source to persistent location (same as PS1 installer)
+    local install_dir="${CONFIG_DIR}/cli"
+    rm -rf "$install_dir"
+    mkdir -p "$install_dir"
+    cp -r "$TEMP_DIR/src" "$install_dir/src"
+    cp -r "$TEMP_DIR/schemas" "$install_dir/schemas"
+    cp "$TEMP_DIR/package.json" "$install_dir/"
+    cp "$TEMP_DIR/tsconfig.json" "$install_dir/"
+    cp -r "$TEMP_DIR/node_modules" "$install_dir/node_modules"
+    success "CLI source copied to: $install_dir"
+
+    # Install globally via bun
+    if (cd "$TEMP_DIR" && bun install -g .) 2>/dev/null; then
         if command -v opencode-jce &>/dev/null; then
             success "opencode-jce CLI installed globally"
         else
             warn "opencode-jce installed. Restart your terminal to use it."
         fi
     else
-        warn "opencode-jce CLI installation failed. You can install it manually later."
+        warn "opencode-jce CLI global install failed. You can use: bun run $install_dir/src/index.ts"
     fi
 
     # Cleanup
@@ -339,7 +370,28 @@ register_context_keeper() {
     fi
 
     if [ ! -f "$opencode_json" ]; then
-        skip "opencode.json not found. context-keeper will be registered on next 'opencode-jce update'."
+        info "opencode.json not found. Creating with default MCP servers..."
+        bun -e "
+const fs = require('fs');
+const path = require('path');
+const contextKeeperPath = path.join('${cli_dir}', 'src', 'mcp', 'context-keeper.ts').replace(/\\\\/g, '/');
+const config = {
+    '\$schema': 'https://opencode.ai/config.json',
+    plugin: ['superpowers@git+https://github.com/obra/superpowers.git'],
+    mcp: {
+        'context7': { type: 'remote', url: 'https://mcp.context7.com/mcp', enabled: true },
+        'sequential-thinking': { type: 'local', command: ['mcp-server-sequential-thinking'], enabled: true },
+        'playwright': { type: 'local', command: ['playwright-mcp'], enabled: true },
+        'github-search': { type: 'local', command: ['mcp-server-github'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: '\${GITHUB_TOKEN}' }, enabled: true },
+        'memory': { type: 'local', command: ['mcp-server-memory'], enabled: true },
+        'context-keeper': { type: 'local', command: ['bun', 'run', contextKeeperPath], enabled: true }
+    },
+    lsp: {}
+};
+fs.writeFileSync('${opencode_json}', JSON.stringify(config, null, 2) + '\\n');
+console.log('CREATED');
+" 2>/dev/null && success "opencode.json created with MCP servers pre-configured" \
+            || warn "Could not create opencode.json. Run 'opencode-jce doctor --fix' after install."
         return
     fi
 

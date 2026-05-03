@@ -49,7 +49,9 @@ interface MergeStats {
  */
 async function fetchLatestVersion(): Promise<string | null> {
   try {
-    const response = await fetch(`${GITHUB_RAW_BASE}/package.json`);
+    const response = await fetch(`${GITHUB_RAW_BASE}/package.json`, {
+      signal: AbortSignal.timeout(15000),
+    });
     if (!response.ok) {
       return null;
     }
@@ -66,7 +68,9 @@ async function fetchLatestVersion(): Promise<string | null> {
 async function fetchRemoteFile(relativePath: string): Promise<string | null> {
   try {
     const url = `${GITHUB_RAW_BASE}/config/${relativePath}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+    });
     if (!response.ok) {
       return null;
     }
@@ -86,6 +90,7 @@ async function fetchDirectoryListing(dir: string): Promise<string[]> {
       `https://api.github.com/repos/${GITHUB_REPO}/contents/config/${dir}`,
       {
         headers: { Accept: "application/vnd.github.v3+json" },
+        signal: AbortSignal.timeout(15000),
       }
     );
     if (!response.ok) {
@@ -188,7 +193,7 @@ async function writeTextFile(filePath: string, content: string): Promise<void> {
 async function mergeAgents(configDir: string): Promise<number> {
   const localPath = join(configDir, "agents.json");
   const remoteContent = await fetchRemoteFile("agents.json");
-  if (!remoteContent) return 0;
+  if (!remoteContent) return -1;
 
   let remoteData: { agents: Array<{ id: string; [key: string]: unknown }> };
   try {
@@ -218,7 +223,7 @@ async function mergeAgents(configDir: string): Promise<number> {
 async function mergeMcpServers(configDir: string): Promise<number> {
   const localPath = join(configDir, "mcp.json");
   const remoteContent = await fetchRemoteFile("mcp.json");
-  if (!remoteContent) return 0;
+  if (!remoteContent) return -1;
 
   let remoteData: { mcpServers: Record<string, unknown> };
   try {
@@ -255,7 +260,7 @@ async function mergeMcpServers(configDir: string): Promise<number> {
 async function mergeLspEntries(configDir: string): Promise<number> {
   const localPath = join(configDir, "lsp.json");
   const remoteContent = await fetchRemoteFile("lsp.json");
-  if (!remoteContent) return 0;
+  if (!remoteContent) return -1;
 
   let remoteData: { lsp: Record<string, unknown> };
   try {

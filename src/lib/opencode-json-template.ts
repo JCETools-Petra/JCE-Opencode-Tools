@@ -42,6 +42,7 @@ const FILETYPE_EXTENSIONS: Record<string, string[]> = {
   svelte: [".svelte"],
   vue: [".vue"],
   terraform: [".tf", ".tfvars"],
+  tf: [".tf"],
   zig: [".zig"],
   markdown: [".md"],
   toml: [".toml"],
