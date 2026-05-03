@@ -40,16 +40,19 @@ irm https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/ins
 
 ## Features
 
-### 42 AI Agents (10 Advanced)
+### 42 AI Agents (All Advanced)
 
-Specialized agents with structured workflows, MCP tool integration, and context-aware behavior. The top 10 agents include step-by-step workflows, verification checklists, and project-type-specific rules.
+Every agent includes deep system prompts (4000-6000 chars), structured workflows, context-aware routing, multi-agent pipelines, and verification checklists.
 
-**Advanced agents** (`debugger`, `reviewer`, `security`, `architect`, `tester`, `devops`, `frontend`, `backend`, `database`, `performance`) include:
-- `workflow` — step-by-step execution plan
+**Every agent includes:**
+- `systemPrompt` — deep methodology with decision trees, anti-patterns, and examples
+- `workflow` — 10-12 step execution plan with gates
 - `tools` — preferred MCP tools for the task
-- `outputFormat` — structured response template
-- `contextRules` — different behavior per project type (React, Node, Python, etc.)
-- `verification` — self-check before responding
+- `outputFormat` — structured response template with tables and code blocks
+- `contextRules` — per-framework/technology specific checks
+- `verification` — 8-10 item self-check before responding
+- `routing` — auto-dispatch via file extensions, error patterns, project files
+- `pipeline` — collaboration links (before/after/escalateTo/delegateTo)
 
 <details>
 <summary>View all agents</summary>
@@ -86,6 +89,18 @@ Specialized agents with structured workflows, MCP tool integration, and context-
 | `error-handler` | Resilience patterns, graceful degradation |
 | `ui-designer` | Design systems, wireframes, user flows |
 | `optimizer` | Bundle size, caching, Core Web Vitals |
+| `monorepo` | Turborepo, Nx, pnpm workspaces |
+| `distributed` | Microservices, event-driven, saga patterns |
+| `realtime` | WebSocket, SSE, CRDT, real-time sync |
+| `web3` | Blockchain, Solidity, smart contracts |
+| `gamedev` | ECS, game loops, physics, rendering |
+| `observability` | Monitoring, tracing, SLO/SLI, alerting |
+| `auth-specialist` | OAuth2, OIDC, RBAC, zero-trust |
+| `compliance` | GDPR, SOC2, audit trails, PII |
+| `ai-engineer` | LLM integration, RAG, prompt engineering |
+| `platform` | Kubernetes, Helm, GitOps, service mesh |
+| `reliability` | SRE, chaos engineering, incident response |
+| `design-system` | Design tokens, Storybook, component libraries |
 
 </details>
 
@@ -135,23 +150,25 @@ Saves 30-60% on token costs without sacrificing quality.
 
 ### 50 Advanced Skills
 
-Modular instruction files loaded only when relevant. 5 key skills have been upgraded to advanced format with decision trees, verification checklists, code templates, and MCP integration.
+Modular instruction files loaded on-demand. All skills include decision trees, code examples, anti-patterns, and real-world patterns (150-500 lines each).
 
 | Category | Skills |
 |----------|--------|
-| **Core** | software-engineering, security, architecture, frontend, devops, developer-tooling, ai-optimization, advanced-patterns, sql-database, tailwind, context-preservation |
+| **Core** | software-engineering, security, architecture, frontend, devops, developer-tooling, ai-optimization, advanced-patterns, sql-database, tailwind, context-preservation, testing-strategies, api-design-patterns |
+| **Distributed & Platform** | distributed-systems, platform-engineering, reliability-engineering, observability, realtime-systems, monorepo-management |
+| **Security & Compliance** | auth-identity, compliance-governance |
+| **AI & Specialized** | ai-llm-engineering, blockchain-web3, game-development, design-systems |
 | **Frontend** | react, vue, svelte, nextjs, angular |
 | **Backend** | laravel, django-fastapi, express-nestjs, spring-boot, rails |
 | **Mobile** | react-native, flutter-dart, swift-ios |
 | **Languages** | typescript, python, rust, go, csharp, java-kotlin, php, ruby, cpp, shell-bash, elixir, scala |
 
-**Advanced skills** (`react`, `typescript`, `security`, `architecture`, `devops`) include:
-- Auto-detect triggers (file extensions, package.json keys)
-- Decision trees for common scenarios
+Every skill includes:
+- Auto-detect triggers (file extensions, project files)
+- Decision trees for choosing approaches
+- Production-ready code examples
+- Anti-patterns with explanations
 - Verification checklists
-- Copy-paste code templates
-- Anti-patterns table
-- MCP tool recommendations
 
 Skills are detected from context and work with prompts in any language including Bahasa Indonesia.
 
