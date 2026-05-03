@@ -65,6 +65,27 @@
               "type": "string"
             },
             "description": "Self-check steps before responding"
+          },
+          "routing": {
+            "type": "object",
+            "properties": {
+              "fileExtensions": { "type": "array", "items": { "type": "string" } },
+              "errorPatterns": { "type": "array", "items": { "type": "string" } },
+              "projectFiles": { "type": "array", "items": { "type": "string" } },
+              "gitDiffTriggers": { "type": "object" },
+              "failureEscalation": { "type": "boolean" }
+            },
+            "description": "Context-aware auto-dispatch triggers"
+          },
+          "pipeline": {
+            "type": "object",
+            "properties": {
+              "before": { "type": "array", "items": { "type": "string" } },
+              "after": { "type": "array", "items": { "type": "string" } },
+              "escalateTo": { "type": "string" },
+              "delegateTo": { "type": "object" }
+            },
+            "description": "Multi-agent collaboration links"
           }
         },
         "additionalProperties": false
