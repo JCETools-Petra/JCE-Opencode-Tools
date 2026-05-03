@@ -9,7 +9,7 @@ set -euo pipefail
 VERSION="1.5.0"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+# CONFIG_DIR is set by detect_opencode_config() in main()
 
 # Cleanup on exit/interrupt
 trap 'rm -rf "$TEMP_DIR" 2>/dev/null' EXIT INT TERM
@@ -47,6 +47,59 @@ success() { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 skip() { echo -e "${YELLOW}[SKIP]${NC} $1"; }
+
+detect_opencode_config() {
+    info "Detecting OpenCode config directory..."
+
+    # Candidate paths in priority order
+    local candidates=()
+
+    # 1. XDG_CONFIG_HOME (if set)
+    if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+        candidates+=("${XDG_CONFIG_HOME}/opencode")
+    fi
+
+    # 2. ~/.config/opencode (standard on all platforms)
+    candidates+=("$HOME/.config/opencode")
+
+    # 3. macOS: ~/Library/Application Support/opencode (some tools use this)
+    if [ "$(uname -s)" = "Darwin" ]; then
+        candidates+=("$HOME/Library/Application Support/opencode")
+    fi
+
+    # Search for existing OpenCode config (opencode.json is the marker)
+    for path in "${candidates[@]}"; do
+        if [ -f "$path/opencode.json" ]; then
+            success "Found OpenCode config at: $path"
+            CONFIG_DIR="$path"
+            return
+        fi
+    done
+
+    # Default: ~/.config/opencode/ (OpenCode standard)
+    CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+    info "No existing config found. Using default: $CONFIG_DIR"
+}
+
+backup_existing_config() {
+    if [ ! -d "$CONFIG_DIR" ]; then return; fi
+
+    # Check if there's anything worth backing up
+    local file_count
+    file_count=$(find "$CONFIG_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l)
+    if [ "$file_count" -eq 0 ]; then return; fi
+
+    local timestamp
+    timestamp=$(date +%Y-%m-%d_%H%M%S)
+    local backup_dir="${CONFIG_DIR}.backup.${timestamp}"
+
+    info "Backing up existing config to: $backup_dir"
+    if cp -r "$CONFIG_DIR" "$backup_dir" 2>/dev/null; then
+        success "Backup created: $backup_dir"
+    else
+        warn "Backup failed — continuing anyway."
+    fi
+}
 
 detect_os() {
     case "$(uname -s)" in
@@ -683,6 +736,12 @@ main() {
     print_banner
     detect_os
     detect_package_manager
+    echo ""
+
+    # Auto-detect OpenCode config location and backup
+    detect_opencode_config
+    backup_existing_config
+    info "Config directory: $CONFIG_DIR"
     echo ""
 
     install_git

@@ -8,10 +8,11 @@ $ErrorActionPreference = "Stop"
 $Version = "1.5.0"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
-# OpenCode uses ~/.config/opencode/ on ALL platforms including Windows
-$ConfigDir = Join-Path $env:USERPROFILE ".config\opencode"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
 $JceLspDir = Join-Path $env:LOCALAPPDATA "opencode-jce\lsp"
+
+# ConfigDir is set by Detect-OpenCodeConfig below (after helpers are defined)
+$ConfigDir = $null
 
 # Status tracking
 $GitStatus = "skip"
@@ -252,6 +253,75 @@ function Install-LuaLsp {
 
     if (-not (Test-Command "lua-language-server")) {
         throw "lua-language-server installed but not found on PATH. Restart terminal and verify."
+    }
+}
+
+# --- Auto-Detect OpenCode Config Path ---
+
+function Detect-OpenCodeConfig {
+    Write-Info "Detecting OpenCode config directory..."
+
+    # Candidate paths in priority order
+    $candidates = @()
+
+    # 1. Check XDG_CONFIG_HOME (if set)
+    if ($env:XDG_CONFIG_HOME) {
+        $candidates += Join-Path $env:XDG_CONFIG_HOME "opencode"
+    }
+
+    # 2. ~/.config/opencode (OpenCode standard on all platforms)
+    $candidates += Join-Path $env:USERPROFILE ".config\opencode"
+
+    # 3. %APPDATA%\opencode (legacy Windows path)
+    if ($env:APPDATA) {
+        $candidates += Join-Path $env:APPDATA "opencode"
+    }
+
+    # Search for existing OpenCode config (opencode.json is the marker)
+    foreach ($path in $candidates) {
+        $marker = Join-Path $path "opencode.json"
+        if (Test-Path $marker) {
+            Write-Ok "Found OpenCode config at: $path"
+            return $path
+        }
+    }
+
+    # No existing config found — try to ask OpenCode CLI directly
+    if (Test-Command "opencode") {
+        try {
+            $prevEA = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            # OpenCode stores config next to its own binary config
+            $opencodeWhich = (Get-Command opencode -ErrorAction Stop).Source
+            $ErrorActionPreference = $prevEA
+            # Check if there's a config dir next to where opencode looks
+        } catch {}
+    }
+
+    # Default: ~/.config/opencode/ (OpenCode standard)
+    $defaultPath = Join-Path $env:USERPROFILE ".config\opencode"
+    Write-Info "No existing config found. Using default: $defaultPath"
+    return $defaultPath
+}
+
+function Backup-ExistingConfig {
+    param([string]$configPath)
+
+    if (-not (Test-Path $configPath)) { return }
+
+    # Check if there's anything worth backing up
+    $hasFiles = (Get-ChildItem $configPath -File -ErrorAction SilentlyContinue).Count -gt 0
+    if (-not $hasFiles) { return }
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
+    $backupDir = "${configPath}.backup.${timestamp}"
+
+    Write-Info "Backing up existing config to: $backupDir"
+    try {
+        Copy-Item $configPath $backupDir -Recurse -Force
+        Write-Ok "Backup created: $backupDir"
+    } catch {
+        Write-Warn "Backup failed: $($_.Exception.Message) — continuing anyway."
     }
 }
 
@@ -761,6 +831,15 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 }
 
 Write-Banner
+
+# Auto-detect OpenCode config location FIRST
+$ConfigDir = Detect-OpenCodeConfig
+
+# Backup existing config before making changes
+Backup-ExistingConfig $ConfigDir
+
+Write-Info "Config directory: $ConfigDir"
+Write-Host ""
 
 if (-not (Test-Command "winget")) {
     Write-Warn "winget not found. Some installations may fail."

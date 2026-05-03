@@ -8,14 +8,37 @@ import { readFile, writeFile, mkdir } from "fs/promises";
  * - Linux/macOS: $XDG_CONFIG_HOME/opencode or ~/.config/opencode
  * - Windows: %APPDATA%\opencode
  */
+/**
+ * Auto-detect the OpenCode config directory.
+ * Searches for existing config (opencode.json as marker) in candidate paths.
+ * Falls back to ~/.config/opencode/ (OpenCode standard on all platforms).
+ */
 export function getConfigDir(): string {
-  // OpenCode uses ~/.config/opencode/ on ALL platforms (including Windows).
-  // Check XDG_CONFIG_HOME first, then fall back to ~/.config/opencode.
+  const candidates: string[] = [];
+
+  // 1. XDG_CONFIG_HOME (if set)
   const xdgConfig = process.env.XDG_CONFIG_HOME;
   if (xdgConfig) {
-    return join(xdgConfig, "opencode");
+    candidates.push(join(xdgConfig, "opencode"));
   }
-  return join(homedir(), ".config", "opencode");
+
+  // 2. ~/.config/opencode (OpenCode standard on all platforms)
+  candidates.push(join(homedir(), ".config", "opencode"));
+
+  // 3. %APPDATA%\opencode (legacy Windows path)
+  if (platform() === "win32" && process.env.APPDATA) {
+    candidates.push(join(process.env.APPDATA, "opencode"));
+  }
+
+  // Search for existing config (opencode.json is the marker)
+  for (const path of candidates) {
+    if (existsSync(join(path, "opencode.json"))) {
+      return path;
+    }
+  }
+
+  // Default: ~/.config/opencode/
+  return candidates[0] || join(homedir(), ".config", "opencode");
 }
 
 /**
@@ -23,15 +46,10 @@ export function getConfigDir(): string {
  * Used for migration purposes only.
  */
 export function getLegacyConfigDir(): string {
-  const os = platform();
-  if (os === "win32") {
-    const appData = process.env.APPDATA;
-    if (appData) {
-      return join(appData, "opencode");
-    }
-    return join(homedir(), "AppData", "Roaming", "opencode");
+  if (platform() === "win32" && process.env.APPDATA) {
+    return join(process.env.APPDATA, "opencode");
   }
-  return getConfigDir(); // No legacy path on Linux/macOS
+  return getConfigDir();
 }
 
 /**
