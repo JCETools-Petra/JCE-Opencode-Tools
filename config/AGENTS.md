@@ -159,7 +159,7 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 
 **You have access to specialized skill files in the OpenCode config directory (`~/.config/opencode/skills/` on all platforms, including Windows).** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
 
-### Available Skills (36 files)
+### Available Skills (50 files)
 
 **Core Engineering:**
 | File | Load When |
@@ -175,6 +175,32 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | `sql-database.md` | SQL queries, schema design, indexing, migrations, PostgreSQL/MySQL |
 | `tailwind.md` | Tailwind CSS, utility-first styling, responsive design |
 | `context-preservation.md` | Maintaining project context across sessions, .opencode-context.md |
+| `testing-strategies.md` | Property-based, mutation, contract, visual regression, load testing |
+| `api-design-patterns.md` | REST maturity, GraphQL schema, gRPC, versioning, pagination, OpenAPI |
+
+**Distributed & Platform:**
+| File | Load When |
+|------|-----------|
+| `distributed-systems.md` | Event-driven, saga, CQRS, Kafka, RabbitMQ, circuit breakers |
+| `platform-engineering.md` | Kubernetes, Helm, ArgoCD, GitOps, Terraform, Pulumi, service mesh |
+| `reliability-engineering.md` | Chaos engineering, error budgets, incident response, load testing |
+| `observability.md` | OpenTelemetry, Prometheus, Grafana, tracing, SLO/SLI, alerting |
+| `realtime-systems.md` | WebSocket, SSE, CRDT, presence, pub/sub, real-time sync |
+| `monorepo-management.md` | Turborepo, Nx, pnpm workspaces, affected builds, task caching |
+
+**Security & Compliance:**
+| File | Load When |
+|------|-----------|
+| `auth-identity.md` | OAuth2, OIDC, JWT, RBAC/ABAC, MFA, zero-trust, secrets rotation |
+| `compliance-governance.md` | GDPR, SOC2, audit logging, PII handling, privacy by design |
+
+**AI & Specialized:**
+| File | Load When |
+|------|-----------|
+| `ai-llm-engineering.md` | RAG, embeddings, vector DB, prompt engineering, LLM evaluation |
+| `blockchain-web3.md` | Solidity, gas optimization, ERC standards, DeFi, Foundry/Hardhat |
+| `game-development.md` | ECS, game loops, physics, rendering, multiplayer networking |
+| `design-systems.md` | Design tokens, Storybook, theming, component API, variants |
 
 **Frontend Frameworks:**
 | File | Load When |

@@ -11,7 +11,7 @@
 
 **One command. Full setup. Zero hassle.**
 
-Install, configure, and manage your entire AI coding environment — 30 agents, 20 model profiles, 36 advanced skills, 8 MCP tools, 28 LSP servers, and 17 CLI commands.
+Install, configure, and manage your entire AI coding environment — 42 agents, 20 model profiles, 50 advanced skills, 8 MCP tools, 28 LSP servers, and 17 CLI commands.
 
 [Install](#-install) · [Features](#-features) · [CLI](#-cli-commands) · [Tutorial](#-installation-tutorial)
 
@@ -40,7 +40,7 @@ irm https://raw.githubusercontent.com/JCETools-Petra/JCE-Opencode-Tools/main/ins
 
 ## Features
 
-### 30 AI Agents (10 Advanced)
+### 42 AI Agents (10 Advanced)
 
 Specialized agents with structured workflows, MCP tool integration, and context-aware behavior. The top 10 agents include step-by-step workflows, verification checklists, and project-type-specific rules.
 
@@ -133,7 +133,7 @@ Saves 30-60% on token costs without sacrificing quality.
 
 ---
 
-### 36 Advanced Skills
+### 50 Advanced Skills
 
 Modular instruction files loaded only when relevant. 5 key skills have been upgraded to advanced format with decision trees, verification checklists, code templates, and MCP integration.
 
@@ -330,9 +330,9 @@ opencode-jce uninstall           # Clean removal (with backup)
 ```
 ~/.config/opencode/  # Windows: C:\Users\<you>\.config\opencode\
 ├── opencode.json    # Main config (LSP, MCP, providers)
-├── agents.json      # 30 AI agents
+├── agents.json      # 42 AI agents
 ├── profiles\        # 20 model profiles
-├── skills\          # 36 on-demand skill files
+├── skills\          # 50 on-demand skill files
 ├── lsp.json         # LSP server definitions
 ├── mcp.json         # MCP server config
 └── AGENTS.md        # Global AI instructions
@@ -397,9 +397,9 @@ opencode-jce setup --merge-lsp
 ```
 ~/.config/opencode/
 ├── opencode.json    # Main config (LSP, MCP, providers)
-├── agents.json      # 30 AI agents
+├── agents.json      # 42 AI agents
 ├── profiles/        # 20 model profiles
-├── skills/          # 36 on-demand skill files
+├── skills/          # 50 on-demand skill files
 ├── lsp.json         # LSP server definitions
 ├── mcp.json         # MCP server config
 └── AGENTS.md        # Global AI instructions
@@ -452,9 +452,9 @@ opencode-jce/
 │   └── lib/                # Shared libraries (config, router, memory, etc.)
 ├── config/                 # Pre-configured settings
 │   ├── AGENTS.md           # Global AI instructions (v3.1.0)
-│   ├── agents.json         # 30 AI agents
+│   ├── agents.json         # 42 AI agents
 │   ├── profiles/           # 20 model profiles
-│   ├── skills/             # 36 on-demand skill files
+│   ├── skills/             # 50 on-demand skill files
 │   ├── mcp.json            # 8 MCP tools
 │   ├── lsp.json            # 28 LSP servers
 │   ├── prompts/            # 5 prompt templates

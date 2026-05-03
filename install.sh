@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.8.0"
+VERSION="1.8.1"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -804,9 +804,9 @@ print_summary() {
         echo "║ ✅ OpenCode CLI   — already present      ║"
     fi
 
-    echo "║ ✅ 30 AI Agents   — configured           ║"
+    echo "║ ✅ 42 AI Agents   — configured           ║"
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
-    echo "║ ✅ 36 Skills      — on-demand workflows  ║"
+    echo "║ ✅ 50 Skills      — on-demand workflows  ║"
     echo "║ ✅ 20 Profiles    — ready                ║"
     echo "║ ✅ 8 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then

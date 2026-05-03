@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.8.0"
+$Version = "1.8.1"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -917,7 +917,7 @@ function Write-Summary {
 
     Write-Host "  [OK] 42 AI Agents   - configured" -ForegroundColor Green
     Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
-    Write-Host "  [OK] 36 Skills      - on-demand workflows" -ForegroundColor Green
+    Write-Host "  [OK] 50 Skills      - on-demand workflows" -ForegroundColor Green
     Write-Host "  [OK] 20 Profiles    - ready" -ForegroundColor Green
     Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {
