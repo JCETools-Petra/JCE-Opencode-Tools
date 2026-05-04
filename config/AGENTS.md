@@ -42,6 +42,16 @@ If the `context-keeper` MCP server is available, you MUST use its tools:
 1. **Session start:** Call `context_read` BEFORE doing anything else
 2. **After completing tasks:** Call `context_update` with the relevant section and changes
 3. **Before session ends / before committing:** Call `context_checkpoint`
+4. **Optional (debugging):** Call `context_history` to check health metrics
+5. **Cross-project:** Call `context_query_related` to read sibling project contexts (when relevant)
+
+**v2 capabilities:**
+- Multi-session tracking (session count, staleness detection after >7 days or >5 sessions)
+- Semantic deduplication (fuzzy matching removes near-duplicate entries)
+- Auto-enrichment (git state, dependencies injected in `context_read` response)
+- Optimistic concurrency (content hash prevents lost updates)
+- Cross-project context (read related project contexts via `## Related Projects`)
+- Compliance enforcement (staleness warnings, `opencode-jce context audit` command)
 
 **ENFORCEMENT VIA TODOWRITE (backup rule — if MCP not available):**
 > **IRON RULE:** Every time you call TodoWrite to mark items as `completed`, you MUST ALSO update `.opencode-context.md` in the SAME response. No exceptions. TodoWrite completion = context update. They are coupled.
@@ -93,6 +103,9 @@ If the `context-keeper` MCP server is available, you MUST use its tools:
 
 ## Important Notes
 - (none yet)
+
+## Related Projects
+- (none — add related projects as: - <path>: "<description>")
 ```
 
 > For detailed guidance, load `context-preservation.md` skill.

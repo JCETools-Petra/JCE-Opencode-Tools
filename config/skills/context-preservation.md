@@ -209,3 +209,40 @@ Pembagian:
 - Redis connection pool max 10 in production
 - ⚠️ Migration 2025_01_10 has breaking change on products.price (int→decimal)
 ```
+
+---
+
+## v2 Features
+
+### Multi-Session Awareness
+- Session metadata stored as HTML comment (invisible in rendered markdown)
+- Session counter incremented on each `context_read`
+- Staleness detection: warns if >7 days or >5 sessions without update
+- Use `context_history` tool to check health metrics
+
+### Context Enrichment
+- `context_read` now includes auto-detected project state:
+  - Git branch, uncommitted changes, last commit
+  - Dependency list from package.json
+- This data is in the RESPONSE only (not written to file)
+- Provides immediate context without manual exploration
+
+### Semantic Intelligence
+- Fuzzy deduplication: entries with >60% word overlap are merged
+- Resolved note detection: entries containing "fixed", "resolved", "completed" etc. are auto-pruned
+- Runs automatically during `context_read`
+
+### Cross-Project Context
+- Define related projects in `## Related Projects` section:
+  ```
+  ## Related Projects
+  - ../shared-lib: "Shared utilities used by this service"
+  - ../api-gateway: "Routes traffic to this service"
+  ```
+- Use `context_query_related` tool to read their contexts
+- Summaries included in `context_read` response automatically
+
+### Compliance
+- Staleness warnings escalate based on sessions without update
+- `opencode-jce context audit` CLI command for manual compliance check
+- Content hash enables optimistic concurrency detection

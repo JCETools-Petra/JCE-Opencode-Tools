@@ -7,6 +7,8 @@ export const CONTEXT_FILENAME = ".opencode-context.md";
 export const ARCHIVE_FILENAME = ".opencode-context-archive.md";
 export const MAX_LINES_TARGET = 40;
 export const MAX_LINES_HARD = 50;
+export const MAX_STALENESS_DAYS = 7;
+export const MAX_SESSIONS_WITHOUT_UPDATE = 5;
 
 /**
  * Generate the context template with today's date.
@@ -32,5 +34,8 @@ export function getContextTemplate(): string {
 
 ## Important Notes
 - (none yet)
+
+## Related Projects
+- (none — add related projects as: - <path>: "<description>")
 `;
 }
