@@ -21,6 +21,7 @@ import {
 import { join, basename } from "path";
 import { execFileSync } from "child_process";
 import { buildDefaultMcpConfig } from "../src/lib/opencode-json-template.js";
+import { cleanupLegacyMcpEntries } from "../src/lib/version.js";
 
 /** Write JSON atomically: write to .tmp then rename */
 function writeJsonAtomic(filePath: string, data: unknown): void {
@@ -390,6 +391,10 @@ function ensureOpenCodeJson() {
         config.mcp[key] = value;
         added++;
       }
+    }
+
+    if (cleanupLegacyMcpEntries(config)) {
+      added++;
     }
 
     // Repair context-keeper if it exists but is missing required env.PROJECT_ROOT

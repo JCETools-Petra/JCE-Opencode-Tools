@@ -26,7 +26,7 @@
       "minLength": 1
     },
     "maxTokens": {
-      "type": "number",
+      "type": "integer",
       "exclusiveMinimum": 0
     },
     "temperature": {
@@ -48,7 +48,7 @@
           "properties": {
             "provider": { "type": "string" },
             "model": { "type": "string" },
-            "maxTokens": { "type": "number", "exclusiveMinimum": 0 }
+            "maxTokens": { "type": "integer", "exclusiveMinimum": 0 }
           },
           "required": ["provider", "model"]
         },
@@ -57,7 +57,7 @@
           "properties": {
             "provider": { "type": "string" },
             "model": { "type": "string" },
-            "maxTokens": { "type": "number", "exclusiveMinimum": 0 }
+            "maxTokens": { "type": "integer", "exclusiveMinimum": 0 }
           },
           "required": ["provider", "model"]
         }
@@ -71,7 +71,7 @@
           "type": "boolean"
         },
         "maxContextMessages": {
-          "type": "number",
+          "type": "integer",
           "exclusiveMinimum": 0
         },
         "aggressiveSummarization": {

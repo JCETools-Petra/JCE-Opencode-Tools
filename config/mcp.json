@@ -21,11 +21,6 @@
       },
       "description": "Search code across GitHub repositories"
     },
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"],
-      "description": "Read and search local filesystem"
-    },
     "memory": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
@@ -40,14 +35,6 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
       "description": "Structured step-by-step reasoning for complex problem solving"
-    },
-    "postgres": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres"],
-      "env": {
-        "POSTGRES_CONNECTION_STRING": "${DATABASE_URL}"
-      },
-      "description": "Query PostgreSQL databases directly — requires DATABASE_URL env var to be set"
     }
   }
 }

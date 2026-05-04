@@ -146,11 +146,6 @@ export function buildDefaultMcpConfig(configDir: string): Record<string, unknown
       },
       enabled: true,
     },
-    "filesystem": {
-      type: "local",
-      command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"],
-      enabled: true,
-    },
     "memory": {
       type: "local",
       command: ["npx", "-y", "@modelcontextprotocol/server-memory"],
@@ -165,14 +160,6 @@ export function buildDefaultMcpConfig(configDir: string): Record<string, unknown
       type: "local",
       command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
       enabled: true,
-    },
-    "postgres": {
-      type: "local",
-      command: ["npx", "-y", "@modelcontextprotocol/server-postgres"],
-      env: {
-        POSTGRES_CONNECTION_STRING: "${DATABASE_URL}",
-      },
-      enabled: false,
     },
   };
 }

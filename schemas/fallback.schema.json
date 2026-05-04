@@ -16,7 +16,7 @@
             "minLength": 1
           },
           "priority": {
-            "type": "number",
+            "type": "integer",
             "minimum": 1
           },
           "model": {
@@ -37,11 +37,11 @@
       }
     },
     "maxRetries": {
-      "type": "number",
+      "type": "integer",
       "minimum": 0
     },
     "timeoutMs": {
-      "type": "number",
+      "type": "integer",
       "exclusiveMinimum": 0
     },
     "healthCheckIntervalMs": {

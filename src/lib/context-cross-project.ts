@@ -5,7 +5,7 @@
  * projects share context and need awareness of each other's state.
  */
 
-import { resolve, basename } from "path";
+import { resolve, basename, dirname, isAbsolute, relative } from "path";
 import { readFile } from "fs/promises";
 import { getSection } from "./context-sections.js";
 import { CONTEXT_FILENAME } from "./context-template.js";
@@ -39,14 +39,14 @@ export function parseRelatedProjects(content: string): RelatedProject[] {
   if (lines.length === 0) return [];
 
   const projects: RelatedProject[] = [];
-  const pattern = /^-\s+(.+?):\s+"(.+)"$/;
+  const pattern = /^-\s+(?:"([^"]+)"|(.+?)):\s+"(.+)"$/;
 
   for (const line of lines) {
     const match = line.match(pattern);
     if (match) {
       projects.push({
-        path: match[1],
-        description: match[2],
+        path: match[1] ?? match[2],
+        description: match[3],
       });
     }
   }
@@ -65,9 +65,14 @@ export async function readRelatedContext(
   related: RelatedProject[]
 ): Promise<RelatedContext[]> {
   const results: RelatedContext[] = [];
+  const allowedRoot = resolve(dirname(projectRoot));
 
   for (const project of related) {
+    if (isAbsolute(project.path)) continue;
     const contextPath = resolve(projectRoot, project.path, CONTEXT_FILENAME);
+    const rel = relative(allowedRoot, contextPath);
+    if (rel.startsWith("..") || isAbsolute(rel)) continue;
+
     try {
       const content = await readFile(contextPath, "utf-8");
       results.push({

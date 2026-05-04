@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { createInterface } from "readline";
 import { existsSync } from "fs";
-import { readFile, writeFile, mkdir, chmod } from "fs/promises";
+import { readFile } from "fs/promises";
 import { join } from "path";
 import chalk from "chalk";
 import {
@@ -20,10 +20,6 @@ import type { LspConfig } from "../types.js";
 
 interface SetupPreferences {
   defaultProfile: string | null;
-  apiKeys: {
-    openai: string;
-    anthropic: string;
-  };
   enabledLsp: string[];
 }
 
@@ -103,45 +99,13 @@ async function chooseProfile(rl: ReturnType<typeof createInterface>): Promise<st
 /**
  * Step 2: Configure API keys.
  */
-async function configureApiKeys(rl: ReturnType<typeof createInterface>): Promise<{ openai: string; anthropic: string }> {
+function configureApiKeys(): void {
   heading("Step 2: API Keys");
   console.log();
-  info("API keys are stored as environment variable names in your profile configs.");
-  info("Enter your actual API keys below to save them to a local .env reference file.");
-  info("(Press Enter to skip any key)");
+  info("API keys are managed by OpenCode or your shell environment.");
+  info("Profiles reference environment variable names; this setup command does not collect or store secrets.");
+  info("Set provider keys in your normal environment before launching OpenCode.");
   console.log();
-
-  const openai = await ask(rl, "  OpenAI API Key (OPENAI_API_KEY): ");
-  const anthropic = await ask(rl, "  Anthropic API Key (ANTHROPIC_API_KEY): ");
-
-  if (openai || anthropic) {
-    // Write a reference .env file in the config directory
-    const configDir = getConfigDir();
-    if (!existsSync(configDir)) {
-      await mkdir(configDir, { recursive: true });
-    }
-
-    const shellEscape = (value: string): string => {
-      return "'" + value.replace(/'/g, "'\\''") + "'";
-    };
-    const envLines: string[] = ["# OpenCode JCE API Keys", "# Source this file or add to your shell profile", ""];
-    if (openai) envLines.push(`export OPENAI_API_KEY=${shellEscape(openai)}`);
-    if (anthropic) envLines.push(`export ANTHROPIC_API_KEY=${shellEscape(anthropic)}`);
-    envLines.push("");
-
-    const envPath = join(configDir, "api-keys.env");
-    await writeFile(envPath, envLines.join("\n"), "utf-8");
-    // Restrict file permissions to owner-only (prevents other users from reading API keys)
-    if (process.platform !== "win32") {
-      await chmod(envPath, 0o600);
-    }
-    success(`API keys saved to: ${envPath}`);
-    info(`Add \`source ${envPath}\` to your shell profile to load them automatically.`);
-  } else {
-    info("No API keys provided. Skipping.");
-  }
-
-  return { openai, anthropic };
 }
 
 /**
@@ -324,7 +288,7 @@ export const setupCommand = new Command("setup")
       const defaultProfile = await chooseProfile(rl);
 
       // Step 2: API Keys
-      const apiKeys = await configureApiKeys(rl);
+      configureApiKeys();
 
       // Step 3: LSP
       const enabledLsp = await configureLsp(rl);
@@ -339,9 +303,6 @@ export const setupCommand = new Command("setup")
 
       if (defaultProfile) {
         success(`Default profile: ${defaultProfile}`);
-      }
-      if (apiKeys.openai || apiKeys.anthropic) {
-        success("API keys configured.");
       }
       if (enabledLsp.length > 0) {
         success(`LSP servers enabled: ${enabledLsp.join(", ")}`);

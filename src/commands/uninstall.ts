@@ -13,11 +13,9 @@ import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 const MCP_PACKAGES = [
   "@upstash/context7-mcp",
   "@modelcontextprotocol/server-github",
-  "@modelcontextprotocol/server-filesystem",
   "@modelcontextprotocol/server-memory",
   "@playwright/mcp",
   "@modelcontextprotocol/server-sequential-thinking",
-  "@modelcontextprotocol/server-postgres",
 ] as const;
 
 // ─── LSP Servers (all that the installer can install) ────────────────────────
@@ -284,14 +282,14 @@ function askConfirmation(question: string): Promise<boolean> {
 interface UninstallResult {
   configRemoved: boolean;
   configBackupPath: string | null;
-  mcpCacheCleaned: boolean;
+  npmCacheVerified: boolean;
   lspRemoved: string[];
   lspSkipped: string[];
   opencodejceRemoved: boolean;
   opencodeRemoved: boolean;
 }
 
-async function removeConfigDirectory(force: boolean, keepCli: boolean): Promise<{ removed: boolean; backupPath: string | null }> {
+async function removeConfigDirectory(deleteConfig: boolean, keepCli: boolean): Promise<{ removed: boolean; backupPath: string | null }> {
   const configDir = getConfigDir();
   const cliDir = join(configDir, "cli");
   const hasCli = existsSync(cliDir);
@@ -305,12 +303,9 @@ async function removeConfigDirectory(force: boolean, keepCli: boolean): Promise<
     return { removed: false, backupPath: null };
   }
 
-  if (!force) {
-    const confirmed = await askConfirmation("  Hapus config directory? Backup akan dibuat terlebih dahulu. (y/N): ");
-    if (!confirmed) {
-      info("Config directory dipertahankan.");
-      return { removed: false, backupPath: null };
-    }
+  if (!deleteConfig) {
+    info("Config directory dipertahankan. Gunakan --delete-config untuk menghapusnya.");
+    return { removed: false, backupPath: null };
   }
 
   // Create backup
@@ -365,7 +360,7 @@ async function removeConfigDirectory(force: boolean, keepCli: boolean): Promise<
   return { removed: true, backupPath: backupDir };
 }
 
-async function cleanMcpCache(force: boolean, keep: boolean): Promise<boolean> {
+async function verifyNpmCache(cleanNpmCache: boolean, keep: boolean): Promise<boolean> {
   console.log();
   heading("2. MCP Packages (npm/npx cache)");
 
@@ -380,22 +375,19 @@ async function cleanMcpCache(force: boolean, keep: boolean): Promise<boolean> {
   }
   console.log();
 
-  if (!force) {
-    const confirmed = await askConfirmation("  Hapus MCP packages dari npm cache? (npm cache clean --force) (y/N): ");
-    if (!confirmed) {
-      info("npm cache dipertahankan.");
-      return false;
-    }
+  if (!cleanNpmCache) {
+    info("npm cache dipertahankan. Gunakan --clean-npm-cache untuk menjalankan verifikasi dan cleanup aman dari npm.");
+    return false;
   }
 
-  info("Membersihkan npm cache...");
-  const result = await runCommand("npm", ["cache", "clean", "--force"]);
+  info("Verifying npm cache...");
+  const result = await runCommand("npm", ["cache", "verify"]);
 
   if (result.ok) {
-    success("npm cache berhasil dibersihkan (semua MCP packages dihapus).");
+    success("npm cache verified; npm removed invalid cache data if found.");
     return true;
   } else {
-    warn("Gagal membersihkan npm cache. Coba jalankan manual: npm cache clean --force");
+    warn("Gagal memverifikasi npm cache. Coba jalankan manual: npm cache verify");
     return false;
   }
 }
@@ -434,12 +426,16 @@ async function removeLspServers(force: boolean, keep: boolean): Promise<{ remove
   }
   console.log();
 
-  if (!force) {
-    const confirmed = await askConfirmation("  Hapus LSP servers yang di-install oleh opencode-jce? (y/N): ");
-    if (!confirmed) {
-      info("LSP servers dipertahankan.");
-      return { removed: [], skipped: installed.map((s) => s.name) };
-    }
+  warn("LSP servers may have been installed independently of opencode-jce.");
+  if (force) {
+    warn("Skipping global LSP removal in --force mode. Run without --force to remove them interactively.");
+    return { removed: [], skipped: installed.map((s) => s.name) };
+  }
+
+  const confirmed = await askConfirmation("  Hapus LSP servers global yang terdeteksi? Ini bisa menghapus tool yang Anda install sendiri. (y/N): ");
+  if (!confirmed) {
+    info("LSP servers dipertahankan.");
+    return { removed: [], skipped: installed.map((s) => s.name) };
   }
 
   const isAdmin = await isRunningAsAdmin();
@@ -507,14 +503,6 @@ async function removeOpenCodeJceCli(force: boolean): Promise<boolean> {
   console.log();
   heading("4. opencode-jce CLI");
 
-  if (!force) {
-    const confirmed = await askConfirmation("  Hapus opencode-jce CLI? (y/N): ");
-    if (!confirmed) {
-      info("opencode-jce CLI dipertahankan.");
-      return false;
-    }
-  }
-
   info("Menghapus opencode-jce (semua metode)...");
 
   let removed = false;
@@ -556,12 +544,16 @@ async function removeOpenCodeCli(force: boolean): Promise<boolean> {
   console.log();
   heading("5. OpenCode CLI");
 
-  if (!force) {
-    const confirmed = await askConfirmation("  Hapus OpenCode CLI? (y/N): ");
-    if (!confirmed) {
-      info("OpenCode CLI dipertahankan.");
-      return false;
-    }
+  if (force) {
+    warn("Skipping OpenCode CLI removal in --force mode to avoid deleting a user-installed CLI.");
+    warn("Run without --force and confirm this step if you want to remove OpenCode itself.");
+    return false;
+  }
+
+  const confirmed = await askConfirmation("  Hapus OpenCode CLI? Ini bisa menghapus instalasi OpenCode milik user. (y/N): ");
+  if (!confirmed) {
+    info("OpenCode CLI dipertahankan.");
+    return false;
   }
 
   info("Menghapus opencode (semua metode)...");
@@ -640,10 +632,10 @@ function printSummary(result: UninstallResult): void {
   }
 
   // MCP cache
-  if (result.mcpCacheCleaned) {
-    removed.push("npm/npx cache (MCP packages)");
+  if (result.npmCacheVerified) {
+    removed.push("npm cache verified");
   } else {
-    kept.push("npm/npx cache (MCP packages)");
+    kept.push("npm cache");
   }
 
   // LSP
@@ -695,13 +687,17 @@ interface UninstallOptions {
   force?: boolean;
   keepLsp?: boolean;
   keepMcp?: boolean;
+  deleteConfig?: boolean;
+  cleanNpmCache?: boolean;
 }
 
 export const uninstallCommand = new Command("uninstall")
   .description("Remove OpenCode JCE configuration, MCP cache, LSP servers, and CLI tools")
-  .option("--force", "Remove everything without asking (respects --keep-* flags)")
+  .option("--force", "Skip confirmations for uninstall steps except protected user data")
   .option("--keep-lsp", "Don't remove LSP servers (even with --force)")
   .option("--keep-mcp", "Don't remove MCP cache (even with --force)")
+  .option("--delete-config", "Delete the OpenCode config directory after creating a backup")
+  .option("--clean-npm-cache", "Run npm cache verification/cleanup for npx package cache")
   .action(async (options: UninstallOptions) => {
     banner();
     heading("OpenCode JCE — Uninstaller");
@@ -709,9 +705,13 @@ export const uninstallCommand = new Command("uninstall")
     const force = options.force ?? false;
     const keepLsp = options.keepLsp ?? false;
     const keepMcp = options.keepMcp ?? false;
+    const deleteConfig = options.deleteConfig ?? false;
+    const cleanNpmCache = options.cleanNpmCache ?? false;
 
     if (force) {
-      warn("Mode --force aktif: semua komponen akan dihapus tanpa konfirmasi.");
+      warn("Mode --force aktif: konfirmasi dilewati untuk langkah yang tidak dilindungi.");
+      if (!deleteConfig) info("Config directory tetap dipertahankan tanpa --delete-config.");
+      if (!cleanNpmCache) info("npm cache tetap dipertahankan tanpa --clean-npm-cache.");
       if (keepLsp) info("--keep-lsp: LSP servers akan dipertahankan.");
       if (keepMcp) info("--keep-mcp: MCP cache akan dipertahankan.");
     }
@@ -719,7 +719,7 @@ export const uninstallCommand = new Command("uninstall")
     const result: UninstallResult = {
       configRemoved: false,
       configBackupPath: null,
-      mcpCacheCleaned: false,
+      npmCacheVerified: false,
       lspRemoved: [],
       lspSkipped: [],
       opencodejceRemoved: false,
@@ -738,13 +738,17 @@ export const uninstallCommand = new Command("uninstall")
       }
     }
 
+    if (!force) {
+      willRemoveCli = await askConfirmation("  Hapus opencode-jce CLI? (y/N): ");
+    }
+
     // Step 1: Config directory (preserve cli/ if user won't remove CLI)
-    const configResult = await removeConfigDirectory(force, !willRemoveCli);
+    const configResult = await removeConfigDirectory(deleteConfig, !willRemoveCli);
     result.configRemoved = configResult.removed;
     result.configBackupPath = configResult.backupPath;
 
     // Step 2: MCP cache
-    result.mcpCacheCleaned = await cleanMcpCache(force, keepMcp);
+    result.npmCacheVerified = await verifyNpmCache(cleanNpmCache, keepMcp);
 
     // Step 3: LSP servers
     const lspResult = await removeLspServers(force, keepLsp);
@@ -752,7 +756,7 @@ export const uninstallCommand = new Command("uninstall")
     result.lspSkipped = lspResult.skipped;
 
     // Step 4: opencode-jce CLI
-    result.opencodejceRemoved = await removeOpenCodeJceCli(force);
+    result.opencodejceRemoved = willRemoveCli ? await removeOpenCodeJceCli(force) : false;
 
     // Step 5: OpenCode CLI
     result.opencodeRemoved = await removeOpenCodeCli(force);

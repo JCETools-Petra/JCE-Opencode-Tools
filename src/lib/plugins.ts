@@ -33,6 +33,13 @@ export interface InstalledPlugin {
   source: string; // GitHub URL
   installDir?: string;
   installedAt: string;
+  appliedMcp?: Record<string, unknown>;
+}
+
+const PLUGIN_TYPES = ["mcp", "agent", "prompt"] as const;
+
+function isPluginType(value: unknown): value is PluginManifest["type"] {
+  return typeof value === "string" && (PLUGIN_TYPES as readonly string[]).includes(value);
 }
 
 export interface PluginsRegistry {
@@ -165,10 +172,17 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     return { success: false, error: "plugin.json is missing required fields (name, version, type)." };
   }
 
+  if (!isPluginType(manifest.type)) {
+    removeDir(pluginDir);
+    return { success: false, error: "plugin.json has unsupported type. Expected one of: mcp, agent, prompt." };
+  }
+
   if (existing.some((p) => p.name === manifest.name)) {
     removeDir(pluginDir);
     return { success: false, error: `Plugin "${manifest.name}" is already installed.` };
   }
+
+  const appliedMcp = getPluginMcpConfig(manifest);
 
   // Register the plugin
   const plugin: InstalledPlugin = {
@@ -179,12 +193,45 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     source: sanitizeGitUrl(githubUrl),
     installDir: repoName,
     installedAt: new Date().toISOString(),
+    ...(appliedMcp ? { appliedMcp } : {}),
   };
 
+  await applyPluginConfig(manifest);
   existing.push(plugin);
   await savePluginsRegistry(existing);
 
   return { success: true, plugin };
+}
+
+/**
+ * Merge supported plugin config into opencode.json.
+ */
+export async function applyPluginConfig(manifest: PluginManifest): Promise<void> {
+  const configPath = join(getConfigDir(), "opencode.json");
+  let config: Record<string, unknown> = {};
+
+  if (existsSync(configPath)) {
+    const content = await readFile(configPath, "utf-8");
+    config = JSON.parse(content) as Record<string, unknown>;
+  }
+
+  if (manifest.type === "mcp") {
+    const pluginMcp = getPluginMcpConfig(manifest);
+    if (!pluginMcp) return;
+
+    const currentMcp = config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)
+      ? config.mcp as Record<string, unknown>
+      : {};
+
+    const collisions = Object.keys(pluginMcp).filter((key) => key in currentMcp);
+    if (collisions.length > 0) {
+      throw new Error(`MCP key collision: ${collisions.join(", ")}`);
+    }
+
+    config.mcp = { ...currentMcp, ...(pluginMcp as Record<string, unknown>) };
+  }
+
+  await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
 /**
@@ -198,8 +245,12 @@ export async function removePlugin(name: string): Promise<{ success: boolean; er
     return { success: false, error: `Plugin "${name}" is not installed.` };
   }
 
+  const plugin = plugins[index];
+
+  await removeAppliedPluginConfig(plugin);
+
   // Remove the plugin directory
-  const pluginDirName = plugins[index].installDir || name;
+  const pluginDirName = plugin.installDir || name;
   const pluginDir = join(getPluginsDir(), pluginDirName);
   const resolvedPluginsDir = resolve(getPluginsDir());
   const resolvedPluginDir = resolve(pluginDir);
@@ -217,6 +268,35 @@ export async function removePlugin(name: string): Promise<{ success: boolean; er
   await savePluginsRegistry(plugins);
 
   return { success: true };
+}
+
+function getPluginMcpConfig(manifest: PluginManifest): Record<string, unknown> | null {
+  const pluginMcp = manifest.config.mcp;
+  if (!pluginMcp || typeof pluginMcp !== "object" || Array.isArray(pluginMcp)) return null;
+  return pluginMcp as Record<string, unknown>;
+}
+
+async function removeAppliedPluginConfig(plugin: InstalledPlugin): Promise<void> {
+  if (!plugin.appliedMcp || Object.keys(plugin.appliedMcp).length === 0) return;
+
+  const configPath = join(getConfigDir(), "opencode.json");
+  if (!existsSync(configPath)) return;
+
+  const content = await readFile(configPath, "utf-8");
+  const config = JSON.parse(content) as Record<string, any>;
+  if (!config.mcp || typeof config.mcp !== "object" || Array.isArray(config.mcp)) return;
+
+  let changed = false;
+  for (const [key, value] of Object.entries(plugin.appliedMcp)) {
+    if (JSON.stringify(config.mcp[key]) === JSON.stringify(value)) {
+      delete config.mcp[key];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────

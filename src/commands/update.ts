@@ -8,6 +8,8 @@ import { getConfigDir } from "../lib/config.js";
 import { banner, heading, info, success, warn, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import {
+  cleanupLegacyMcpEntries,
+  CURRENT_CONFIG_VERSION,
   initVersionFile,
   runMigrations,
   compareVersions,
@@ -148,78 +150,80 @@ async function updateLocalCliFolder(): Promise<void> {
   const tempDir = join(configDir, ".cli-update-tmp");
   const { rm } = await import("fs/promises");
 
-  // Clean up any previous temp
-  if (existsSync(tempDir)) {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-
-  // Clone latest
-  const cloneProc = Bun.spawn(
-    ["git", "clone", "--depth", "1", `https://github.com/${GITHUB_REPO}.git`, tempDir],
-    { stdout: "pipe", stderr: "pipe" }
-  );
-  const cloneExit = await cloneProc.exited;
-  if (cloneExit !== 0) {
-    throw new Error("Could not clone repo from GitHub.");
-  }
-
   const stagingDir = join(configDir, ".cli-update-new");
   const backupDir = join(configDir, ".cli-update-backup");
-  for (const dir of [stagingDir, backupDir]) {
-    if (existsSync(dir)) {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
-  await mkdir(stagingDir, { recursive: true });
-
-  // Copy new files into staging first. The active CLI is not touched until
-  // dependencies are installed and all required source files are present.
-  await cp(join(tempDir, "src"), join(stagingDir, "src"), { recursive: true });
-  await cp(join(tempDir, "schemas"), join(stagingDir, "schemas"), { recursive: true });
-  if (existsSync(join(tempDir, "scripts"))) {
-    await cp(join(tempDir, "scripts"), join(stagingDir, "scripts"), { recursive: true });
-  }
-
-  for (const file of ["package.json", "tsconfig.json", "bun.lock"]) {
-    const src = join(tempDir, file);
-    if (existsSync(src)) {
-      const content = await readFile(src, "utf-8");
-      await writeTextFile(join(stagingDir, file), content);
-    }
-  }
-
-  if (!existsSync(join(stagingDir, "src", "index.ts"))) {
-    throw new Error("Downloaded CLI source is missing src/index.ts.");
-  }
-
-  // Install dependencies
-  const installProc = Bun.spawn(
-    ["bun", "install"],
-    { stdout: "pipe", stderr: "pipe", cwd: stagingDir }
-  );
-  const installExit = await installProc.exited;
-  if (installExit !== 0) {
-    const stderr = await new Response(installProc.stderr).text();
-    throw new Error(`bun install failed while updating CLI dependencies.${stderr ? ` ${stderr}` : ""}`);
-  }
-
   try {
-    if (existsSync(cliDir)) {
-      await rename(cliDir, backupDir);
+    // Clean up any previous temp
+    if (existsSync(tempDir)) {
+      await rm(tempDir, { recursive: true, force: true });
     }
-    await rename(stagingDir, cliDir);
-    if (existsSync(backupDir)) {
-      await rm(backupDir, { recursive: true, force: true });
-    }
-  } catch (err) {
-    if (!existsSync(cliDir) && existsSync(backupDir)) {
-      await rename(backupDir, cliDir);
-    }
-    throw err;
-  }
 
-  // Cleanup temp
-  await rm(tempDir, { recursive: true, force: true });
+    // Clone latest
+    const cloneProc = Bun.spawn(
+      ["git", "clone", "--depth", "1", `https://github.com/${GITHUB_REPO}.git`, tempDir],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    const cloneExit = await cloneProc.exited;
+    if (cloneExit !== 0) {
+      throw new Error("Could not clone repo from GitHub.");
+    }
+
+    for (const dir of [stagingDir, backupDir]) {
+      if (existsSync(dir)) {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+    await mkdir(stagingDir, { recursive: true });
+
+    // Copy new files into staging first. The active CLI is not touched until
+    // dependencies are installed and all required source files are present.
+    await cp(join(tempDir, "src"), join(stagingDir, "src"), { recursive: true });
+    await cp(join(tempDir, "schemas"), join(stagingDir, "schemas"), { recursive: true });
+    if (existsSync(join(tempDir, "scripts"))) {
+      await cp(join(tempDir, "scripts"), join(stagingDir, "scripts"), { recursive: true });
+    }
+
+    for (const file of ["package.json", "tsconfig.json", "bun.lock"]) {
+      const src = join(tempDir, file);
+      if (existsSync(src)) {
+        const content = await readFile(src, "utf-8");
+        await writeTextFile(join(stagingDir, file), content);
+      }
+    }
+
+    if (!existsSync(join(stagingDir, "src", "index.ts"))) {
+      throw new Error("Downloaded CLI source is missing src/index.ts.");
+    }
+
+    // Install dependencies
+    const installProc = Bun.spawn(
+      ["bun", "install"],
+      { stdout: "pipe", stderr: "pipe", cwd: stagingDir }
+    );
+    const installExit = await installProc.exited;
+    if (installExit !== 0) {
+      const stderr = await new Response(installProc.stderr).text();
+      throw new Error(`bun install failed while updating CLI dependencies.${stderr ? ` ${stderr}` : ""}`);
+    }
+
+    try {
+      if (existsSync(cliDir)) {
+        await rename(cliDir, backupDir);
+      }
+      await rename(stagingDir, cliDir);
+      if (existsSync(backupDir)) {
+        await rm(backupDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      if (!existsSync(cliDir) && existsSync(backupDir)) {
+        await rename(backupDir, cliDir);
+      }
+      throw err;
+    }
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(stagingDir, { recursive: true, force: true });
+  }
 
   success("CLI source updated.");
 }
@@ -514,6 +518,8 @@ async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
     }
   }
 
+  changed = cleanupLegacyMcpEntries(existing) || changed;
+
   // Repair context-keeper if it exists but is missing required env.PROJECT_ROOT
   if (existing.mcp["context-keeper"] && (!existing.mcp["context-keeper"].env || !existing.mcp["context-keeper"].env.PROJECT_ROOT)) {
     const defaults = buildDefaultMcpConfig(configDir);
@@ -747,7 +753,7 @@ export const updateCommand = new Command("update")
       stats.skills +
       (stats.agentsMdUpdated ? 1 : 0);
 
-    if (totalChanges === 0 && stats.fetchFailed > 0) {
+    if (stats.fetchFailed > 0) {
       warn(`${stats.fetchFailed}/${stats.fetchAttempted} fetch(es) failed. Update may have failed.`);
       warn("Check your internet connection or try again later.");
       logCommandError("update", `${stats.fetchFailed} fetches failed during merge`);
@@ -760,7 +766,7 @@ export const updateCommand = new Command("update")
     // Run migrations based on version.json state (independent of binary version)
     console.log();
     info("Running migrations...");
-    const migrationsRun = await runMigrations(latestVersion);
+    const migrationsRun = await runMigrations(latestVersion || CURRENT_CONFIG_VERSION);
     if (migrationsRun > 0) {
       success(`Ran ${migrationsRun} migration(s).`);
     } else {

@@ -38,7 +38,7 @@ export async function listProfiles(): Promise<Profile[]> {
       const profile = JSON.parse(content) as Profile;
       profiles.push(profile);
     } catch {
-      // Skip invalid profile files
+      throw new Error(`Invalid JSON in profile file: ${join(profilesDir, file)}`);
     }
   }
 

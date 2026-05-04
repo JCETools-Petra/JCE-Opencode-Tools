@@ -137,8 +137,10 @@ export async function checkProviderHealth(
   provider: ProviderConfig,
   timeoutMs: number = 5000
 ): Promise<ProviderHealthResult> {
-  // First check: API key must be set
-  if (!hasApiKey(provider)) {
+  // First check: API key must be set (skip for local endpoints like Ollama)
+  const endpointUrl = new URL(provider.healthEndpoint);
+  const isLocal = isLocalEndpoint(endpointUrl);
+  if (!isLocal && !hasApiKey(provider)) {
     return {
       provider,
       healthy: false,

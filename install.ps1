@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.9.1"
+$Version = "1.9.5"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -302,20 +302,25 @@ function Detect-OpenCodeConfig {
 }
 
 function Backup-ExistingConfig {
-    param([string]$configPath)
+    param([string]$ConfigDir)
 
-    if (-not (Test-Path $configPath)) { return }
+    if (-not (Test-Path $ConfigDir)) { return }
 
     # Check if there's anything worth backing up
-    $hasFiles = (Get-ChildItem $configPath -File -ErrorAction SilentlyContinue).Count -gt 0
-    if (-not $hasFiles) { return }
+    $hasContent = [bool](Get-ChildItem $ConfigDir -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if (-not $hasContent) { return }
 
     $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
-    $backupDir = "${configPath}.backup.${timestamp}"
+    $backupDir = "${ConfigDir}.backup.${timestamp}"
+    $backupIndex = 1
+    while (Test-Path $backupDir) {
+        $backupDir = "${ConfigDir}.backup.${timestamp}.${backupIndex}"
+        $backupIndex++
+    }
 
     Write-Info "Backing up existing config to: $backupDir"
     try {
-        Copy-Item $configPath $backupDir -Recurse -Force
+        Copy-Item $ConfigDir $backupDir -Recurse -Force
         Write-Ok "Backup created: $backupDir"
     } catch {
         Write-Warn "Backup failed: $($_.Exception.Message) - continuing anyway."
@@ -664,11 +669,9 @@ function Register-ContextKeeper {
             "context-keeper" = [PSCustomObject]@{ type = "local"; command = @("bun", "run", $normalizedPath); env = [PSCustomObject]@{ PROJECT_ROOT = '${PROJECT_ROOT}' }; enabled = $true }
             "context7" = [PSCustomObject]@{ type = "remote"; url = "https://mcp.context7.com/mcp"; enabled = $true }
             "github-search" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-github"); env = [PSCustomObject]@{ GITHUB_PERSONAL_ACCESS_TOKEN = '${GITHUB_TOKEN}' }; enabled = $true }
-            "filesystem" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-filesystem", "./"); enabled = $true }
             "memory" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-memory"); enabled = $true }
             "playwright" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@playwright/mcp@0.0.28"); enabled = $true }
             "sequential-thinking" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-sequential-thinking"); enabled = $true }
-            "postgres" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-postgres"); env = [PSCustomObject]@{ POSTGRES_CONNECTION_STRING = '${DATABASE_URL}' }; enabled = $false }
         }
 
         $added = 0
@@ -710,11 +713,9 @@ function Install-McpPackages {
 
     $mcpPackages = @(
         "@modelcontextprotocol/server-github",
-        "@modelcontextprotocol/server-filesystem",
         "@modelcontextprotocol/server-memory",
         "@playwright/mcp@0.0.28",
-        "@modelcontextprotocol/server-sequential-thinking",
-        "@modelcontextprotocol/server-postgres"
+        "@modelcontextprotocol/server-sequential-thinking"
     )
 
     $cachedCount = 0
@@ -807,6 +808,13 @@ function Install-LspServers {
     Write-Host "  Or enter numbers:  1,2,4" -ForegroundColor Yellow
     Write-Host ""
 
+    if ([Console]::IsInputRedirected) {
+        Write-Warn "Non-interactive mode detected (piped install)."
+        Write-Info "Skipping LSP installation. Merging any already-installed LSPs..."
+        Merge-LspToOpenCodeConfig
+        return
+    }
+
     $choice = Read-Host "  Your choice"
 
     # Parse choice
@@ -847,6 +855,7 @@ function Install-LspServers {
 
     if ($selected.Count -eq 0) {
         Write-Info "No new LSP servers to install."
+        Merge-LspToOpenCodeConfig
         return
     }
 
@@ -944,7 +953,7 @@ function Write-Summary {
     Write-Host "  [OK] AGENTS.md      - global AI instructions" -ForegroundColor Green
     Write-Host "  [OK] 50 Skills      - on-demand workflows" -ForegroundColor Green
     Write-Host "  [OK] 19 Profiles    - ready" -ForegroundColor Green
-    Write-Host "  [OK] 9 MCP Tools    - cached & ready" -ForegroundColor Green
+    Write-Host "  [OK] 6 MCP Tools    - cached & ready" -ForegroundColor Green
     if ($LspInstalled -gt 0) {
         Write-Host "  [OK] LSP Servers    - $LspInstalled installed" -ForegroundColor Green
     } else {

@@ -17,10 +17,48 @@ export interface Migration {
   migrate: () => Promise<void>;
 }
 
+type MutableConfig = Record<string, any>;
+
+function isLocalCommand(entry: unknown, command: string[]): boolean {
+  return Boolean(
+    entry &&
+    typeof entry === "object" &&
+    Array.isArray((entry as { command?: unknown }).command) &&
+    JSON.stringify((entry as { command: string[] }).command) === JSON.stringify(command)
+  );
+}
+
+export function cleanupLegacyMcpEntries(config: MutableConfig): boolean {
+  if (!config.mcp || typeof config.mcp !== "object" || Array.isArray(config.mcp)) return false;
+
+  let changed = false;
+  const mcp = config.mcp as Record<string, any>;
+
+  if (isLocalCommand(mcp["web-fetch"], ["npx", "-y", "@modelcontextprotocol/server-fetch"])) {
+    delete mcp["web-fetch"];
+    changed = true;
+  }
+
+  if (isLocalCommand(mcp.filesystem, ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"])) {
+    delete mcp.filesystem;
+    changed = true;
+  }
+
+  if (isLocalCommand(mcp.postgres, ["npx", "-y", "@modelcontextprotocol/server-postgres"])) {
+    const connStr = mcp.postgres.env?.POSTGRES_CONNECTION_STRING;
+    if (!connStr || connStr === "${DATABASE_URL}") {
+      delete mcp.postgres;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.9.1";
+export const CURRENT_CONFIG_VERSION = "1.9.5";
 
 /**
  * Get the path to the version.json file.
@@ -119,37 +157,32 @@ const migrations: Migration[] = [
         return;
       }
 
-      try {
-        const content = await readFile(opencodeJsonPath, "utf-8");
-        const config = JSON.parse(content);
+      const content = await readFile(opencodeJsonPath, "utf-8");
+      const config = JSON.parse(content);
 
-        if (!config.mcp) config.mcp = {};
-        if (config.mcp["context-keeper"]) {
-          log("INFO", "migration", "context-keeper already registered");
-          return;
-        }
-
-        // Normalize path (forward slashes for cross-platform)
-        const normalizedPath = contextKeeperPath.replace(/\\/g, "/");
-
-        config.mcp["context-keeper"] = {
-          type: "local",
-          command: ["bun", "run", normalizedPath],
-          env: { PROJECT_ROOT: "${PROJECT_ROOT}" },
-          enabled: true,
-        };
-
-        await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
-        log("INFO", "migration", "context-keeper registered in opencode.json");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log("ERROR", "migration", `Failed to register context-keeper: ${msg}`);
+      if (!config.mcp) config.mcp = {};
+      if (config.mcp["context-keeper"]) {
+        log("INFO", "migration", "context-keeper already registered");
+        return;
       }
+
+      // Normalize path (forward slashes for cross-platform)
+      const normalizedPath = contextKeeperPath.replace(/\\/g, "/");
+
+      config.mcp["context-keeper"] = {
+        type: "local",
+        command: ["bun", "run", normalizedPath],
+        env: { PROJECT_ROOT: "${PROJECT_ROOT}" },
+        enabled: true,
+      };
+
+      await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
+      log("INFO", "migration", "context-keeper registered in opencode.json");
     },
   },
   {
     fromVersion: "1.9.0",
-    toVersion: "1.9.1",
+    toVersion: "1.9.5",
     description: "Remove defunct web-fetch MCP server, disable postgres by default",
     migrate: async () => {
       const configDir = getConfigDir();
@@ -160,37 +193,12 @@ const migrations: Migration[] = [
         return;
       }
 
-      try {
-        const content = await readFile(opencodeJsonPath, "utf-8");
-        const config = JSON.parse(content);
+      const content = await readFile(opencodeJsonPath, "utf-8");
+      const config = JSON.parse(content);
 
-        if (!config.mcp || typeof config.mcp !== "object") return;
-
-        let changed = false;
-
-        // Remove web-fetch — npm package @modelcontextprotocol/server-fetch was deleted
-        if (config.mcp["web-fetch"]) {
-          delete config.mcp["web-fetch"];
-          log("INFO", "migration", "Removed defunct web-fetch MCP server (npm package deleted)");
-          changed = true;
-        }
-
-        // Disable postgres if it has no valid connection string configured
-        if (config.mcp.postgres && config.mcp.postgres.enabled !== false) {
-          const connStr = config.mcp.postgres.env?.POSTGRES_CONNECTION_STRING;
-          if (!connStr || connStr === "${DATABASE_URL}") {
-            config.mcp.postgres.enabled = false;
-            log("INFO", "migration", "Disabled postgres MCP server (no DATABASE_URL configured)");
-            changed = true;
-          }
-        }
-
-        if (changed) {
-          await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log("ERROR", "migration", `Failed to clean up MCP servers: ${msg}`);
+      if (cleanupLegacyMcpEntries(config)) {
+        await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
+        log("INFO", "migration", "Removed legacy JCE MCP defaults");
       }
     },
   },
@@ -280,12 +288,25 @@ export async function runMigrations(targetVersion?: string): Promise<number> {
 
   const pending = getPendingMigrations(currentVersion, target);
 
+  let lastSuccessfulVersion = currentVersion;
+
   for (const migration of pending) {
     log("INFO", "migration", `Running migration: ${migration.description} (${migration.fromVersion} -> ${migration.toVersion})`);
-    await migration.migrate();
+    try {
+      await migration.migrate();
+      lastSuccessfulVersion = migration.toVersion;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("ERROR", "migration", `Migration failed (${migration.fromVersion} -> ${migration.toVersion}): ${msg}`);
+      // Update version to last successful migration so failed ones retry next time
+      if (compareVersions(lastSuccessfulVersion, currentVersion) > 0) {
+        await updateVersion(lastSuccessfulVersion);
+      }
+      throw new Error(`Migration failed: ${migration.description} — ${msg}`);
+    }
   }
 
-  // Update version file after successful migrations
+  // Update version file after all successful migrations
   await updateVersion(target);
 
   return pending.length;

@@ -6,12 +6,12 @@
 
 [![CI](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.9.1-green)]()
+[![Version](https://img.shields.io/badge/Version-1.9.5-green)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen)]()
 
 **One command. Full setup. Zero hassle.**
 
-Install, configure, and manage your entire AI coding environment — 42 agents, 19 model profiles, 50 advanced skills, 9 MCP tools, 28 LSP servers, and 17 CLI commands.
+Install, configure, and manage your entire AI coding environment — 42 agents, 19 model profiles, 50 advanced skills, 6 MCP tools, 28 LSP servers, and 17 CLI commands.
 
 [Install](#-install) · [Features](#-features) · [CLI](#-cli-commands) · [Tutorial](#-installation-tutorial)
 
@@ -174,7 +174,7 @@ Skills are detected from context and work with prompts in any language including
 
 ---
 
-### 9 MCP Tools
+### 6 MCP Tools
 
 Pre-configured Model Context Protocol servers that extend AI capabilities beyond text generation.
 
@@ -183,12 +183,9 @@ Pre-configured Model Context Protocol servers that extend AI capabilities beyond
 | **Context-Keeper** | Automatic context preservation across sessions (v2: session tracking, enrichment, semantic prune) |
 | **Context7** | Search library documentation in real-time |
 | **GitHub Search** | Find code across repositories |
-| **Web Fetch** | Retrieve and analyze web content |
-| **Filesystem** | Read and search local files |
 | **Memory** | Persistent context across sessions |
 | **Playwright** | Browser automation — E2E testing, scraping, screenshots, PDF |
 | **Sequential Thinking** | Structured step-by-step reasoning for complex problems |
-| **PostgreSQL** | Query databases directly — schema inspection, data debugging |
 
 > Agents automatically use the right MCP tools based on their `tools` field. For example, `debugger` uses Sequential Thinking, `frontend` uses Playwright.
 
@@ -482,7 +479,7 @@ opencode-jce/
 │   ├── agents.json         # 42 AI agents
 │   ├── profiles/           # 19 model profiles
 │   ├── skills/             # 50 on-demand skill files
-│   ├── mcp.json            # 9 MCP tools
+│   ├── mcp.json            # 6 MCP tools
 │   ├── lsp.json            # 28 LSP servers
 │   ├── prompts/            # 5 prompt templates
 │   └── fallback.json       # Provider fallback config

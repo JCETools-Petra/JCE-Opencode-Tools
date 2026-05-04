@@ -21,7 +21,14 @@ const statusCommand = new Command("status")
     logCommandStart("fallback status");
 
     const configDir = getConfigDir();
-    const config = await loadFallbackConfig(configDir);
+    let config;
+    try {
+      config = await loadFallbackConfig(configDir);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      error(msg);
+      process.exit(1);
+    }
 
     heading("Provider Fallback Status");
     console.log();
@@ -89,7 +96,14 @@ const testCommand = new Command("test")
     logCommandStart("fallback test");
 
     const configDir = getConfigDir();
-    const config = await loadFallbackConfig(configDir);
+    let config;
+    try {
+      config = await loadFallbackConfig(configDir);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      error(msg);
+      process.exit(1);
+    }
 
     heading("Testing Provider Endpoints");
     console.log();

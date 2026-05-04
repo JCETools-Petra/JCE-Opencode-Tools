@@ -5,6 +5,24 @@ import { fileURLToPath } from "url";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
+ajv.addKeyword({
+  keyword: "uniqueItemProperties",
+  type: "array",
+  schemaType: "array",
+  validate(properties: string[], data: unknown[]) {
+    for (const property of properties) {
+      const seen = new Set<unknown>();
+      for (const item of data) {
+        if (!item || typeof item !== "object") continue;
+        const value = (item as Record<string, unknown>)[property];
+        if (seen.has(value)) return false;
+        seen.add(value);
+      }
+    }
+    return true;
+  },
+});
+
 /** Cache for compiled validators */
 const validatorCache = new Map<string, ReturnType<typeof ajv.compile>>();
 

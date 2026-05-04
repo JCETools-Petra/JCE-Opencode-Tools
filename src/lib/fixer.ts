@@ -51,6 +51,18 @@ async function runCommand(command: string, args: string[]): Promise<{ success: b
   }
 }
 
+export function getSafeNpmInstallArgs(command: string): string[] | null {
+  const parts = command.trim().split(/\s+/);
+  if (parts.length < 4) return null;
+  if (parts[0] !== "npm" || parts[1] !== "install" || parts[2] !== "-g") return null;
+
+  const packages = parts.slice(3);
+  const packagePattern = /^(?:@[a-z0-9._-]+\/[a-z0-9._-]+|[a-z0-9._-]+)(?:@[a-zA-Z0-9._~-]+)?$/;
+  if (!packages.every((pkg) => packagePattern.test(pkg))) return null;
+
+  return ["npm", "install", "-g", ...packages];
+}
+
 // ─── Fix: Missing Config Files ───────────────────────────────
 
 export async function fixMissingConfigs(): Promise<FixResult[]> {
@@ -140,7 +152,7 @@ export async function fixMissingLsp(): Promise<FixResult[]> {
         name,
         command: entry.command,
         installCommand: entry.installCommand,
-        isNpm: entry.installCommand.startsWith("npm install"),
+        isNpm: getSafeNpmInstallArgs(entry.installCommand) !== null,
       });
     }
   }
@@ -226,11 +238,15 @@ export async function fixMissingLsp(): Promise<FixResult[]> {
 
   for (const server of selected) {
     process.stdout.write(`  Installing ${server.name}... `);
-    const isWindows = platform() === "win32";
-    const proc = Bun.spawn(
-      isWindows ? ["cmd", "/c", server.installCommand] : ["sh", "-c", server.installCommand],
-      { stdout: "pipe", stderr: "pipe" }
-    );
+    const installArgs = getSafeNpmInstallArgs(server.installCommand);
+    if (!installArgs) {
+      console.log(chalk.red("[FAIL]"));
+      results.push({ name: `LSP: ${server.name}`, fixed: false, message: "Install command is not a safe npm global install" });
+      continue;
+    }
+
+    const [command, ...args] = installArgs;
+    const proc = Bun.spawn([command, ...args], { stdout: "pipe", stderr: "pipe" });
     const [output, stderr] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),

@@ -115,6 +115,51 @@ describe("agents.schema.json validation", () => {
     const result = await validateAgainstSchema(invalidData, "agents.schema.json");
     expect(result.valid).toBe(false);
   });
+
+  test("duplicate agent IDs fail even when objects differ", async () => {
+    const invalidData = {
+      agents: [
+        {
+          id: "dup",
+          name: "One",
+          role: "Role A",
+          systemPrompt: "Prompt A",
+          preferredProfile: "speed",
+          maxTokens: 4096,
+          tools: [],
+        },
+        {
+          id: "dup",
+          name: "Two",
+          role: "Role B",
+          systemPrompt: "Prompt B",
+          preferredProfile: "quality",
+          maxTokens: 2048,
+          tools: ["read"],
+        },
+      ],
+    };
+    const result = await validateAgainstSchema(invalidData, "agents.schema.json");
+    expect(result.valid).toBe(false);
+  });
+
+  test("fractional maxTokens fails", async () => {
+    const invalidData = {
+      agents: [
+        {
+          id: "fractional",
+          name: "Fractional",
+          role: "Testing",
+          systemPrompt: "Prompt",
+          preferredProfile: "speed",
+          maxTokens: 1.5,
+          tools: [],
+        },
+      ],
+    };
+    const result = await validateAgainstSchema(invalidData, "agents.schema.json");
+    expect(result.valid).toBe(false);
+  });
 });
 
 // ─── mcp.schema.json ────────────────────────────────────────
@@ -164,6 +209,38 @@ describe("mcp.schema.json validation", () => {
   test("missing 'mcpServers' key fails", async () => {
     const invalidData = { servers: {} };
     const result = await validateAgainstSchema(invalidData, "mcp.schema.json");
+    expect(result.valid).toBe(false);
+  });
+});
+
+// ─── opencode.schema.json ────────────────────────────────────
+
+describe("opencode.schema.json validation", () => {
+  test("valid active OpenCode config passes", async () => {
+    const validData = {
+      $schema: "https://opencode.ai/config.json",
+      plugin: ["superpowers@git+https://github.com/obra/superpowers.git"],
+      mcp: {
+        memory: { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-memory"], enabled: true },
+        context7: { type: "remote", url: "https://mcp.context7.com/mcp", enabled: true },
+      },
+      lsp: {
+        python: { command: ["pyright-langserver", "--stdio"], extensions: [".py"] },
+      },
+    };
+
+    const result = await validateAgainstSchema(validData, "opencode.schema.json");
+    expect(result.valid).toBe(true);
+  });
+
+  test("active OpenCode MCP entry without command or url fails", async () => {
+    const invalidData = {
+      mcp: {
+        broken: { type: "local", enabled: true },
+      },
+    };
+
+    const result = await validateAgainstSchema(invalidData, "opencode.schema.json");
     expect(result.valid).toBe(false);
   });
 });
@@ -233,5 +310,35 @@ describe("schema loading errors", () => {
     expect(
       validateAgainstSchema({}, "does-not-exist.schema.json")
     ).rejects.toThrow();
+  });
+});
+
+describe("profile.schema.json validation", () => {
+  test("fractional maxTokens fails", async () => {
+    const data = {
+      id: "speed",
+      name: "Speed",
+      description: "Fast profile",
+      provider: "openai",
+      model: "gpt",
+      maxTokens: 1.5,
+      temperature: 0.2,
+      apiKeyEnv: "OPENAI_API_KEY",
+      tokenSaving: { contextTruncation: true, maxContextMessages: 10 },
+    };
+    const result = await validateAgainstSchema(data, "profile.schema.json");
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe("fallback.schema.json validation", () => {
+  test("fractional retry counts fail", async () => {
+    const data = {
+      providers: [{ name: "openai", priority: 1, apiKeyEnv: "OPENAI_API_KEY", healthEndpoint: "https://api.openai.com/v1/models" }],
+      maxRetries: 0.2,
+      timeoutMs: 5000,
+    };
+    const result = await validateAgainstSchema(data, "fallback.schema.json");
+    expect(result.valid).toBe(false);
   });
 });

@@ -109,8 +109,9 @@ const RESOLVED_KEYWORDS = [
   "closed",
 ];
 
-const RESOLVED_PATTERNS = RESOLVED_KEYWORDS.map(
-  (kw) => new RegExp(`\\b${kw}\\b`, "i")
+const RESOLVED_PREFIX_PATTERN = new RegExp(
+  `^\\s*-\\s*(?:\\[(?:resolved|x)\\]|(?:${RESOLVED_KEYWORDS.join("|")}):)`,
+  "i"
 );
 
 /**
@@ -118,9 +119,7 @@ const RESOLVED_PATTERNS = RESOLVED_KEYWORDS.map(
  * word-boundary matched).
  */
 export function detectResolvedNotes(lines: string[]): string[] {
-  return lines.filter((line) =>
-    RESOLVED_PATTERNS.some((re) => re.test(line))
-  );
+  return lines.filter((line) => RESOLVED_PREFIX_PATTERN.test(line));
 }
 
 // ---------------------------------------------------------------------------

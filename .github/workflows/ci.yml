@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   typecheck:
     runs-on: ubuntu-latest
@@ -20,7 +23,7 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
 
   test:
@@ -36,7 +39,7 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun test
 
   test-cli:
@@ -56,7 +59,7 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - name: CLI --help
         run: bun ./src/index.ts --help
       - name: CLI --version
@@ -85,7 +88,7 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - name: Validate all JSON configs
         run: |
           for f in $(find config schemas -name "*.json"); do

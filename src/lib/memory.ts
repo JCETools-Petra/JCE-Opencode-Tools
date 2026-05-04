@@ -91,7 +91,17 @@ export class MemoryStore {
    */
   private saveFile(filePath: string, entries: MemoryEntry[]): void {
     this.ensureMemoryDir();
-    const data: MemoryFile = { entries };
+    const latestEntries = this.loadFile(filePath);
+    const merged = new Map<string, MemoryEntry>();
+
+    for (const entry of latestEntries) {
+      merged.set(entry.key, entry);
+    }
+    for (const entry of entries) {
+      merged.set(entry.key, entry);
+    }
+
+    const data: MemoryFile = { entries: Array.from(merged.values()) };
     const tmpPath = filePath + ".tmp";
     writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
     renameSync(tmpPath, filePath);

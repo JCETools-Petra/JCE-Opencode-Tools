@@ -92,8 +92,14 @@ describe("config/mcp.json", () => {
     mcpServers: Record<string, { command: string; args: string[] }>;
   };
 
-  test("has exactly 8 MCP servers", () => {
-    expect(Object.keys(mcp.mcpServers)).toHaveLength(8);
+  test("has exactly 6 MCP servers", () => {
+    expect(Object.keys(mcp.mcpServers)).toHaveLength(6);
+  });
+
+  test("does not include MCP servers known to close without local env", () => {
+    expect(mcp.mcpServers).not.toHaveProperty("filesystem");
+    expect(mcp.mcpServers).not.toHaveProperty("web-fetch");
+    expect(mcp.mcpServers).not.toHaveProperty("postgres");
   });
 
   test("each MCP server has 'command' field", () => {

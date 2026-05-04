@@ -12,6 +12,37 @@ export interface TeamConfig {
 
 const TEAM_CONFIG_FILE = "team.json";
 
+export function validateTeamRepoUrl(repoUrl: string): { valid: boolean; error?: string } {
+  let parsed: URL;
+  try {
+    parsed = new URL(repoUrl);
+  } catch {
+    return { valid: false, error: "Invalid repository URL format" };
+  }
+
+  if (parsed.protocol !== "https:") {
+    return { valid: false, error: "Repository URL must use https: protocol" };
+  }
+  if (parsed.username || parsed.password) {
+    return { valid: false, error: "Repository URL must not contain credentials" };
+  }
+  if (parsed.hostname !== "github.com") {
+    return { valid: false, error: "Repository URL must use github.com" };
+  }
+  if (!/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(parsed.pathname)) {
+    return { valid: false, error: "Repository URL must be a GitHub owner/repo URL" };
+  }
+
+  return { valid: true };
+}
+
+function validateTeamBranch(branch: string): string | null {
+  if (!/^[a-zA-Z0-9._\/-]+$/.test(branch)) return "Team branch name contains invalid characters";
+  if (branch.includes("..")) return "Branch name must not contain '..' sequences";
+  if (branch.startsWith("/") || branch.endsWith("/") || branch.endsWith(".")) return "Branch name has an invalid format";
+  return null;
+}
+
 /**
  * Get the path to the team config file.
  */
@@ -59,15 +90,10 @@ export async function initTeamSync(
   branch: string = "main"
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Validate URL format
-    try {
-      const parsed = new URL(repoUrl);
-      if (parsed.protocol !== "https:" && parsed.protocol !== "git:") {
-        return { success: false, error: "Repository URL must use https: or git: protocol" };
-      }
-    } catch {
-      return { success: false, error: "Invalid repository URL format" };
-    }
+    const repoValidation = validateTeamRepoUrl(repoUrl);
+    if (!repoValidation.valid) return { success: false, error: repoValidation.error };
+    const branchError = validateTeamBranch(branch);
+    if (branchError) return { success: false, error: branchError };
 
     const config: TeamConfig = {
       repoUrl: sanitizeGitUrl(repoUrl),
@@ -92,21 +118,10 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
     return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
   }
 
-  // Validate repo URL and branch
-  try {
-    const parsed = new URL(teamConfig.repoUrl);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "git:") {
-      return { success: false, error: "Team repo URL must use https: or git: protocol" };
-    }
-  } catch {
-    return { success: false, error: "Team repo URL is not a valid URL" };
-  }
-  if (!/^[a-zA-Z0-9._\/-]+$/.test(teamConfig.branch)) {
-    return { success: false, error: "Team branch name contains invalid characters" };
-  }
-  if (teamConfig.branch.includes("..")) {
-    return { success: false, error: "Branch name must not contain '..' sequences" };
-  }
+  const repoValidation = validateTeamRepoUrl(teamConfig.repoUrl);
+  if (!repoValidation.valid) return { success: false, error: repoValidation.error };
+  const branchError = validateTeamBranch(teamConfig.branch);
+  if (branchError) return { success: false, error: branchError };
 
   const configDir = getConfigDir();
   const tempDir = join(configDir, ".team-sync");
@@ -166,7 +181,13 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
     await commitProc.exited;
 
     if (commitProc.exitCode !== 0) {
-      // No changes to commit
+      const stderr = await new Response(commitProc.stderr).text();
+      const stdout = await new Response(commitProc.stdout).text();
+      const output = `${stdout}\n${stderr}`;
+      if (!output.includes("nothing to commit") && !output.includes("no changes added to commit")) {
+        await cleanup(tempDir);
+        return { success: false, error: `Failed to commit team config: ${output.trim()}` };
+      }
       await cleanup(tempDir);
       return { success: true };
     }
@@ -206,21 +227,10 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
     return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
   }
 
-  // Validate repo URL and branch
-  try {
-    const parsed = new URL(teamConfig.repoUrl);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "git:") {
-      return { success: false, error: "Team repo URL must use https: or git: protocol" };
-    }
-  } catch {
-    return { success: false, error: "Team repo URL is not a valid URL" };
-  }
-  if (!/^[a-zA-Z0-9._\/-]+$/.test(teamConfig.branch)) {
-    return { success: false, error: "Team branch name contains invalid characters" };
-  }
-  if (teamConfig.branch.includes("..")) {
-    return { success: false, error: "Branch name must not contain '..' sequences" };
-  }
+  const repoValidation = validateTeamRepoUrl(teamConfig.repoUrl);
+  if (!repoValidation.valid) return { success: false, error: repoValidation.error };
+  const branchError = validateTeamBranch(teamConfig.branch);
+  if (branchError) return { success: false, error: branchError };
 
   const configDir = getConfigDir();
   const tempDir = join(configDir, ".team-sync");
@@ -250,7 +260,7 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
       if (existsSync(srcPath)) {
         // Backup existing before overwrite
         if (existsSync(dstPath)) {
-          const backupPath = dstPath + ".team-backup";
+          const backupPath = `${dstPath}.team-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
           const existing = await readFile(dstPath, "utf-8");
           await writeFile(backupPath, existing, "utf-8");
         }
@@ -290,7 +300,7 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
         const dstProfile = join(profilesDir, profile);
         // Backup existing before overwrite
         if (existsSync(dstProfile)) {
-          const backupPath = dstProfile + ".team-backup";
+          const backupPath = `${dstProfile}.team-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
           const existing = await readFile(dstProfile, "utf-8");
           await writeFile(backupPath, existing, "utf-8");
         }

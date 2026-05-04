@@ -71,7 +71,7 @@ function isHowQuestion(prompt: string): boolean {
  */
 function countComplexKeywords(prompt: string): number {
   const lower = prompt.toLowerCase();
-  return COMPLEX_KEYWORDS.filter((kw) => lower.includes(kw)).length;
+  return COMPLEX_KEYWORDS.filter((kw) => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(lower)).length;
 }
 
 /**
@@ -79,7 +79,7 @@ function countComplexKeywords(prompt: string): number {
  */
 function countSimpleKeywords(prompt: string): number {
   const lower = prompt.toLowerCase();
-  return SIMPLE_KEYWORDS.filter((kw) => lower.includes(kw)).length;
+  return SIMPLE_KEYWORDS.filter((kw) => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(lower)).length;
 }
 
 // ─── Public API ──────────────────────────────────────────────

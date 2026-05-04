@@ -202,10 +202,10 @@ export class TokenTracker {
         const reasoning = tokens.reasoning || 0;
         const cacheRead = tokens.cache?.read || 0;
         const cacheWrite = tokens.cache?.write || 0;
-        const msgTotal = input + output + reasoning;
+        const msgTotal = input + output + reasoning + cacheRead + cacheWrite;
 
         // Skip zero-token messages (e.g. user messages)
-        if (msgTotal === 0 && reasoning === 0) continue;
+        if (msgTotal === 0) continue;
 
         summary.totalMessages++;
         summary.tokens.input += input;
@@ -237,7 +237,11 @@ export class TokenTracker {
       }
 
       summary.tokens.total =
-        summary.tokens.input + summary.tokens.output + summary.tokens.reasoning;
+        summary.tokens.input +
+        summary.tokens.output +
+        summary.tokens.reasoning +
+        summary.tokens.cacheRead +
+        summary.tokens.cacheWrite;
 
       return summary;
     } finally {

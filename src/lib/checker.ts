@@ -115,9 +115,10 @@ export async function checkConfigFiles(): Promise<CheckResult[]> {
 
   // Check main config files
   const configFiles: Array<{ file: string; schema: string }> = [
+    { file: "opencode.json", schema: "opencode.schema.json" },
     { file: "agents.json", schema: "agents.schema.json" },
-    { file: "mcp.json", schema: "mcp.schema.json" },
     { file: "lsp.json", schema: "lsp.schema.json" },
+    { file: "fallback.json", schema: "fallback.schema.json" },
   ];
 
   for (const { file, schema } of configFiles) {
@@ -133,6 +134,18 @@ export async function checkConfigFiles(): Promise<CheckResult[]> {
       const msg = err instanceof Error ? err.message : String(err);
       results.push({ name: file, status: "error", message: msg });
     }
+  }
+
+  try {
+    const data = await loadConfigFile("mcp.json");
+    const validation = await validateAgainstSchema(data, "mcp.schema.json");
+    results.push({
+      name: "mcp.json (legacy)",
+      status: validation.valid ? "pass" : "warn",
+      message: validation.valid ? "Valid reference config" : `Legacy reference invalid: ${validation.errors[0]}`,
+    });
+  } catch {
+    results.push({ name: "mcp.json (legacy)", status: "warn", message: "Legacy reference config missing" });
   }
 
   // Check profiles directory

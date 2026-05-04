@@ -70,34 +70,34 @@ describe("findDuplicates()", () => {
 });
 
 describe("detectResolvedNotes()", () => {
-  test("detects notes with resolved keywords", () => {
+  test("detects explicitly resolved notes only", () => {
     const lines = [
-      "- Bug in auth module fixed yesterday",
-      "- Performance issue resolved in v2",
+      "- resolved: Bug in auth module",
+      "- [RESOLVED] Performance issue",
       "- Need to add rate limiting",
-      "- Migration completed successfully",
+      "- Do not deploy until migration completed successfully",
     ];
     const resolved = detectResolvedNotes(lines);
-    expect(resolved).toContain("- Bug in auth module fixed yesterday");
-    expect(resolved).toContain("- Performance issue resolved in v2");
-    expect(resolved).toContain("- Migration completed successfully");
+    expect(resolved).toContain("- resolved: Bug in auth module");
+    expect(resolved).toContain("- [RESOLVED] Performance issue");
     expect(resolved).not.toContain("- Need to add rate limiting");
+    expect(resolved).not.toContain("- Do not deploy until migration completed successfully");
   });
 
-  test("detects all resolved keywords", () => {
+  test("detects resolved keyword prefixes", () => {
     const lines = [
-      "- Task done",
-      "- Feature finished",
-      "- PR merged",
-      "- App deployed",
-      "- Issue closed",
+      "- done: Task",
+      "- finished: Feature",
+      "- merged: PR",
+      "- deployed: App",
+      "- closed: Issue",
     ];
     const resolved = detectResolvedNotes(lines);
     expect(resolved.length).toBe(5);
   });
 
   test("is case-insensitive", () => {
-    const lines = ["- Bug FIXED", "- Issue RESOLVED"];
+    const lines = ["- FIXED: Bug", "- RESOLVED: Issue"];
     const resolved = detectResolvedNotes(lines);
     expect(resolved.length).toBe(2);
   });
@@ -117,7 +117,7 @@ describe("smartPrune()", () => {
     expect(result.prunedContent).not.toContain("PostgreSQL is the database choice");
     expect(result.prunedContent).toContain("Use PostgreSQL for database");
     expect(result.prunedContent).toContain("Deploy with Docker");
-    expect(result.prunedContent).not.toContain("Bug fixed in auth");
+    expect(result.prunedContent).toContain("Bug fixed in auth");
     expect(result.prunedContent).toContain("Need to add rate limiting");
     expect(result.actions.length).toBeGreaterThan(0);
   });

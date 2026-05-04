@@ -14,6 +14,7 @@ interface ConfigFileEntry {
 
 function getConfigFilesToValidate(): ConfigFileEntry[] {
   const entries: ConfigFileEntry[] = [
+    { relativePath: "opencode.json", schemaFile: "opencode.schema.json", label: "opencode.json" },
     { relativePath: "agents.json", schemaFile: "agents.schema.json", label: "agents.json" },
     { relativePath: "mcp.json", schemaFile: "mcp.schema.json", label: "mcp.json" },
     { relativePath: "lsp.json", schemaFile: "lsp.schema.json", label: "lsp.json" },

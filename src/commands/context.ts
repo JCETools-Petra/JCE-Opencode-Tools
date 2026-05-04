@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { existsSync } from "fs";
-import { readFile, writeFile } from "fs/promises";
+import { copyFile, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import chalk from "chalk";
 import { heading, info, success, warn, error } from "../lib/ui.js";
@@ -111,8 +111,11 @@ const clearCommand = new Command("clear")
     }
 
     try {
+      const backupPath = `${contextPath}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      await copyFile(contextPath, backupPath);
       await writeFile(contextPath, getContextTemplate(), "utf-8");
       success("Context file cleared and reset to template.");
+      info(`Backup saved: ${backupPath}`);
     } catch (err: any) {
       error(`Failed to clear context file: ${err.message}`);
       process.exit(EXIT_ERROR);

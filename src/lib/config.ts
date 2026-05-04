@@ -246,6 +246,9 @@ export async function mergeLspToOpenCodeConfig(
   if (!config.lsp) {
     config.lsp = {};
   }
+  if (typeof config.lsp !== "object" || Array.isArray(config.lsp)) {
+    throw new Error("Invalid OpenCode config: lsp must be an object");
+  }
 
   const added: string[] = [];
   const skipped: string[] = [];

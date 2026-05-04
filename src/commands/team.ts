@@ -27,13 +27,13 @@ const initCommand = new Command("init")
     }
 
     success("Team sync initialized!");
-    info(`  Repository: ${gitUrl}`);
+    info(`  Repository: ${sanitizeGitUrl(gitUrl)}`);
     info(`  Branch: ${opts.branch}`);
     console.log();
     info("Next steps:");
     info("  Push your config:  opencode-jce team push");
     info("  Pull team config:  opencode-jce team pull");
-    logCommandSuccess("team init", `url=${gitUrl} branch=${opts.branch}`);
+    logCommandSuccess("team init", `url=${sanitizeGitUrl(gitUrl)} branch=${opts.branch}`);
     process.exit(EXIT_SUCCESS);
   });
 

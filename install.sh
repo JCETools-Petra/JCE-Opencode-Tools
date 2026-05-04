@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.9.1"
+VERSION="1.9.5"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -37,7 +37,7 @@ print_banner() {
     echo "║      OpenCode JCE Installer v${VERSION}     ║"
     echo "╠══════════════════════════════════════════╣"
     echo "║  Installing: Git, Bun, OpenCode CLI     ║"
-    echo "║  Configuring: Agents, Profiles, MCP,LSP ║"
+    echo "║  Configuring: Agents, Profiles, MCP, LSP║"
     echo "╚══════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -85,13 +85,16 @@ backup_existing_config() {
     if [ ! -d "$CONFIG_DIR" ]; then return; fi
 
     # Check if there's anything worth backing up
-    local file_count
-    file_count=$(find "$CONFIG_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l)
-    if [ "$file_count" -eq 0 ]; then return; fi
+    if ! find "$CONFIG_DIR" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then return; fi
 
     local timestamp
     timestamp=$(date +%Y-%m-%d_%H%M%S)
     local backup_dir="${CONFIG_DIR}.backup.${timestamp}"
+    local backup_index=1
+    while [ -e "$backup_dir" ]; do
+        backup_dir="${CONFIG_DIR}.backup.${timestamp}.${backup_index}"
+        backup_index=$((backup_index + 1))
+    done
 
     info "Backing up existing config to: $backup_dir"
     if cp -r "$CONFIG_DIR" "$backup_dir" 2>/dev/null; then
@@ -402,11 +405,9 @@ const defaults = {
   "context-keeper": { type: "local", command: ["bun", "run", contextKeeperPath], env: { PROJECT_ROOT: "${PROJECT_ROOT}" }, enabled: true },
   "context7": { type: "remote", url: "https://mcp.context7.com/mcp", enabled: true },
   "github-search": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-github"], env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}" }, enabled: true },
-  "filesystem": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"], enabled: true },
   "memory": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-memory"], enabled: true },
   "playwright": { type: "local", command: ["npx", "-y", "@playwright/mcp@0.0.28"], enabled: true },
-  "sequential-thinking": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], enabled: true },
-  "postgres": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-postgres"], env: { POSTGRES_CONNECTION_STRING: "${DATABASE_URL}" }, enabled: false }
+  "sequential-thinking": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], enabled: true }
 };
 let config = { "$schema": "https://opencode.ai/config.json", plugin: ["superpowers@git+https://github.com/obra/superpowers.git"], mcp: {}, lsp: {} };
 if (fs.existsSync(opencodeJson)) config = JSON.parse(fs.readFileSync(opencodeJson, "utf8"));
@@ -439,11 +440,9 @@ precache_mcp_packages() {
     # List of MCP packages to pre-cache (npm package names)
     local -a MCP_PACKAGES=(
         "@modelcontextprotocol/server-github"
-        "@modelcontextprotocol/server-filesystem"
         "@modelcontextprotocol/server-memory"
         "@playwright/mcp@0.0.28"
         "@modelcontextprotocol/server-sequential-thinking"
-        "@modelcontextprotocol/server-postgres"
     )
 
     local cached_count=0
@@ -609,6 +608,7 @@ select_and_install_lsp() {
 
     if [ ${#selected[@]} -eq 0 ]; then
         info "No new LSP servers to install."
+        merge_lsp_to_opencode_config
         return
     fi
 
@@ -807,7 +807,7 @@ print_summary() {
     echo "║ ✅ AGENTS.md      — global AI instructions ║"
     echo "║ ✅ 50 Skills      — on-demand workflows  ║"
     echo "║ ✅ 19 Profiles    — ready                ║"
-    echo "║ ✅ 9 MCP Servers  — cached & ready        ║"
+    echo "║ ✅ 6 MCP Servers  — cached & ready        ║"
     if [ "$LSP_INSTALLED" -gt 0 ]; then
         echo "║ ✅ LSP Servers    — ${LSP_INSTALLED} installed             ║"
     else

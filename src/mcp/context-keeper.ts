@@ -46,7 +46,11 @@ import { countLines, getSection, replaceSection } from "../lib/context-sections.
 // ─── Helpers (exported for testing) ──────────────────────────
 
 export function getProjectRoot(): string {
-  return process.env.PROJECT_ROOT || process.cwd();
+  const root = process.env.PROJECT_ROOT;
+  if (!root || root === "${PROJECT_ROOT}") {
+    return process.cwd();
+  }
+  return root;
 }
 
 function contextPath(): string {
@@ -82,6 +86,14 @@ async function writeContext(content: string): Promise<void> {
     `> Last updated: ${today}`
   );
   await writeFile(contextPath(), updated, "utf-8");
+}
+
+function refreshContentHash(content: string): string {
+  const hash = computeContentHash(content);
+  const meta = parseSessionMeta(content);
+  if (!meta) return content;
+  meta.contentHash = hash;
+  return content.replace(/^<!-- session: .+ -->$/m, formatSessionMeta(meta));
 }
 
 /**
@@ -196,7 +208,7 @@ async function appendArchive(content: string): Promise<void> {
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "1.9.1",
+    version: "1.9.5",
   },
   {
     instructions: [
@@ -239,14 +251,13 @@ server.tool(
       }
 
       // 4. Update content hash
-      const hash = computeContentHash(content);
       const meta = parseSessionMeta(content);
       if (meta) {
-        meta.contentHash = hash;
         meta.lastPrune = new Date().toISOString().split("T")[0];
         const metaLine = formatSessionMeta(meta);
         content = content.replace(/^<!-- session: .+ -->$/m, metaLine);
       }
+      content = refreshContentHash(content);
 
       // 5. Write updated content
       await writeContext(content);
@@ -413,13 +424,7 @@ server.tool(
     updated = markUpdated(updated);
 
     // Update content hash
-    const hash = computeContentHash(updated);
-    const meta = parseSessionMeta(updated);
-    if (meta) {
-      meta.contentHash = hash;
-      const metaLine = formatSessionMeta(meta);
-      updated = updated.replace(/^<!-- session: .+ -->$/m, metaLine);
-    }
+    updated = refreshContentHash(updated);
 
     await writeContext(updated);
 
@@ -462,7 +467,7 @@ server.tool(
 
     const pruned = pruneAndArchiveContext(content);
     const actions: string[] = [...pruned.actions];
-    content = pruned.content;
+    content = refreshContentHash(pruned.content);
     await appendArchive(pruned.archiveAppend);
 
     await writeContext(content);
