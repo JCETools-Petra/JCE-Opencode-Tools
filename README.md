@@ -180,6 +180,7 @@ Pre-configured Model Context Protocol servers that extend AI capabilities beyond
 
 | Tool | Capability |
 |------|-----------|
+| **Context-Keeper** | Automatic context preservation across sessions (v2: session tracking, enrichment, semantic prune) |
 | **Context7** | Search library documentation in real-time |
 | **GitHub Search** | Find code across repositories |
 | **Web Fetch** | Retrieve and analyze web content |
@@ -206,14 +207,23 @@ Python, TypeScript/JS, Rust, Go, Docker, SQL, Java, C/C++, PHP, Ruby, C#, Bash, 
 
 ---
 
-### Context Preservation
+### Context Preservation (v2)
 
-AI never loses project context between sessions. A `.opencode-context.md` file in your project root is automatically read at session start and updated when important decisions are made.
+AI never loses project context between sessions. A `.opencode-context.md` file in your project root is automatically managed by the `context-keeper` MCP server.
+
+**v2 Features:**
+- **Multi-session tracking** — session counter, staleness detection (warns if >7 days or >5 sessions without update)
+- **Auto-enrichment** — git branch, uncommitted changes, last commit, dependencies injected at session start
+- **Semantic intelligence** — fuzzy deduplication (>60% word overlap merged), resolved-note auto-pruning
+- **Cross-project context** — read related project contexts in monorepos/microservices
+- **Optimistic concurrency** — content hash prevents lost updates from parallel sessions
+- **Compliance enforcement** — staleness warnings, `context audit` command
 
 ```bash
 opencode-jce context init      # Create context file in project
 opencode-jce context show      # View current context + token estimate
 opencode-jce context status    # Health check
+opencode-jce context audit     # Compliance check — staleness, missing info
 ```
 
 Cost: ~150-300 tokens per session. Far cheaper than re-explaining context.
@@ -524,6 +534,19 @@ Every donation helps keep this project maintained, updated, and free for everyon
 ---
 
 ## Changelog
+
+### v1.9.0
+
+- **feat(context):** Context Preservation v2 — complete rewrite of the context-keeper MCP server
+- **feat(context):** Multi-session awareness — session counter, timestamp tracking, staleness detection
+- **feat(context):** Auto-enrichment — git branch, uncommitted changes, last commit, dependencies injected in `context_read` response
+- **feat(context):** Semantic intelligence — Jaccard similarity-based fuzzy deduplication, resolved-note auto-detection and pruning
+- **feat(context):** Cross-project context — read and summarize `.opencode-context.md` from related projects (monorepos)
+- **feat(context):** Optimistic concurrency — content hash-based conflict detection with section-level three-way merge
+- **feat(context):** New MCP tools: `context_history` (health metrics), `context_query_related` (sibling project contexts)
+- **feat(context):** New CLI command: `opencode-jce context audit` — compliance checking with staleness and section completeness
+- **refactor(context):** Extracted section utilities to `context-sections.ts` to prevent circular dependencies
+- **chore:** Version bump to 1.9.0 across all 8 locations
 
 ### v1.5.0
 
