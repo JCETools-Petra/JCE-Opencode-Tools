@@ -92,8 +92,8 @@ describe("config/mcp.json", () => {
     mcpServers: Record<string, { command: string; args: string[] }>;
   };
 
-  test("has exactly 9 MCP servers", () => {
-    expect(Object.keys(mcp.mcpServers)).toHaveLength(9);
+  test("has exactly 8 MCP servers", () => {
+    expect(Object.keys(mcp.mcpServers)).toHaveLength(8);
   });
 
   test("each MCP server has 'command' field", () => {

@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.9.0"
+VERSION="1.9.1"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -402,12 +402,11 @@ const defaults = {
   "context-keeper": { type: "local", command: ["bun", "run", contextKeeperPath], env: { PROJECT_ROOT: "${PROJECT_ROOT}" }, enabled: true },
   "context7": { type: "remote", url: "https://mcp.context7.com/mcp", enabled: true },
   "github-search": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-github"], env: { GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}" }, enabled: true },
-  "web-fetch": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-fetch"], enabled: true },
   "filesystem": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"], enabled: true },
   "memory": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-memory"], enabled: true },
   "playwright": { type: "local", command: ["npx", "-y", "@playwright/mcp@0.0.28"], enabled: true },
   "sequential-thinking": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], enabled: true },
-  "postgres": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-postgres"], env: { POSTGRES_CONNECTION_STRING: "${DATABASE_URL}" }, enabled: true }
+  "postgres": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-postgres"], env: { POSTGRES_CONNECTION_STRING: "${DATABASE_URL}" }, enabled: false }
 };
 let config = { "$schema": "https://opencode.ai/config.json", plugin: ["superpowers@git+https://github.com/obra/superpowers.git"], mcp: {}, lsp: {} };
 if (fs.existsSync(opencodeJson)) config = JSON.parse(fs.readFileSync(opencodeJson, "utf8"));
@@ -440,7 +439,6 @@ precache_mcp_packages() {
     # List of MCP packages to pre-cache (npm package names)
     local -a MCP_PACKAGES=(
         "@modelcontextprotocol/server-github"
-        "@modelcontextprotocol/server-fetch"
         "@modelcontextprotocol/server-filesystem"
         "@modelcontextprotocol/server-memory"
         "@playwright/mcp@0.0.28"

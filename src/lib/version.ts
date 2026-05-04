@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.9.0";
+export const CURRENT_CONFIG_VERSION = "1.9.1";
 
 /**
  * Get the path to the version.json file.
@@ -144,6 +144,53 @@ const migrations: Migration[] = [
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log("ERROR", "migration", `Failed to register context-keeper: ${msg}`);
+      }
+    },
+  },
+  {
+    fromVersion: "1.9.0",
+    toVersion: "1.9.1",
+    description: "Remove defunct web-fetch MCP server, disable postgres by default",
+    migrate: async () => {
+      const configDir = getConfigDir();
+      const opencodeJsonPath = join(configDir, "opencode.json");
+
+      if (!existsSync(opencodeJsonPath)) {
+        log("INFO", "migration", "opencode.json not found, skipping MCP cleanup");
+        return;
+      }
+
+      try {
+        const content = await readFile(opencodeJsonPath, "utf-8");
+        const config = JSON.parse(content);
+
+        if (!config.mcp || typeof config.mcp !== "object") return;
+
+        let changed = false;
+
+        // Remove web-fetch — npm package @modelcontextprotocol/server-fetch was deleted
+        if (config.mcp["web-fetch"]) {
+          delete config.mcp["web-fetch"];
+          log("INFO", "migration", "Removed defunct web-fetch MCP server (npm package deleted)");
+          changed = true;
+        }
+
+        // Disable postgres if it has no valid connection string configured
+        if (config.mcp.postgres && config.mcp.postgres.enabled !== false) {
+          const connStr = config.mcp.postgres.env?.POSTGRES_CONNECTION_STRING;
+          if (!connStr || connStr === "${DATABASE_URL}") {
+            config.mcp.postgres.enabled = false;
+            log("INFO", "migration", "Disabled postgres MCP server (no DATABASE_URL configured)");
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          await writeFile(opencodeJsonPath, JSON.stringify(config, null, 2) + "\n");
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log("ERROR", "migration", `Failed to clean up MCP servers: ${msg}`);
       }
     },
   },

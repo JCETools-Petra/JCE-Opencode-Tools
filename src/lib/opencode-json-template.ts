@@ -146,11 +146,6 @@ export function buildDefaultMcpConfig(configDir: string): Record<string, unknown
       },
       enabled: true,
     },
-    "web-fetch": {
-      type: "local",
-      command: ["npx", "-y", "@modelcontextprotocol/server-fetch"],
-      enabled: true,
-    },
     "filesystem": {
       type: "local",
       command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./"],
@@ -177,7 +172,7 @@ export function buildDefaultMcpConfig(configDir: string): Record<string, unknown
       env: {
         POSTGRES_CONNECTION_STRING: "${DATABASE_URL}",
       },
-      enabled: true,
+      enabled: false,
     },
   };
 }

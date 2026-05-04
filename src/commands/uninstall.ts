@@ -13,7 +13,6 @@ import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 const MCP_PACKAGES = [
   "@upstash/context7-mcp",
   "@modelcontextprotocol/server-github",
-  "@modelcontextprotocol/server-fetch",
   "@modelcontextprotocol/server-filesystem",
   "@modelcontextprotocol/server-memory",
   "@playwright/mcp",

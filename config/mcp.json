@@ -21,11 +21,6 @@
       },
       "description": "Search code across GitHub repositories"
     },
-    "web-fetch": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-fetch"],
-      "description": "Retrieve and read content from URLs"
-    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"],
@@ -52,7 +47,8 @@
       "env": {
         "POSTGRES_CONNECTION_STRING": "${DATABASE_URL}"
       },
-      "description": "Query PostgreSQL databases directly — schema inspection, data queries"
+      "enabled": false,
+      "description": "Query PostgreSQL databases directly — schema inspection, data queries (requires DATABASE_URL)"
     }
   }
 }

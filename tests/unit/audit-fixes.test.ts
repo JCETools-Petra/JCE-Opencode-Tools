@@ -50,7 +50,6 @@ describe("audit fixes", () => {
       "playwright",
       "postgres",
       "sequential-thinking",
-      "web-fetch",
     ]);
     expect(config.mcp["sequential-thinking"].command).toEqual(["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]);
     expect(config.mcp.playwright.command).toEqual(["npx", "-y", "@playwright/mcp@0.0.28"]);

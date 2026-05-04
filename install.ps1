@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.9.0"
+$Version = "1.9.1"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -664,12 +664,11 @@ function Register-ContextKeeper {
             "context-keeper" = [PSCustomObject]@{ type = "local"; command = @("bun", "run", $normalizedPath); env = [PSCustomObject]@{ PROJECT_ROOT = '${PROJECT_ROOT}' }; enabled = $true }
             "context7" = [PSCustomObject]@{ type = "remote"; url = "https://mcp.context7.com/mcp"; enabled = $true }
             "github-search" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-github"); env = [PSCustomObject]@{ GITHUB_PERSONAL_ACCESS_TOKEN = '${GITHUB_TOKEN}' }; enabled = $true }
-            "web-fetch" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-fetch"); enabled = $true }
             "filesystem" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-filesystem", "./"); enabled = $true }
             "memory" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-memory"); enabled = $true }
             "playwright" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@playwright/mcp@0.0.28"); enabled = $true }
             "sequential-thinking" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-sequential-thinking"); enabled = $true }
-            "postgres" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-postgres"); env = [PSCustomObject]@{ POSTGRES_CONNECTION_STRING = '${DATABASE_URL}' }; enabled = $true }
+            "postgres" = [PSCustomObject]@{ type = "local"; command = @("npx", "-y", "@modelcontextprotocol/server-postgres"); env = [PSCustomObject]@{ POSTGRES_CONNECTION_STRING = '${DATABASE_URL}' }; enabled = $false }
         }
 
         $added = 0
@@ -711,7 +710,6 @@ function Install-McpPackages {
 
     $mcpPackages = @(
         "@modelcontextprotocol/server-github",
-        "@modelcontextprotocol/server-fetch",
         "@modelcontextprotocol/server-filesystem",
         "@modelcontextprotocol/server-memory",
         "@playwright/mcp@0.0.28",
