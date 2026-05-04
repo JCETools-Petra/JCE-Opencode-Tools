@@ -34,5 +34,8 @@ export function getContextTemplate(): string {
 
 ## Important Notes
 - (none yet)
+
+## Related Projects
+- (none — add related projects as: - <path>: "<description>")
 `;
 }

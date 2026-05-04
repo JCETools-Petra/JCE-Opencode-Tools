@@ -29,6 +29,7 @@ describe("getContextTemplate()", () => {
     expect(template).toContain("## Conventions");
     expect(template).toContain("## Current Status");
     expect(template).toContain("## Important Notes");
+    expect(template).toContain("## Related Projects");
   });
 
   test("generates fresh date on each call", () => {
