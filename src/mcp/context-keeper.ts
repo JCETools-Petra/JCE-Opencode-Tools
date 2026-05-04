@@ -23,6 +23,21 @@ import {
   MAX_LINES_HARD,
   getContextTemplate,
 } from "../lib/context-template.js";
+import {
+  parseSessionMeta,
+  formatSessionMeta,
+  incrementSession,
+  markUpdated,
+  isStale,
+  computeContentHash,
+} from "../lib/context-session.js";
+import { smartPrune } from "../lib/context-similarity.js";
+import { enrichContext } from "../lib/context-enrichment.js";
+import {
+  parseRelatedProjects,
+  readRelatedContext,
+  formatRelatedSummary,
+} from "../lib/context-cross-project.js";
 
 // ─── Re-export section utilities (extracted to prevent circular deps) ────
 export { countLines, getSection, replaceSection } from "../lib/context-sections.js";
@@ -202,30 +217,114 @@ server.tool(
     const existing = await readContext();
 
     if (existing) {
-      // Auto-prune and archive at session start.
-      const pruned = pruneAndArchiveContext(existing);
-      if (pruned.content !== existing) {
+      const actions: string[] = [];
+
+      // 1. Increment session counter
+      let content = incrementSession(existing);
+      actions.push("Incremented session counter");
+
+      // 2. Structural prune (completed/resolved items + archive)
+      const pruned = pruneAndArchiveContext(content);
+      if (pruned.content !== content) {
         await appendArchive(pruned.archiveAppend);
-        await writeContext(pruned.content);
+        actions.push(...pruned.actions);
+      }
+      content = pruned.content;
+
+      // 3. Smart prune (dedup + resolved-note detection)
+      const smart = smartPrune(content);
+      if (smart.actions.length > 0) {
+        content = smart.prunedContent;
+        actions.push(...smart.actions);
       }
 
-      const lines = countLines(pruned.content);
+      // 4. Update content hash
+      const hash = computeContentHash(content);
+      const meta = parseSessionMeta(content);
+      if (meta) {
+        meta.contentHash = hash;
+        meta.lastPrune = new Date().toISOString().split("T")[0];
+        const metaLine = formatSessionMeta(meta);
+        content = content.replace(/^<!-- session: .+ -->$/m, metaLine);
+      }
+
+      // 5. Write updated content
+      await writeContext(content);
+
+      // 6. Get enrichment data (git state, deps)
+      const projectRoot = getProjectRoot();
+      const enrichment = await enrichContext(projectRoot);
+
+      // 7. Get related project summaries
+      const relatedProjects = parseRelatedProjects(content);
+      let relatedSummary = "";
+      if (relatedProjects.length > 0) {
+        const relatedContexts = await readRelatedContext(projectRoot, relatedProjects);
+        relatedSummary = formatRelatedSummary(relatedContexts);
+      }
+
+      // 8. Check staleness
+      const sessionMeta = parseSessionMeta(content);
+      let stalenessWarning = "";
+      if (sessionMeta && isStale(sessionMeta)) {
+        stalenessWarning = `\nSTALENESS WARNING: Context may be outdated (${sessionMeta.sessionsWithoutUpdate ?? 0} sessions without update, last session: ${sessionMeta.lastSession}). Review and update all sections.`;
+      }
+
+      const lines = countLines(content);
+      const sessionInfo = sessionMeta
+        ? `Session #${sessionMeta.count}`
+        : "Session #1";
+
+      const responseParts: string[] = [
+        `--- .opencode-context.md (${lines} lines) — ${sessionInfo} ---`,
+        content,
+        "---",
+      ];
+
+      // Auto-maintenance actions
+      if (actions.length > 0) {
+        responseParts.push("Auto-maintenance:");
+        for (const a of actions) {
+          responseParts.push(`  - ${a}`);
+        }
+      }
+
+      // Enrichment data
+      if (enrichment) {
+        responseParts.push("");
+        responseParts.push("Project State:");
+        responseParts.push(enrichment);
+      }
+
+      // Related project summaries
+      if (relatedSummary) {
+        responseParts.push("");
+        responseParts.push(relatedSummary);
+      }
+
+      // Staleness warning
+      if (stalenessWarning) {
+        responseParts.push(stalenessWarning);
+      }
+
+      // Line count warning
+      responseParts.push(
+        lines > MAX_LINES_TARGET
+          ? `WARNING: File has ${lines} lines (target: ${MAX_LINES_TARGET}). Consider archiving old entries.`
+          : `File size OK (${lines}/${MAX_LINES_TARGET} target lines).`
+      );
+
+      // Reminders
+      responseParts.push("");
+      responseParts.push("REMINDER: You MUST call context_update after completing any task.");
+      responseParts.push("REMINDER: You MUST call context_checkpoint before the session ends or before committing.");
+      responseParts.push("Failure to do so will result in lost context for the next session.");
+
       return {
         content: [
           {
             type: "text" as const,
-            text: [
-              `--- .opencode-context.md (${lines} lines) ---`,
-              pruned.content,
-              "---",
-              lines > MAX_LINES_TARGET
-                ? `WARNING: File has ${lines} lines (target: ${MAX_LINES_TARGET}). Consider archiving old entries.`
-                : `File size OK (${lines}/${MAX_LINES_TARGET} target lines).`,
-              "",
-              "REMINDER: You MUST call context_update after completing any task.",
-              "REMINDER: You MUST call context_checkpoint before the session ends or before committing.",
-              "Failure to do so will result in lost context for the next session.",
-            ].join("\n"),
+            text: responseParts.join("\n"),
           },
         ],
       };
@@ -257,6 +356,7 @@ server.tool(
         "Conventions",
         "Current Status",
         "Important Notes",
+        "Related Projects",
       ])
       .describe("Which section to update"),
     action: z
@@ -307,6 +407,18 @@ server.tool(
         };
       }
       updated = replaceSection(content, section, [...existing, ...newLines]);
+    }
+
+    // Mark session as updated (reset sessionsWithoutUpdate)
+    updated = markUpdated(updated);
+
+    // Update content hash
+    const hash = computeContentHash(updated);
+    const meta = parseSessionMeta(updated);
+    if (meta) {
+      meta.contentHash = hash;
+      const metaLine = formatSessionMeta(meta);
+      updated = updated.replace(/^<!-- session: .+ -->$/m, metaLine);
     }
 
     await writeContext(updated);
@@ -370,6 +482,163 @@ server.tool(
               ? `Note: File still above target (${finalLines}/${MAX_LINES_TARGET}). Consider manually trimming verbose entries.`
               : "File size is within target.",
           ].join("\n"),
+        },
+      ],
+    };
+  }
+);
+
+// ─── Tool: context_history ───────────────────────────────────
+
+server.tool(
+  "context_history",
+  "Show session stats, staleness status, and section sizes for the context file.",
+  {},
+  async () => {
+    const content = await readContext();
+
+    if (!content) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `No ${CONTEXT_FILENAME} found. Call context_read first.`,
+          },
+        ],
+      };
+    }
+
+    const lines = countLines(content);
+    const meta = parseSessionMeta(content);
+
+    const responseParts: string[] = [
+      `File: ${CONTEXT_FILENAME} (${lines} lines)`,
+      "",
+    ];
+
+    // Session stats
+    if (meta) {
+      responseParts.push("Session Stats:");
+      responseParts.push(`  - Session count: ${meta.count}`);
+      responseParts.push(`  - Last session: ${meta.lastSession}`);
+      responseParts.push(`  - Last update: ${meta.lastUpdate ?? "never"}`);
+      responseParts.push(`  - Sessions without update: ${meta.sessionsWithoutUpdate ?? 0}`);
+      responseParts.push(`  - Last prune: ${meta.lastPrune ?? "never"}`);
+      responseParts.push(`  - Content hash: ${meta.contentHash ?? "none"}`);
+      responseParts.push("");
+
+      // Staleness status
+      const stale = isStale(meta);
+      responseParts.push(`Staleness: ${stale ? "STALE — review and update all sections" : "OK"}`);
+    } else {
+      responseParts.push("Session Stats: No session metadata found (file predates v2).");
+    }
+
+    // Section sizes
+    responseParts.push("");
+    responseParts.push("Section Sizes:");
+    const sections = [
+      "Stack",
+      "Architecture Decisions",
+      "Conventions",
+      "Current Status",
+      "Important Notes",
+      "Related Projects",
+    ];
+    for (const section of sections) {
+      const entries = getSection(content, section);
+      if (entries.length > 0) {
+        responseParts.push(`  - ${section}: ${entries.length} entries`);
+      }
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: responseParts.join("\n"),
+        },
+      ],
+    };
+  }
+);
+
+// ─── Tool: context_query_related ─────────────────────────────
+
+server.tool(
+  "context_query_related",
+  "Query context from related projects defined in the Related Projects section.",
+  {
+    project: z
+      .string()
+      .optional()
+      .describe("Filter to a specific related project path. If omitted, returns all."),
+  },
+  async ({ project }) => {
+    const content = await readContext();
+
+    if (!content) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `No ${CONTEXT_FILENAME} found. Call context_read first.`,
+          },
+        ],
+      };
+    }
+
+    let related = parseRelatedProjects(content);
+
+    if (related.length === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `No related projects found in ## Related Projects section. Add entries like: - ../other-project: "Description"`,
+          },
+        ],
+      };
+    }
+
+    // Filter to specific project if requested
+    if (project) {
+      related = related.filter(
+        (r) => r.path === project || r.path.includes(project)
+      );
+      if (related.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `No related project matching "${project}" found.`,
+            },
+          ],
+        };
+      }
+    }
+
+    const projectRoot = getProjectRoot();
+    const contexts = await readRelatedContext(projectRoot, related);
+
+    if (contexts.length === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Found ${related.length} related project(s) but none have a ${CONTEXT_FILENAME} file.`,
+          },
+        ],
+      };
+    }
+
+    const summary = formatRelatedSummary(contexts);
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: summary || "No context data available from related projects.",
         },
       ],
     };
