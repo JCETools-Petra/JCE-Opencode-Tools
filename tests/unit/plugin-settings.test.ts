@@ -13,6 +13,9 @@ import {
 } from "../../src/plugin/lib/settings.ts";
 
 const originalXdg = process.env.XDG_CONFIG_HOME;
+const originalPath = process.env.PATH;
+const originalWindowsPath = process.env.Path;
+const originalOpenCodeCommand = process.env.OPENCODE_JCE_OPENCODE_COMMAND;
 
 function tempConfigDir(name: string): string {
   const root = mkdtempSync(join(tmpdir(), `opencode-jce-${name}-`));
@@ -29,6 +32,11 @@ afterEach(() => {
   }
   if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
   else process.env.XDG_CONFIG_HOME = originalXdg;
+  process.env.PATH = originalPath;
+  if (originalWindowsPath === undefined) delete process.env.Path;
+  else process.env.Path = originalWindowsPath;
+  if (originalOpenCodeCommand === undefined) delete process.env.OPENCODE_JCE_OPENCODE_COMMAND;
+  else process.env.OPENCODE_JCE_OPENCODE_COMMAND = originalOpenCodeCommand;
 });
 
 describe("plugin settings", () => {
@@ -61,11 +69,35 @@ describe("plugin settings", () => {
     ]);
   });
 
+  test("lists models from OpenCode CLI when provider registry has built-in models", () => {
+    const configDir = tempConfigDir("opencode-models");
+    const binDir = join(configDir, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const bunPath = process.execPath;
+    writeFileSync(join(binDir, "opencode"), `#!${bunPath}\nconsole.log("opencode/minimax-m2.5-free")\nconsole.log("anthropic/claude-opus-4-6")\nconsole.log("openai/gpt-5.5-fast")\n`, { mode: 0o755 });
+    writeFileSync(join(binDir, "opencode.cmd"), `@echo opencode/minimax-m2.5-free\r\n@echo anthropic/claude-opus-4-6\r\n@echo openai/gpt-5.5-fast\r\n`, "utf-8");
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+      provider: { enowxlabs: { models: { "gpt-5.5": {} } } },
+    }), "utf-8");
+    process.env.PATH = `${binDir}${process.platform === "win32" ? ";" : ":"}${originalPath ?? ""}`;
+    process.env.Path = process.env.PATH;
+    process.env.OPENCODE_JCE_OPENCODE_COMMAND = join(binDir, process.platform === "win32" ? "opencode.cmd" : "opencode");
+
+    expect(listAvailableModels()).toEqual([
+      "opencode/minimax-m2.5-free",
+      "anthropic/claude-opus-4-6",
+      "openai/gpt-5.5-fast",
+      "enowxlabs/gpt-5.5",
+    ]);
+    expect(isModelAvailable("openai/gpt-5.5-fast")).toBe(true);
+  });
+
   test("validates model strings against available OpenCode provider models", () => {
     const configDir = tempConfigDir("validate");
     writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
       provider: { enowxlabs: { models: { "gpt-5.5": {} } } },
     }), "utf-8");
+    process.env.OPENCODE_JCE_OPENCODE_COMMAND = join(configDir, "missing-opencode");
     expect(isModelAvailable("enowxlabs/gpt-5.5")).toBe(true);
     expect(isModelAvailable("openai/gpt-4o-mini")).toBe(false);
   });

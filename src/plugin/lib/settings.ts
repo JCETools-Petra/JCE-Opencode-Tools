@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { dirname, join } from "path";
+import { spawnSync } from "child_process";
 import { getConfigDir } from "../../lib/config.js";
 
 export const AGENT_IDS = ["sisyphus", "oracle", "librarian", "explorer", "frontend"] as const;
@@ -50,12 +51,22 @@ export async function saveJcePluginSettings(settings: JcePluginSettings): Promis
 export function listAvailableModels(): string[] {
   const config = readJsonFile<OpenCodeConfig>(join(getConfigDir(), "opencode.json"));
   const result: string[] = [];
+  const opencodeCommand = process.env.OPENCODE_JCE_OPENCODE_COMMAND ?? "opencode";
+  if (process.env.NODE_ENV !== "test" || process.env.OPENCODE_JCE_OPENCODE_COMMAND) {
+    const opencodeModels = spawnSync(opencodeCommand, ["--pure", "models"], { encoding: "utf-8", timeout: 15000 });
+    if (opencodeModels.status === 0) {
+      for (const line of opencodeModels.stdout.split(/\r?\n/)) {
+        const model = line.trim();
+        if (/^[^\s/]+\/.+/.test(model)) result.push(model);
+      }
+    }
+  }
   for (const [providerID, provider] of Object.entries(config?.provider ?? {})) {
     for (const modelID of Object.keys(provider.models ?? {})) {
       result.push(`${providerID}/${modelID}`);
     }
   }
-  return result;
+  return [...new Set(result)];
 }
 
 export function isModelAvailable(model: string): boolean {
