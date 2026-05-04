@@ -177,6 +177,7 @@ export function buildDefaultOpenCodeJson(configDir: string): Record<string, unkn
     $schema: "https://opencode.ai/config.json",
     plugin: [
       "superpowers@git+https://github.com/obra/superpowers.git",
+      `file://${configDir.replace(/\\/g, "/")}/cli/src/plugin/index.ts`,
     ],
     mcp: buildDefaultMcpConfig(configDir),
     lsp,
