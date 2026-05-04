@@ -1,0 +1,288 @@
+OpenCode JCE - Audit v3 Report
+Date: 2026-05-04
+Version audited: 1.8.10 (commit 4b8f8fe on main, synced with origin)
+Scope: full re-audit of install/update/version, config/MCP/context, CLI runtime/security/tests/docs.
+
+Verification run:
+- bun run typecheck: passed.
+- bun test: 163 pass, 0 fail, 1216 expect() calls, 8 files.
+- CI validate-json (local reproduction): all 23 JSON files PASS.
+- bash -n install.sh && bash -n scripts/bundle-offline.sh: passed.
+- PowerShell parser check install.ps1: OK.
+
+Summary:
+- Previous audit fixes (v1.8.9 and v1.8.10) are confirmed present and working.
+- Remaining issues are: Anthropic URL typo (critical), migration missing env, archive marker corruption, installer summary counts, team URL validation, prompt template delimiter fragility, schema/runtime drift, and several low-severity code quality items.
+- Test suite is green. CI validate-json passes locally.
+
+Findings (deduplicated, ordered by severity):
+
+1. CRITICAL - Anthropic health endpoint URL is misspelled everywhere
+Files:
+- src/lib/fallback.ts:27
+- src/lib/fallback.ts:108
+- config/fallback.json:6
+Evidence:
+- Domain is api.anxthxropic.com (with extra x characters) instead of api.anthropic.com.
+- TRUSTED_PROVIDER_ENDPOINTS allowlist uses this same misspelled domain.
+- Default fallback config and shipped config/fallback.json also use it.
+Impact:
+- Anthropic health checks always fail (DNS resolution error or wrong host).
+- Fallback system never selects Anthropic as healthy provider.
+- If the misspelled domain is registered by a malicious actor, x-api-key header is sent to it.
+Suggested fix:
+- Replace api.anxthxropic.com with api.anthropic.com in all three locations.
+
+2. HIGH - Migration (1.4.0 to 1.6.0) registers context-keeper without env.PROJECT_ROOT
+File:
+- src/lib/version.ts:135-138
+Evidence:
+- Migration creates context-keeper entry with only type, command, enabled.
+- Missing env: { PROJECT_ROOT: "${PROJECT_ROOT}" } which is present in all other registration paths.
+- The repair code in update.ts ensureOpenCodeJson fixes this, but only when update is run.
+Impact:
+- Users who triggered this migration but never ran update will have context-keeper writing .opencode-context.md to process.cwd() instead of project root.
+Suggested fix:
+- Add env: { PROJECT_ROOT: "${PROJECT_ROOT}" } to the migration's context-keeper config object.
+
+3. HIGH - Archive note injection corrupts header line via substring replace
+File:
+- src/mcp/context-keeper.ts:221-225
+Evidence:
+- Replace target is "> Auto-maintained by AI." but actual template line is "> Auto-maintained by AI. You can edit this file freely."
+- String.replace matches the substring and inserts archive note in the MIDDLE of the line.
+- Result: "> Auto-maintained by AI.\n> Archived entries: see ... You can edit this file freely."
+Impact:
+- After first archive operation, context file header becomes malformed.
+Suggested fix:
+- Use a full-line regex: updated.replace(/^> Auto-maintained by AI\..*$/m, "> Auto-maintained by AI. You can edit this file freely.\n> Archived entries: see .opencode-context-archive.md")
+
+4. HIGH - team push/pull passes unsanitized repoUrl and branch to git clone
+File:
+- src/lib/team.ts:91, 188
+Evidence:
+- teamConfig.repoUrl from user-controlled team.json is passed directly to Bun.spawn git clone.
+- teamConfig.branch is also passed directly to --branch.
+- sanitizeGitUrl strips credentials but does not validate protocol or prevent local path injection.
+Impact:
+- Tampered team.json can cause clone from arbitrary locations or execute commands via git transport.
+Suggested fix:
+- Validate repoUrl is HTTPS URL to a known git host. Validate branch against ^[a-zA-Z0-9._/-]+$.
+
+5. MEDIUM - install.sh summary reports wrong counts (20 Profiles, 8 MCP Servers)
+File:
+- install.sh:812-813
+Evidence:
+- Line 812: "20 Profiles" but only 19 exist.
+- Line 813: "8 MCP Servers" but 9 are configured.
+- install.ps1 correctly says 19 Profiles and 9 MCP Tools.
+Impact:
+- Cosmetic inconsistency in installer output.
+Suggested fix:
+- Change to 19 Profiles and 9 MCP Servers.
+
+6. MEDIUM - fallback.schema.json does not require maxRetries and timeoutMs
+File:
+- schemas/fallback.schema.json:5
+Evidence:
+- Schema required array only has "providers".
+- Runtime validateFallbackConfig() requires both maxRetries and timeoutMs.
+Impact:
+- validate command can pass a fallback config that fallback status/test rejects at runtime.
+Suggested fix:
+- Add "maxRetries" and "timeoutMs" to the required array.
+
+7. MEDIUM - profile.schema.json does not require model/maxTokens for non-routing profiles
+Files:
+- schemas/profile.schema.json:5
+- src/commands/use.ts:85-92
+Evidence:
+- Schema required omits model and maxTokens.
+- use command prints profile.model and profile.maxTokens unconditionally.
+- hybrid-hemat (provider: auto) legitimately lacks these, but all other profiles have them.
+Impact:
+- A non-routing profile without model/maxTokens passes validate but shows undefined in CLI.
+Suggested fix:
+- Use a conditional schema (if/then/else or oneOf) that requires model+maxTokens when provider is not "auto".
+
+8. MEDIUM - team init does not validate git URL format
+File:
+- src/lib/team.ts:53-68
+Evidence:
+- initTeamSync accepts any string as repoUrl.
+- sanitizeGitUrl only strips credentials but does not validate protocol/host.
+Impact:
+- Invalid URLs are saved to team.json and only fail later on push/pull with cryptic git errors.
+Suggested fix:
+- Validate URL is parseable and uses https: or git: protocol before saving.
+
+9. MEDIUM - prompt template apply/reset uses first double-newline as delimiter
+Files:
+- src/lib/prompts.ts:73-85
+- src/lib/prompts.ts:99-104
+Evidence:
+- applyPromptToAgent finds first \n\n to determine where old template ends.
+- resetAgentPrompt regex matches up to first \n\n.
+- Multi-paragraph templates contain \n\n internally.
+Impact:
+- Applying or resetting multi-paragraph templates corrupts agent system prompts.
+Suggested fix:
+- Use a unique end-marker like [/template] or store template boundaries separately.
+
+10. MEDIUM - replaceSection drops blank separator lines between sections
+File:
+- src/mcp/context-keeper.ts:144-182
+Evidence:
+- When replacing section content, all lines between heading and next ## are dropped.
+- The blank line that separates sections is lost.
+Impact:
+- Over multiple updates, .opencode-context.md becomes compressed without visual separation.
+Suggested fix:
+- Add a blank line before the next section heading when exiting a replaced section.
+
+11. MEDIUM - fixer.ts splits install commands naively on spaces
+File:
+- src/lib/fixer.ts:228-229
+Evidence:
+- server.installCommand.split(" ") breaks if paths contain spaces.
+Impact:
+- Install commands with spaces in paths fail silently.
+Suggested fix:
+- Use shell execution or document that installCommand must not contain spaces in paths.
+
+12. MEDIUM - tokens.ts assumes time_created is milliseconds without validation
+File:
+- src/lib/tokens.ts:261-286
+Evidence:
+- Passes Date.getTime() (ms) to WHERE clause and constructs new Date(row.time_created).
+- If OpenCode stores seconds, all time-filtered queries return empty and dates show 1970.
+Impact:
+- Potential silent data loss if OpenCode changes timestamp format.
+Suggested fix:
+- Add sanity check: if time_created < 1e12, multiply by 1000.
+
+13. LOW - postinstall scripts hardcode ~/.config/opencode ignoring XDG_CONFIG_HOME
+Files:
+- package.json:12
+- scripts/postinstall.ts:17
+Evidence:
+- Neither checks XDG_CONFIG_HOME before computing CLI path.
+- getConfigDir() and both installers respect XDG_CONFIG_HOME.
+Impact:
+- Postinstall shim points to wrong CLI location if XDG_CONFIG_HOME is set.
+Suggested fix:
+- Check process.env.XDG_CONFIG_HOME before falling back to ~/.config/opencode.
+
+14. LOW - update.ts imports updateVersion but never calls it
+File:
+- src/commands/update.ts:12
+Evidence:
+- updateVersion is imported but unused (runMigrations calls it internally).
+Impact:
+- Dead import, no runtime effect.
+Suggested fix:
+- Remove updateVersion from the import statement.
+
+15. LOW - MCP pre-cache downloads @upstash/context7-mcp but opencode.json uses remote URL
+Files:
+- install.sh:442
+- install.ps1:713
+- src/lib/opencode-json-template.ts:136-139
+Evidence:
+- Installers pre-cache the npm package but opencode.json uses type: "remote" with HTTP URL.
+Impact:
+- Wasted bandwidth during installation.
+Suggested fix:
+- Remove @upstash/context7-mcp from pre-cache list or switch opencode.json to use npx.
+
+16. LOW - agent.ts missing null check on existing?.tools
+File:
+- src/commands/agent.ts:41
+Evidence:
+- existing?.tools.join(", ") throws if existing is defined but tools is undefined.
+Impact:
+- agent edit crashes with TypeError on corrupted agent entry.
+Suggested fix:
+- Use existing?.tools?.join(", ").
+
+17. LOW - context clear missing error handling on writeFile
+File:
+- src/commands/context.ts:111
+Evidence:
+- writeFile is not wrapped in try/catch unlike context init.
+Impact:
+- Unhandled crash if file is read-only or disk is full.
+Suggested fix:
+- Wrap in try/catch with user-friendly error message.
+
+18. LOW - no engines field in package.json for Bun requirement
+File:
+- package.json
+Evidence:
+- CLI uses Bun-specific APIs (Bun.spawn, bun:sqlite) but no engines field.
+Impact:
+- npm install -g would fail with cryptic errors.
+Suggested fix:
+- Add "engines": { "bun": ">=1.0.0" }.
+
+19. LOW - memory.ts generateId uses weak entropy
+File:
+- src/lib/memory.ts:115-119
+Evidence:
+- Date.now() + Math.random() with 8 hex chars (32 bits).
+Impact:
+- Theoretical collision risk after many entries.
+Suggested fix:
+- Use crypto.randomBytes(8).toString("hex").
+
+20. LOW - optimizer.ts hardcodes profile IDs that may not exist
+File:
+- src/lib/optimizer.ts:87, 102, 117
+Evidence:
+- References "speed", "budget", "sonnet-4.6" directly.
+Impact:
+- No suggestions for users with custom profile names.
+Suggested fix:
+- Select profiles by cost/tier characteristics instead of hardcoded IDs.
+
+21. LOW - install.sh banner box misaligned (44-char content in 42-char box)
+File:
+- install.sh:37
+Evidence:
+- Box border has 42 inner chars but content line has 44.
+Impact:
+- Visual misalignment in terminal.
+Suggested fix:
+- Adjust padding or widen box.
+
+Previous fixes confirmed working:
+- Platform-aware CLI shim (Windows .cmd, Unix shell script with chmod 755).
+- Update rollback-safe staging with atomic rename.
+- Update dependency install exit code checked.
+- Update avoids downgrade without --force.
+- OpenCode MCP defaults use npx -y commands.
+- Existing opencode.json gets missing MCP defaults merged.
+- Plugin URL validation rejects non-GitHub, credentials, path traversal.
+- Prompt template path traversal hardened with regex + relative path check.
+- Fallback endpoint allowlist prevents API key exfiltration to arbitrary URLs.
+- Fallback treats 401/403 as unhealthy, 429 as rate-limited.
+- Dashboard --period all uses getAll() (true all-time).
+- Memory category validation throws on invalid input.
+- Context-keeper import.meta.main guard prevents server start during test import.
+- Context pruneAndArchiveContext runs at session start.
+- Team pull creates backups and validates JSON before overwrite.
+- Team push removes .team-sync before clone.
+- Route command does not log prompt content.
+- Plugin/team URLs sanitized before logging/persisting.
+- Setup uses single-quote shell escaping for API keys.
+- Agent ID validated with regex pattern.
+- Dashboard/optimize reject invalid period via Commander choices.
+- Offline installer uses merge-config.ts when available.
+- Context-keeper repair for missing env.PROJECT_ROOT in update/merge paths.
+
+Priority recommendation:
+1. Fix Anthropic URL typo immediately (critical, breaks fallback for all users).
+2. Fix migration env.PROJECT_ROOT and archive marker corruption (high, affects context workflow).
+3. Fix team URL validation and git clone injection (high, security).
+4. Fix installer summary counts and schema required fields (medium, CI/UX).
+5. Address remaining low-severity items as time permits.
