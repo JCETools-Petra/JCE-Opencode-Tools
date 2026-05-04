@@ -62,7 +62,7 @@ export function isModelAvailable(model: string): boolean {
   return listAvailableModels().includes(model);
 }
 
-export function applyJcePluginSettings<T extends { model?: string }>(
+export function applyJcePluginSettings<T extends { model?: string; [key: string]: unknown }>(
   agents: Record<JceAgentId, T>,
   settings = loadJcePluginSettings(),
 ): Record<JceAgentId, T> {

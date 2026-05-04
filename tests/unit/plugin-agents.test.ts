@@ -1,5 +1,32 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { buildAgentConfigs } from "../../src/plugin/config.ts";
+
+const originalXdg = process.env.XDG_CONFIG_HOME;
+
+function tempConfigDir(name: string): string {
+  const root = mkdtempSync(join(tmpdir(), `opencode-jce-agents-${name}-`));
+  const configDir = join(root, "opencode");
+  mkdirSync(configDir, { recursive: true });
+  process.env.XDG_CONFIG_HOME = root;
+  return configDir;
+}
+
+function writeProviderConfig(configDir: string): void {
+  writeFileSync(join(configDir, "opencode.json"), JSON.stringify({
+    provider: { enowxlabs: { models: { "gpt-5.5": {}, "gpt-5.4": {} } } },
+  }), "utf-8");
+}
+
+afterEach(() => {
+  if (process.env.XDG_CONFIG_HOME?.includes("opencode-jce-agents-")) {
+    rmSync(process.env.XDG_CONFIG_HOME, { recursive: true, force: true });
+  }
+  if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+  else process.env.XDG_CONFIG_HOME = originalXdg;
+});
 
 describe("plugin agents", () => {
   test("builds 5 agent configs with correct IDs", () => {
@@ -20,11 +47,34 @@ describe("plugin agents", () => {
     expect(agents.sisyphus.systemPrompt).toContain("Sisyphus");
   });
 
-  test("each agent has a model string in provider/model format", () => {
+  test("agents omit model by default so OpenCode uses the active user model", () => {
+    const configDir = tempConfigDir("default-active");
+    writeProviderConfig(configDir);
     const agents = buildAgentConfigs();
-    for (const [, agent] of Object.entries(agents)) {
-      expect(agent.model).toBeDefined();
-      expect(agent.model).toContain("/");
+    for (const agent of Object.values(agents)) {
+      expect(agent.model).toBeUndefined();
     }
+  });
+
+  test("agents apply valid per-agent model preferences", () => {
+    const configDir = tempConfigDir("override");
+    writeProviderConfig(configDir);
+    writeFileSync(join(configDir, "jce-plugin.json"), JSON.stringify({
+      agents: { sisyphus: "enowxlabs/gpt-5.5", frontend: "enowxlabs/gpt-5.4" },
+    }), "utf-8");
+    const agents = buildAgentConfigs();
+    expect(agents.sisyphus.model).toBe("enowxlabs/gpt-5.5");
+    expect(agents.frontend.model).toBe("enowxlabs/gpt-5.4");
+    expect(agents.oracle.model).toBeUndefined();
+  });
+
+  test("invalid per-agent model preferences are ignored", () => {
+    const configDir = tempConfigDir("invalid");
+    writeProviderConfig(configDir);
+    writeFileSync(join(configDir, "jce-plugin.json"), JSON.stringify({
+      agents: { sisyphus: "openai/gpt-4o-mini" },
+    }), "utf-8");
+    const agents = buildAgentConfigs();
+    expect(agents.sisyphus.model).toBeUndefined();
   });
 });

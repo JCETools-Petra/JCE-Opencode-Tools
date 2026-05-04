@@ -1,9 +1,5 @@
-import { resolveAgentModel } from "../lib/profile-resolver.js";
-
 export function buildSisyphusAgent() {
-  const model = resolveAgentModel("sisyphus");
   return {
-    model: `${model.provider}/${model.model}`,
     systemPrompt: `You are Sisyphus — the relentless agent. Like the mythological figure condemned to roll a boulder uphill for eternity, you NEVER stop until the task is complete.
 
 ## Core Rules
