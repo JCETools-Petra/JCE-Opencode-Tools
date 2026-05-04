@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "1.8.11"
+$Version = "1.8.12"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -714,7 +714,7 @@ function Install-McpPackages {
         "@modelcontextprotocol/server-fetch",
         "@modelcontextprotocol/server-filesystem",
         "@modelcontextprotocol/server-memory",
-        "@playwright/mcp@latest",
+        "@playwright/mcp@0.0.28",
         "@modelcontextprotocol/server-sequential-thinking",
         "@modelcontextprotocol/server-postgres"
     )
@@ -824,6 +824,7 @@ function Install-LspServers {
         }
         "^[sS]?$" {
             Write-Info "Skipping LSP installation."
+            Merge-LspToOpenCodeConfig
             return
         }
         default {

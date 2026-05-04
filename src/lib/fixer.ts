@@ -84,6 +84,7 @@ export async function fixMissingConfigs(): Promise<FixResult[]> {
         const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
         if (response.ok) {
           const content = await response.text();
+          try { JSON.parse(content); } catch { continue; } // Skip non-JSON responses
           await writeFile(filePath, content, "utf-8");
           results.push({ name: file, fixed: true, message: "Downloaded from repository" });
         } else {

@@ -147,10 +147,10 @@ export async function checkProviderHealth(
   }
 
   // Second check: endpoint reachable (HEAD request with timeout)
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+  try {
     const endpoint = new URL(provider.healthEndpoint);
     const headers: Record<string, string> = {};
     if (!isLocalEndpoint(endpoint)) {
@@ -193,6 +193,7 @@ export async function checkProviderHealth(
       reason: reachable ? undefined : `Endpoint returned ${response.status}`,
     };
   } catch (err) {
+    clearTimeout(timeout);
     const message = err instanceof Error ? err.message : "Unknown error";
     return {
       provider,

@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.8.11-green)]()
+[![Version](https://img.shields.io/badge/Version-1.8.12-green)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen)]()
 
 **One command. Full setup. Zero hassle.**
@@ -348,7 +348,7 @@ opencode-jce uninstall           # Clean removal (with backup)
 ~/.config/opencode/  # Windows: C:\Users\<you>\.config\opencode\
 ├── opencode.json    # Main config (LSP, MCP, providers)
 ├── agents.json      # 42 AI agents
-├── profiles\        # 20 model profiles
+├── profiles\        # 19 model profiles
 ├── skills\          # 50 on-demand skill files
 ├── lsp.json         # LSP server definitions
 ├── mcp.json         # MCP server config
@@ -415,7 +415,7 @@ opencode-jce setup --merge-lsp
 ~/.config/opencode/
 ├── opencode.json    # Main config (LSP, MCP, providers)
 ├── agents.json      # 42 AI agents
-├── profiles/        # 20 model profiles
+├── profiles/        # 19 model profiles
 ├── skills/          # 50 on-demand skill files
 ├── lsp.json         # LSP server definitions
 ├── mcp.json         # MCP server config
@@ -470,9 +470,9 @@ opencode-jce/
 ├── config/                 # Pre-configured settings
 │   ├── AGENTS.md           # Global AI instructions (v3.1.0)
 │   ├── agents.json         # 42 AI agents
-│   ├── profiles/           # 20 model profiles
+│   ├── profiles/           # 19 model profiles
 │   ├── skills/             # 50 on-demand skill files
-│   ├── mcp.json            # 8 MCP tools
+│   ├── mcp.json            # 9 MCP tools
 │   ├── lsp.json            # 28 LSP servers
 │   ├── prompts/            # 5 prompt templates
 │   └── fallback.json       # Provider fallback config

@@ -37,7 +37,14 @@ function getAverageTokens(entries: TokenUsageEntry[]): { input: number; output: 
  * Estimate cost for a model given token counts.
  */
 function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const rates = COST_PER_1K[model];
+  const lowerModel = model.toLowerCase();
+  let rates: { input: number; output: number } | undefined;
+  for (const [key, value] of Object.entries(COST_PER_1K)) {
+    if (lowerModel.includes(key)) {
+      rates = value;
+      break;
+    }
+  }
   if (!rates) return 0;
   return (inputTokens / 1000) * rates.input + (outputTokens / 1000) * rates.output;
 }

@@ -75,9 +75,9 @@ export async function applyPromptToAgent(templateName: string, agentId: string):
   const endMarker = `\n[/template]\n\n`;
 
   if (agent.systemPrompt.includes("[template:")) {
-    // Replace existing template
+    // Replace existing template(s)
     agent.systemPrompt = agent.systemPrompt.replace(
-      /\[template:[\w-]+\][\s\S]*?\[\/template\]\n\n/,
+      /\[template:[\w-]+\][\s\S]*?\[\/template\]\n\n/g,
       `${startMarker}${template}${endMarker}`
     );
   } else {
@@ -100,10 +100,10 @@ export async function resetAgentPrompt(agentId: string): Promise<{ success: bool
     return { success: false, error: `Agent "${agentId}" not found.` };
   }
 
-  // Remove template marker prefix if present
-  const markerMatch = agent.systemPrompt.match(/\[template:[\w-]+\][\s\S]*?\[\/template\]\n\n/);
-  if (markerMatch) {
-    agent.systemPrompt = agent.systemPrompt.substring(markerMatch[0].length);
+  // Remove all template marker prefixes if present
+  const cleaned = agent.systemPrompt.replace(/\[template:[\w-]+\][\s\S]*?\[\/template\]\n\n/g, '');
+  if (cleaned !== agent.systemPrompt) {
+    agent.systemPrompt = cleaned;
     await saveAgents(agents);
   }
 

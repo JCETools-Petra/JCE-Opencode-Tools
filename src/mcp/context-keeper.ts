@@ -170,6 +170,11 @@ export function replaceSection(
     }
   }
 
+  // Ensure trailing newline after last section if it was replaced
+  if (inSection && sectionReplaced) {
+    result.push(""); // Ensure trailing newline after last section
+  }
+
   // If section didn't exist, append it
   if (!sectionReplaced) {
     result.push("");
@@ -250,7 +255,7 @@ async function appendArchive(content: string): Promise<void> {
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "1.8.11",
+    version: "1.8.12",
   },
   {
     instructions: [

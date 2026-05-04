@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="1.8.11"
+VERSION="1.8.12"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -393,8 +393,8 @@ register_context_keeper() {
     fi
 
     OPENCODE_JSON="$opencode_json" CLI_DIR="$cli_dir" bun -e '
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
 const opencodeJson = process.env.OPENCODE_JSON;
 const cliDir = process.env.CLI_DIR;
 const contextKeeperPath = path.join(cliDir, "src", "mcp", "context-keeper.ts").replace(/\\/g, "/");
@@ -443,7 +443,7 @@ precache_mcp_packages() {
         "@modelcontextprotocol/server-fetch"
         "@modelcontextprotocol/server-filesystem"
         "@modelcontextprotocol/server-memory"
-        "@playwright/mcp@latest"
+        "@playwright/mcp@0.0.28"
         "@modelcontextprotocol/server-sequential-thinking"
         "@modelcontextprotocol/server-postgres"
     )
@@ -485,7 +485,7 @@ select_and_install_lsp() {
 
     # Define LSP servers
     local -a LSP_NAMES=("Python" "TypeScript" "Rust" "Go" "Docker" "SQL" "Java" "C/C++" "PHP" "Ruby" "C#" "Bash" "YAML" "HTML" "CSS" "Kotlin" "Dart" "Lua" "Svelte" "Vue" "Terraform" "Tailwind CSS" "Zig" "Markdown" "TOML" "GraphQL" "Elixir" "Scala")
-    local -a LSP_CMDS=("pyright-langserver" "typescript-language-server" "rust-analyzer" "gopls" "docker-langserver" "sql-language-server" "jdtls" "clangd" "intelephense" "solargraph" "OmniSharp" "bash-language-server" "yaml-language-server" "vscode-html-language-server" "vscode-css-language-server" "kotlin-language-server" "dart" "lua-language-server" "svelteserver" "vue-language-server" "terraform-ls" "tailwindcss-language-server" "zls" "marksman" "taplo" "graphql-lsp" "elixir-ls" "metals")
+    local -a LSP_CMDS=("pyright-langserver" "typescript-language-server" "rust-analyzer" "gopls" "docker-langserver" "sql-language-server" "jdtls" "clangd" "intelephense" "solargraph" "csharp-ls" "bash-language-server" "yaml-language-server" "vscode-html-language-server" "vscode-css-language-server" "kotlin-language-server" "dart" "lua-language-server" "svelteserver" "vue-language-server" "terraform-ls" "tailwindcss-language-server" "zls" "marksman" "taplo" "graphql-lsp" "elixir-ls" "metals")
     local -a LSP_INSTALL=(
         "npm install -g pyright"
         "npm install -g typescript-language-server typescript"
@@ -497,7 +497,7 @@ select_and_install_lsp() {
         "sudo apt-get install -y clangd || brew install llvm"
         "npm install -g intelephense"
         "gem install solargraph"
-        "dotnet tool install -g omnisharp"
+        "dotnet tool install -g csharp-ls --version 0.15.0"
         "npm install -g bash-language-server"
         "npm install -g yaml-language-server"
         "npm install -g vscode-langservers-extracted"
@@ -680,8 +680,8 @@ merge_lsp_to_opencode_config() {
     # Use bun to reliably parse JSON and check installed commands
     local installed_json
     installed_json=$(LSP_JSON_PATH="$lsp_json" bun -e '
-const fs = require("fs");
-const { execFileSync } = require("child_process");
+import fs from "fs";
+import { execFileSync } from "child_process";
 const lsp = JSON.parse(fs.readFileSync(process.env.LSP_JSON_PATH, "utf8"));
 const installed = [];
 for (const [key, entry] of Object.entries(lsp.lsp || {})) {

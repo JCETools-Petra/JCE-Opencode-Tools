@@ -202,7 +202,7 @@ export class TokenTracker {
         const reasoning = tokens.reasoning || 0;
         const cacheRead = tokens.cache?.read || 0;
         const cacheWrite = tokens.cache?.write || 0;
-        const msgTotal = input + output;
+        const msgTotal = input + output + reasoning;
 
         // Skip zero-token messages (e.g. user messages)
         if (msgTotal === 0 && reasoning === 0) continue;
@@ -280,7 +280,8 @@ export class TokenTracker {
         if (!data.tokens) continue;
         const input = data.tokens.input || 0;
         const output = data.tokens.output || 0;
-        if (input === 0 && output === 0) continue;
+        const reasoning = data.tokens.reasoning || 0;
+        if (input === 0 && output === 0 && reasoning === 0) continue;
 
         // Normalize timestamp: if value looks like seconds (< 1e12), convert to ms
         const timeMs = row.time_created < 1e12 ? row.time_created * 1000 : row.time_created;

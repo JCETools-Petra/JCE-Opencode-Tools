@@ -20,7 +20,7 @@ export interface Migration {
 /**
  * Current version of the config schema.
  */
-export const CURRENT_CONFIG_VERSION = "1.8.11";
+export const CURRENT_CONFIG_VERSION = "1.8.12";
 
 /**
  * Get the path to the version.json file.
@@ -71,7 +71,7 @@ export async function initVersionFile(): Promise<VersionInfo> {
   }
 
   const info: VersionInfo = {
-    version: CURRENT_CONFIG_VERSION,
+    version: "1.0.0",
     installedAt: new Date().toISOString(),
     lastUpdated: new Date().toISOString(),
   };

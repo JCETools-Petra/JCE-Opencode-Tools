@@ -168,10 +168,12 @@ async function runCommand(command: string, args: string[]): Promise<CommandResul
     // Timeout: 120s for winget (can be slow), 30s for others
     const timeoutMs = command === "winget" ? 120_000 : 30_000;
     const exitPromise = proc.exited;
-    const timeoutPromise = new Promise<number>((_, reject) =>
-      setTimeout(() => { proc.kill(); reject(new Error("timeout")); }, timeoutMs)
-    );
+    let timer: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<number>((_, reject) => {
+      timer = setTimeout(() => { proc.kill(); reject(new Error("timeout")); }, timeoutMs);
+    });
     const exitCode = await Promise.race([exitPromise, timeoutPromise]);
+    clearTimeout(timer!);
     const output = await new Response(proc.stdout).text();
     return { ok: exitCode === 0, output };
   } catch {

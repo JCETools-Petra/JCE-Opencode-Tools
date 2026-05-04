@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { existsSync } from "fs";
-import { join } from "path";
+import { existsSync, readdirSync } from "fs";
+import { dirname, join, sep } from "path";
 import { cp, mkdir, writeFile, readFile, chmod, rename } from "fs/promises";
 import { platform } from "os";
 import chalk from "chalk";
@@ -180,7 +180,7 @@ async function updateLocalCliFolder(): Promise<void> {
     await cp(join(tempDir, "scripts"), join(stagingDir, "scripts"), { recursive: true });
   }
 
-  for (const file of ["package.json", "tsconfig.json"]) {
+  for (const file of ["package.json", "tsconfig.json", "bun.lock"]) {
     const src = join(tempDir, file);
     if (existsSync(src)) {
       const content = await readFile(src, "utf-8");
@@ -286,7 +286,7 @@ async function readLocalJson<T>(filePath: string): Promise<T | null> {
  * Write a JSON object to a file with pretty formatting.
  */
 async function writeJson(filePath: string, data: unknown): Promise<void> {
-  const dir = join(filePath, "..");
+  const dir = dirname(filePath);
   if (!existsSync(dir)) {
     await mkdir(dir, { recursive: true });
   }
@@ -297,7 +297,7 @@ async function writeJson(filePath: string, data: unknown): Promise<void> {
  * Write a string to a file, creating parent directories if needed.
  */
 async function writeTextFile(filePath: string, content: string): Promise<void> {
-  const dir = join(filePath, "..");
+  const dir = dirname(filePath);
   if (!existsSync(dir)) {
     await mkdir(dir, { recursive: true });
   }
@@ -417,7 +417,13 @@ async function mergeLspEntries(configDir: string): Promise<number> {
 async function mergeDirectory(configDir: string, dirName: string): Promise<number> {
   const localDir = join(configDir, dirName);
   const remoteFiles = await fetchDirectoryListing(dirName);
-  if (remoteFiles.length === 0) return 0;
+  if (remoteFiles.length === 0) {
+    // Distinguish "nothing new" from "fetch failed"
+    if (!existsSync(localDir) || readdirSync(localDir).length === 0) {
+      return -1; // Likely fetch failure — local dir is empty/missing
+    }
+    return 0;
+  }
 
   if (!existsSync(localDir)) {
     await mkdir(localDir, { recursive: true });
@@ -635,7 +641,7 @@ function printMergeReport(stats: MergeStats): void {
 export const updateCommand = new Command("update")
   .description("Update CLI and merge latest configuration from GitHub")
   .option("--check", "Only check for updates without applying them")
-  .option("--force", "Force update (deprecated — update always syncs latest files)")
+  .option("--force", "Force sync even when local version is newer than remote")
   .action(async (options: { check?: boolean; force?: boolean }) => {
     logCommandStart("update", options);
     banner();
@@ -716,7 +722,10 @@ export const updateCommand = new Command("update")
       const backupDir = `${configDir}.update-backup.${timestamp}`;
       info(`Backing up current config to: ${backupDir}`);
       try {
-        await cp(configDir, backupDir, { recursive: true });
+        await cp(configDir, backupDir, {
+          recursive: true,
+          filter: (src) => !src.includes(`${sep}cli${sep}`) && !src.endsWith(`${sep}cli`),
+        });
         success("Backup created.");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

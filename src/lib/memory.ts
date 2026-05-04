@@ -1,5 +1,5 @@
 import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { createHash, randomBytes } from "crypto";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -92,7 +92,9 @@ export class MemoryStore {
   private saveFile(filePath: string, entries: MemoryEntry[]): void {
     this.ensureMemoryDir();
     const data: MemoryFile = { entries };
-    writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    const tmpPath = filePath + ".tmp";
+    writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    renameSync(tmpPath, filePath);
   }
 
   /**

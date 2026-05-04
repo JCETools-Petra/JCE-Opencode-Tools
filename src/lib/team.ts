@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join, resolve, sep } from "path";
 import { existsSync } from "fs";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { getConfigDir } from "./config.js";
@@ -30,7 +30,11 @@ export async function loadTeamConfig(): Promise<TeamConfig | null> {
   }
 
   const content = await readFile(configPath, "utf-8");
-  return JSON.parse(content) as TeamConfig;
+  try {
+    return JSON.parse(content) as TeamConfig;
+  } catch {
+    throw new Error(`Failed to parse team config: invalid JSON in ${configPath}`);
+  }
 }
 
 /**
@@ -99,6 +103,9 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
   }
   if (!/^[a-zA-Z0-9._\/-]+$/.test(teamConfig.branch)) {
     return { success: false, error: "Team branch name contains invalid characters" };
+  }
+  if (teamConfig.branch.includes("..")) {
+    return { success: false, error: "Branch name must not contain '..' sequences" };
   }
 
   const configDir = getConfigDir();
@@ -211,6 +218,9 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
   if (!/^[a-zA-Z0-9._\/-]+$/.test(teamConfig.branch)) {
     return { success: false, error: "Team branch name contains invalid characters" };
   }
+  if (teamConfig.branch.includes("..")) {
+    return { success: false, error: "Branch name must not contain '..' sequences" };
+  }
 
   const configDir = getConfigDir();
   const tempDir = join(configDir, ".team-sync");
@@ -247,6 +257,19 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
         // Validate JSON before writing
         const content = await readFile(srcPath, "utf-8");
         try { JSON.parse(content); } catch { continue; } // skip invalid JSON
+        // Basic structure validation for known config files
+        if (file === "agents.json") {
+          const parsed = JSON.parse(content);
+          if (!parsed.agents || !Array.isArray(parsed.agents)) continue;
+        }
+        if (file === "mcp.json") {
+          const parsed = JSON.parse(content);
+          if (!parsed.mcpServers || typeof parsed.mcpServers !== "object") continue;
+        }
+        if (file === "lsp.json") {
+          const parsed = JSON.parse(content);
+          if (!parsed.lsp || typeof parsed.lsp !== "object") continue;
+        }
         await writeFile(dstPath, content, "utf-8");
       }
     }
@@ -261,6 +284,8 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
       const { readdirSync } = await import("fs");
       const profiles = readdirSync(tempProfilesDir).filter((f) => f.endsWith(".json"));
       for (const profile of profiles) {
+        const resolvedDst = resolve(join(profilesDir, profile));
+        if (!resolvedDst.startsWith(resolve(profilesDir) + sep)) continue; // skip traversal
         const srcProfile = join(tempProfilesDir, profile);
         const dstProfile = join(profilesDir, profile);
         // Backup existing before overwrite
