@@ -118,6 +118,14 @@ describe("audit fixes", () => {
     expect(source).toContain("CURRENT_CONFIG_VERSION");
   });
 
+  test("update merges default plugin entries into existing opencode.json", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+
+    expect(source).toContain("const defaults = buildDefaultOpenCodeJson(configDir)");
+    expect(source).toContain("existing.plugin");
+    expect(source).toContain("defaultPlugin of defaults.plugin");
+  });
+
   test("compareVersions handles prerelease and build metadata predictably", () => {
     expect(compareVersions("1.8.9-beta.1", "1.8.8")).toBe(1);
     expect(compareVersions("1.8.9-beta.1", "1.8.9")).toBe(-1);

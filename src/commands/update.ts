@@ -510,7 +510,23 @@ async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
     existing.mcp = {};
   }
 
+  const defaults = buildDefaultOpenCodeJson(configDir);
   let changed = false;
+
+  if (!Array.isArray(existing.plugin)) {
+    existing.plugin = [];
+    changed = true;
+  }
+
+  if (Array.isArray(defaults.plugin)) {
+    for (const defaultPlugin of defaults.plugin) {
+      if (!existing.plugin.includes(defaultPlugin)) {
+        existing.plugin.push(defaultPlugin);
+        changed = true;
+      }
+    }
+  }
+
   for (const [key, value] of Object.entries(buildDefaultMcpConfig(configDir))) {
     if (!(key in existing.mcp)) {
       existing.mcp[key] = value;
