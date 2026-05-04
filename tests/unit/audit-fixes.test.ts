@@ -134,6 +134,16 @@ describe("audit fixes", () => {
     expect(source).toContain('["opencode-jce", "update"]');
   });
 
+  test("plugin command exposes interactive JCE model configuration", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "plugin.ts"), "utf-8");
+
+    expect(source).toContain('new Command("configure")');
+    expect(source).toContain('new Command("models")');
+    expect(source).toContain("listAvailableModels");
+    expect(source).toContain("saveJcePluginSettings");
+    expect(source).toContain("Use active OpenCode model");
+  });
+
   test("compareVersions handles prerelease and build metadata predictably", () => {
     expect(compareVersions("1.8.9-beta.1", "1.8.8")).toBe(1);
     expect(compareVersions("1.8.9-beta.1", "1.8.9")).toBe(-1);

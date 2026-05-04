@@ -1,9 +1,19 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import { createInterface } from "readline/promises";
+import { stdin as input, stdout as output } from "process";
 import { loadPluginsRegistry, installPlugin, removePlugin, sanitizeGitUrl } from "../lib/plugins.js";
 import { heading, info, success, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
+import {
+  AGENT_IDS,
+  getJcePluginSettingsPath,
+  listAvailableModels,
+  loadJcePluginSettings,
+  saveJcePluginSettings,
+  type JcePluginSettings,
+} from "../plugin/lib/settings.js";
 
 // ─── Subcommands ─────────────────────────────────────────────
 
@@ -83,10 +93,91 @@ const removeCommand = new Command("remove")
     process.exit(EXIT_SUCCESS);
   });
 
+function printAgentModelSettings(settings: JcePluginSettings, models: string[]): void {
+  heading("JCE Plugin Agent Models");
+  console.log();
+  for (const agent of AGENT_IDS) {
+    const value = settings.agents[agent];
+    const label = typeof value === "string" && models.includes(value)
+      ? value
+      : "Use active OpenCode model";
+    console.log(`  ${chalk.bold(agent.padEnd(10))} ${label}`);
+  }
+  console.log();
+  info(`Settings file: ${getJcePluginSettingsPath()}`);
+}
+
+const modelsCommand = new Command("models")
+  .description("Show available OpenCode models and JCE plugin agent model settings")
+  .action(async () => {
+    logCommandStart("plugin models");
+    const models = listAvailableModels();
+    const settings = loadJcePluginSettings();
+    printAgentModelSettings(settings, models);
+    console.log();
+    heading("Available Models");
+    console.log();
+    if (models.length === 0) {
+      info("No models found in opencode.json provider config.");
+    } else {
+      for (const model of models) console.log(`  ${model}`);
+    }
+    logCommandSuccess("plugin models", `models=${models.length}`);
+    process.exit(EXIT_SUCCESS);
+  });
+
+const configureCommand = new Command("configure")
+  .description("Interactively configure Sisyphus/JCE plugin agent models")
+  .action(async () => {
+    logCommandStart("plugin configure");
+    const models = listAvailableModels();
+    if (models.length === 0) {
+      error("No models found in opencode.json provider config.");
+      error("Run `opencode-jce doctor` to verify your OpenCode provider configuration.");
+      logCommandError("plugin configure", "no models available");
+      process.exit(EXIT_ERROR);
+    }
+
+    const settings = loadJcePluginSettings();
+    const choices = ["Use active OpenCode model", ...models];
+    const rl = createInterface({ input, output });
+    try {
+      heading("Configure JCE Plugin Agent Models");
+      console.log();
+      choices.forEach((choice, index) => console.log(`  ${index + 1}. ${choice}`));
+      console.log();
+
+      for (const agent of AGENT_IDS) {
+        const current = settings.agents[agent];
+        const currentIndex = typeof current === "string" ? models.indexOf(current) + 2 : 1;
+        const fallbackIndex = currentIndex > 1 ? currentIndex : 1;
+        const answer = await rl.question(`${agent} model? [${fallbackIndex}] `);
+        const parsed = answer.trim() === "" ? fallbackIndex : Number(answer.trim());
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > choices.length) {
+          error(`Invalid choice for ${agent}: ${answer}`);
+          logCommandError("plugin configure", `invalid choice for ${agent}`);
+          process.exit(EXIT_ERROR);
+        }
+        settings.agents[agent] = parsed === 1 ? null : models[parsed - 2];
+      }
+
+      await saveJcePluginSettings(settings);
+      console.log();
+      success(`Saved JCE plugin settings to ${getJcePluginSettingsPath()}`);
+      info("Restart OpenCode for agent model changes to apply.");
+      logCommandSuccess("plugin configure", "saved settings");
+      process.exit(EXIT_SUCCESS);
+    } finally {
+      rl.close();
+    }
+  });
+
 // ─── Main Command ────────────────────────────────────────────
 
 export const pluginCommand = new Command("plugin")
-  .description("Manage community plugins (install, list, remove)")
+  .description("Manage community plugins and JCE plugin settings")
   .addCommand(installCommand)
   .addCommand(listCommand)
-  .addCommand(removeCommand);
+  .addCommand(removeCommand)
+  .addCommand(modelsCommand)
+  .addCommand(configureCommand);
