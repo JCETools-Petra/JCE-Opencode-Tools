@@ -134,6 +134,20 @@ async function selfUpdateCli(latestVersion: string): Promise<boolean> {
   }
 }
 
+async function handoffToUpdatedCli(): Promise<never> {
+  info("Restarting update with the freshly updated CLI...");
+  const proc = Bun.spawn(["opencode-jce", "update"], {
+    stdout: "inherit",
+    stderr: "inherit",
+    env: {
+      ...process.env,
+      OPENCODE_JCE_UPDATED_CLI_HANDOFF: "1",
+    },
+  });
+  const exitCode = await proc.exited;
+  process.exit(exitCode);
+}
+
 /**
  * Update the local cli/ folder in the config directory.
  * Clones the latest source from GitHub, copies src/, schemas/, package.json,
@@ -694,6 +708,7 @@ export const updateCommand = new Command("update")
     console.log();
 
     const comparison = compareVersions(latestVersion, localVersion);
+    const isHandoff = process.env.OPENCODE_JCE_UPDATED_CLI_HANDOFF === "1";
 
     if (comparison > 0) {
       info(`${chalk.yellow("Update available:")} ${localVersion} → ${latestVersion}`);
@@ -731,6 +746,9 @@ export const updateCommand = new Command("update")
     if (!cliUpdated) {
       logCommandError("update", "CLI self-update failed");
       process.exit(EXIT_ERROR);
+    }
+    if (comparison > 0 && !isHandoff) {
+      await handoffToUpdatedCli();
     }
 
     // Step 2: Merge config files

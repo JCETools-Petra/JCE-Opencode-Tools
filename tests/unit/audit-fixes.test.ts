@@ -126,6 +126,14 @@ describe("audit fixes", () => {
     expect(source).toContain("defaultPlugin of defaults.plugin");
   });
 
+  test("version upgrades hand off config merge to the freshly updated CLI", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+
+    expect(source).toContain("OPENCODE_JCE_UPDATED_CLI_HANDOFF");
+    expect(source).toContain("handoffToUpdatedCli");
+    expect(source).toContain('["opencode-jce", "update"]');
+  });
+
   test("compareVersions handles prerelease and build metadata predictably", () => {
     expect(compareVersions("1.8.9-beta.1", "1.8.8")).toBe(1);
     expect(compareVersions("1.8.9-beta.1", "1.8.9")).toBe(-1);
