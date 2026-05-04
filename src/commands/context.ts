@@ -7,6 +7,8 @@ import { heading, info, success, warn, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 import { CONTEXT_FILENAME, getContextTemplate } from "../lib/context-template.js";
+import { parseSessionMeta, isStale } from "../lib/context-session.js";
+import { getGitState } from "../lib/context-enrichment.js";
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -193,6 +195,130 @@ const statusCommand = new Command("status")
     process.exit(EXIT_SUCCESS);
   });
 
+const auditCommand = new Command("audit")
+  .description("Check context file compliance and report issues")
+  .action(async () => {
+    logCommandStart("context audit");
+
+    const contextPath = getContextPath();
+    const issues: string[] = [];
+    const suggestions: string[] = [];
+
+    // 1. Check if context file exists
+    if (!existsSync(contextPath)) {
+      error(`${CONTEXT_FILENAME} not found in ${process.cwd()}`);
+      info(`Run ${chalk.cyan("opencode-jce context init")} to create one.`);
+      logCommandError("context audit", "context file not found");
+      process.exit(EXIT_ERROR);
+    }
+
+    // 2. Read the file content
+    let content: string;
+    try {
+      content = await readFile(contextPath, "utf-8");
+    } catch (err: any) {
+      error(`Cannot read ${CONTEXT_FILENAME}: ${err.message}`);
+      logCommandError("context audit", err.message);
+      process.exit(EXIT_ERROR);
+    }
+
+    heading("Context Compliance Audit");
+    console.log();
+
+    // 3. Check session metadata
+    const meta = parseSessionMeta(content);
+    if (!meta) {
+      issues.push("No session metadata found — file has never been tracked by the AI");
+      suggestions.push("Start an AI session so the context file gets session metadata injected");
+    } else {
+      // 4. Check staleness
+      if (isStale(meta)) {
+        issues.push(
+          `Context is stale — last session: ${meta.lastSession}, sessions without update: ${meta.sessionsWithoutUpdate ?? "unknown"}`,
+        );
+        suggestions.push("Review and update the context file to reflect current project state");
+      }
+    }
+
+    // 5. Check git state
+    const git = await getGitState(process.cwd());
+    if (git) {
+      if (git.uncommittedCount > 10) {
+        issues.push(`${git.uncommittedCount} uncommitted files — context may be out of sync`);
+        suggestions.push("Commit or stash changes, then update context to match current state");
+      }
+    } else {
+      suggestions.push("Not a git repository — git-based checks skipped");
+    }
+
+    // 6. Check section completeness
+    const requiredSections = [
+      { name: "Stack", heading: "## Stack" },
+      { name: "Architecture Decisions", heading: "## Architecture Decisions" },
+      { name: "Conventions", heading: "## Conventions" },
+      { name: "Current Status", heading: "## Current Status" },
+      { name: "Important Notes", heading: "## Important Notes" },
+    ];
+
+    const missingSections: string[] = [];
+    for (const section of requiredSections) {
+      if (!content.includes(section.heading)) {
+        missingSections.push(section.name);
+      }
+    }
+
+    if (missingSections.length > 0) {
+      issues.push(`Missing sections: ${missingSections.join(", ")}`);
+      suggestions.push("Add the missing sections to ensure full context coverage");
+    }
+
+    // 7. Check for placeholder content
+    const placeholders = [
+      "auto-detect from project files",
+      "(none yet)",
+      "(session start)",
+    ];
+    const foundPlaceholders: string[] = [];
+    for (const placeholder of placeholders) {
+      if (content.includes(placeholder)) {
+        foundPlaceholders.push(`"${placeholder}"`);
+      }
+    }
+
+    if (foundPlaceholders.length > 0) {
+      issues.push(`Placeholder content still present: ${foundPlaceholders.join(", ")}`);
+      suggestions.push("Replace placeholder text with actual project information");
+    }
+
+    // 8. Check file size
+    const lines = content.split("\n").filter((l) => l.trim()).length;
+    if (lines > 50) {
+      issues.push(`File has ${lines} non-empty lines — exceeds recommended 40-line limit`);
+      suggestions.push("Prune completed tasks and archive old decisions to keep the file concise");
+    }
+
+    // ─── Report ────────────────────────────────────────────────
+    if (issues.length === 0) {
+      success("Context compliance: HEALTHY");
+    } else {
+      warn(`Context compliance: ${issues.length} issue(s) found`);
+      for (const issue of issues) {
+        console.log(`  ${chalk.red("✗")} ${issue}`);
+      }
+    }
+
+    if (suggestions.length > 0) {
+      console.log();
+      info("Suggestions:");
+      for (const suggestion of suggestions) {
+        console.log(`  ${chalk.blue("→")} ${suggestion}`);
+      }
+    }
+
+    logCommandSuccess("context audit", `issues=${issues.length}`);
+    process.exit(EXIT_SUCCESS);
+  });
+
 // ─── Main Command ────────────────────────────────────────────
 
 export const contextCommand = new Command("context")
@@ -200,4 +326,5 @@ export const contextCommand = new Command("context")
   .addCommand(initCommand)
   .addCommand(showCommand)
   .addCommand(clearCommand)
-  .addCommand(statusCommand);
+  .addCommand(statusCommand)
+  .addCommand(auditCommand);
