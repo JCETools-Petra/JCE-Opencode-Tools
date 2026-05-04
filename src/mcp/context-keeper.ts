@@ -24,6 +24,10 @@ import {
   getContextTemplate,
 } from "../lib/context-template.js";
 
+// ─── Re-export section utilities (extracted to prevent circular deps) ────
+export { countLines, getSection, replaceSection } from "../lib/context-sections.js";
+import { countLines, getSection, replaceSection } from "../lib/context-sections.js";
+
 // ─── Helpers (exported for testing) ──────────────────────────
 
 export function getProjectRoot(): string {
@@ -63,13 +67,6 @@ async function writeContext(content: string): Promise<void> {
     `> Last updated: ${today}`
   );
   await writeFile(contextPath(), updated, "utf-8");
-}
-
-/**
- * Count non-empty lines in content.
- */
-export function countLines(content: string): number {
-  return content.split("\n").filter((l) => l.trim().length > 0).length;
 }
 
 /**
@@ -114,78 +111,7 @@ export function pruneCompleted(content: string): string {
   return result.join("\n");
 }
 
-/**
- * Extract a section's content by heading name.
- */
-export function getSection(content: string, heading: string): string[] {
-  const lines = content.split("\n");
-  const result: string[] = [];
-  let inSection = false;
 
-  for (const line of lines) {
-    if (line.startsWith(`## ${heading}`)) {
-      inSection = true;
-      continue;
-    }
-    if (line.startsWith("## ") && inSection) {
-      break;
-    }
-    if (inSection) {
-      result.push(line);
-    }
-  }
-
-  return result.filter((l) => l.trim().length > 0);
-}
-
-/**
- * Replace a section's content by heading name.
- */
-export function replaceSection(
-  content: string,
-  heading: string,
-  newLines: string[]
-): string {
-  const lines = content.split("\n");
-  const result: string[] = [];
-  let inSection = false;
-  let sectionReplaced = false;
-
-  for (const line of lines) {
-    if (line.startsWith(`## ${heading}`)) {
-      inSection = true;
-      sectionReplaced = true;
-      result.push(line);
-      for (const nl of newLines) {
-        result.push(nl);
-      }
-      continue;
-    }
-    if (line.startsWith("## ") && inSection) {
-      inSection = false;
-      result.push(""); // Preserve blank separator line
-    }
-    if (!inSection) {
-      result.push(line);
-    }
-  }
-
-  // Ensure trailing newline after last section if it was replaced
-  if (inSection && sectionReplaced) {
-    result.push(""); // Ensure trailing newline after last section
-  }
-
-  // If section didn't exist, append it
-  if (!sectionReplaced) {
-    result.push("");
-    result.push(`## ${heading}`);
-    for (const nl of newLines) {
-      result.push(nl);
-    }
-  }
-
-  return result.join("\n");
-}
 
 export interface ContextArchiveResult {
   content: string;
