@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="2.0.1"
+VERSION="2.0.2"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -235,13 +235,32 @@ install_opencode() {
     fi
 }
 
+download_repo_tarball() {
+    local archive="${TEMP_DIR}.tar.gz"
+    local extract_dir="${TEMP_DIR}.extract"
+
+    rm -rf "$archive" "$extract_dir"
+    mkdir -p "$extract_dir"
+    curl -fsSL "https://github.com/JCETools-Petra/JCE-Opencode-Tools/archive/refs/heads/main.tar.gz" -o "$archive" || return 1
+    tar -xzf "$archive" -C "$extract_dir" || return 1
+
+    local extracted
+    extracted=$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)
+    [ -n "$extracted" ] || return 1
+    mv "$extracted" "$TEMP_DIR" || return 1
+    rm -rf "$archive" "$extract_dir"
+}
+
 deploy_config() {
     info "Deploying configuration..."
 
     # Clone config repo
     rm -rf "$TEMP_DIR"
-    git clone --depth 1 "$REPO_URL" "$TEMP_DIR" 2>/dev/null || \
-        error "Failed to clone config repository. Check your internet connection."
+    if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR" 2>/dev/null; then
+        warn "Git clone failed. Falling back to GitHub archive download..."
+        rm -rf "$TEMP_DIR"
+        download_repo_tarball || error "Failed to download config repository. Check your internet connection."
+    fi
 
     # Ensure config directory exists
     mkdir -p "$CONFIG_DIR"

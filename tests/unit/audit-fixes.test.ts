@@ -131,6 +131,15 @@ describe("audit fixes", () => {
     expect(sh).not.toContain("brew install metals || cs install metals");
   });
 
+  test("Bash installer falls back to GitHub tarball when git clone fails", () => {
+    const sh = readFileSync(join(process.cwd(), "install.sh"), "utf-8");
+
+    expect(sh).toContain("download_repo_tarball");
+    expect(sh).toContain("archive/refs/heads/main.tar.gz");
+    expect(sh).toContain("tar -xzf");
+    expect(sh).toContain("git clone --depth 1");
+  });
+
   test("setup no longer prompts for raw API keys or writes api-keys.env", () => {
     const source = readFileSync(join(process.cwd(), "src", "commands", "setup.ts"), "utf-8");
 
