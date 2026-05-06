@@ -32,7 +32,8 @@ function printResults(results: CheckResult[]): void {
 export const doctorCommand = new Command("doctor")
   .description("Run a full health check of the OpenCode JCE installation")
   .option("--fix", "Automatically fix issues that can be resolved")
-  .action(async (opts: { fix?: boolean }) => {
+  .option("--install-tools", "Allow --fix to install missing global tools")
+  .action(async (opts: { fix?: boolean; installTools?: boolean }) => {
     banner();
 
     const categories: CheckCategory[] = [];
@@ -87,7 +88,7 @@ export const doctorCommand = new Command("doctor")
       console.log();
 
       const failedChecks = allResults.filter((r) => r.status === "error" || r.status === "warn");
-      const fixResults = await runAllFixes(failedChecks);
+      const fixResults = await runAllFixes(failedChecks, { installTools: opts.installTools === true });
 
       if (fixResults.length === 0) {
         info("No auto-fixable issues found. Fix manually using the commands above.");

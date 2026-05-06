@@ -1,5 +1,5 @@
 import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { createHash, randomBytes } from "crypto";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -89,9 +89,9 @@ export class MemoryStore {
   /**
    * Save entries to a memory file.
    */
-  private saveFile(filePath: string, entries: MemoryEntry[]): void {
+  private saveFile(filePath: string, entries: MemoryEntry[], mergeLatest = true): void {
     this.ensureMemoryDir();
-    const latestEntries = this.loadFile(filePath);
+    const latestEntries = mergeLatest ? this.loadFile(filePath) : [];
     const merged = new Map<string, MemoryEntry>();
 
     for (const entry of latestEntries) {
@@ -216,8 +216,19 @@ export class MemoryStore {
   /**
    * Clear all memories for the current project.
    */
-  clear(): void {
-    this.saveEntries([]);
+  clear(): string {
+    this.ensureMemoryDir();
+    const filePath = this.getFilePath();
+    const backupPath = `${filePath}.backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+
+    if (existsSync(filePath)) {
+      copyFileSync(filePath, backupPath);
+    } else {
+      writeFileSync(backupPath, JSON.stringify({ entries: [] }, null, 2), "utf-8");
+    }
+
+    this.saveFile(filePath, [], false);
+    return backupPath;
   }
 
   /**

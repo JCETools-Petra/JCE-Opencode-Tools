@@ -267,13 +267,18 @@ export async function fixMissingLsp(): Promise<FixResult[]> {
 
 // ─── Fix: Missing Tools ──────────────────────────────────────
 
-export async function fixMissingTools(): Promise<FixResult[]> {
+export async function fixMissingTools(allowGlobalInstall = false): Promise<FixResult[]> {
   const results: FixResult[] = [];
   const isWindows = platform() === "win32";
 
   // Check OpenCode CLI
   const hasOpencode = await commandExists("opencode");
   if (!hasOpencode) {
+    if (!allowGlobalInstall) {
+      results.push({ name: "OpenCode CLI", fixed: false, message: "Global install skipped. Re-run with --install-tools to install via bun." });
+      return results;
+    }
+
     const hasBun = await commandExists("bun");
     if (hasBun) {
       const result = await runCommand("bun", ["install", "-g", "opencode"]);
@@ -396,7 +401,7 @@ export async function fixContextKeeper(): Promise<FixResult[]> {
 
 // ─── Master Fix Function ─────────────────────────────────────
 
-export async function runAllFixes(failedChecks: CheckResult[]): Promise<FixResult[]> {
+export async function runAllFixes(failedChecks: CheckResult[], options: { installTools?: boolean } = {}): Promise<FixResult[]> {
   const allResults: FixResult[] = [];
 
   const hasConfigErrors = failedChecks.some(
@@ -419,7 +424,7 @@ export async function runAllFixes(failedChecks: CheckResult[]): Promise<FixResul
 
   if (hasToolErrors) {
     info("Fixing missing tools...");
-    const toolResults = await fixMissingTools();
+    const toolResults = await fixMissingTools(options.installTools === true);
     allResults.push(...toolResults);
   }
 
