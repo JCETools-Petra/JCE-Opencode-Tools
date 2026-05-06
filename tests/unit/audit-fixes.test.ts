@@ -221,6 +221,14 @@ describe("audit fixes", () => {
     expect(source).toContain('["opencode-jce", "update"]');
   });
 
+  test("Windows update shim separates bun run script from forwarded args", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+    const ps = readFileSync(join(process.cwd(), "install.ps1"), "utf-8");
+
+    expect(source).toContain('bun run "${join(cliDir, "src", "index.ts")}" -- %*');
+    expect(ps).toContain('bun run `"$installDir\\src\\index.ts`" -- %*');
+  });
+
   test("plugin command exposes interactive JCE model configuration", () => {
     const source = readFileSync(join(process.cwd(), "src", "commands", "plugin.ts"), "utf-8");
 

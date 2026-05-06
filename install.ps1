@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "2.0.2"
+$Version = "2.0.3"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -486,7 +486,7 @@ function Deploy-Config {
         }
 
         # Create .cmd wrapper
-        $cmdContent = "@echo off`r`nbun run `"$installDir\src\index.ts`" %*"
+        $cmdContent = "@echo off`r`nbun run `"$installDir\src\index.ts`" -- %*"
         Set-Content -Path (Join-Path $bunPath "opencode-jce.cmd") -Value $cmdContent -Encoding ASCII
 
         # Add bun bin to PATH if not already there

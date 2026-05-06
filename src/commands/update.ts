@@ -275,7 +275,7 @@ export async function ensureCliShim(): Promise<void> {
 
   if (isWindows) {
     const cmdPath = join(bunBinDir, "opencode-jce.cmd");
-    const cmdContent = `@echo off\r\nbun run "${join(cliDir, "src", "index.ts")}" %*`;
+    const cmdContent = `@echo off\r\nbun run "${join(cliDir, "src", "index.ts")}" -- %*`;
     await writeFile(cmdPath, cmdContent, "ascii");
   } else {
     const shimPath = join(bunBinDir, "opencode-jce");
