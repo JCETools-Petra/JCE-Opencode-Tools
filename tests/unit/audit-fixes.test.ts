@@ -241,6 +241,17 @@ describe("audit fixes", () => {
     expect(ps).toContain('Remove-Item (Join-Path $npmPath "opencode-jce.cmd")');
   });
 
+  test("Unix install and update remove stale npm opencode-jce shims", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+    const sh = readFileSync(join(process.cwd(), "install.sh"), "utf-8");
+
+    expect(source).toContain("npmBinDir");
+    expect(source).toContain('[bunBinDir, npmBinDir].filter(Boolean)');
+    expect(source).toContain('"opencode-jce"');
+    expect(sh).toContain('npm_bin="$(npm bin -g 2>/dev/null || true)"');
+    expect(sh).toContain('rm -f "$npm_bin/opencode-jce"');
+  });
+
   test("plugin command exposes interactive JCE model configuration", () => {
     const source = readFileSync(join(process.cwd(), "src", "commands", "plugin.ts"), "utf-8");
 

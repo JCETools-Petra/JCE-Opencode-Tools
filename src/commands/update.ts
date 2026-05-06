@@ -262,12 +262,23 @@ export async function ensureCliShim(): Promise<void> {
 
   const { rm } = await import("fs/promises");
   const isWindows = platform() === "win32";
+  let npmBinDir: string | null = null;
+  if (!isWindows) {
+    try {
+      const npmBinProc = Bun.spawn(["npm", "bin", "-g"], { stdout: "pipe", stderr: "pipe" });
+      if (await npmBinProc.exited === 0) {
+        npmBinDir = (await new Response(npmBinProc.stdout).text()).trim() || null;
+      }
+    } catch {
+      npmBinDir = null;
+    }
+  }
   const staleFiles = isWindows
     ? ["opencode-jce", "opencode-jce.cmd", "opencode-jce.ps1", "opencode-jce.exe", "opencode-jce.bunx"]
-    : ["opencode-jce.cmd", "opencode-jce.exe", "opencode-jce.bunx"];
+    : ["opencode-jce", "opencode-jce.cmd", "opencode-jce.exe", "opencode-jce.bunx"];
   const staleDirs = isWindows
     ? [bunBinDir, join(process.env.APPDATA || "", "npm")]
-    : [bunBinDir];
+    : [bunBinDir, npmBinDir].filter(Boolean);
 
   for (const dir of staleDirs) {
     if (!dir) continue;

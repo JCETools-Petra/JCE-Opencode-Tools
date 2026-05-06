@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="2.0.4"
+VERSION="2.0.5"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -384,6 +384,10 @@ deploy_config() {
     local bun_bin="${HOME}/.bun/bin"
     mkdir -p "$bun_bin"
     rm -f "$bun_bin/opencode-jce.cmd" "$bun_bin/opencode-jce.exe" "$bun_bin/opencode-jce.bunx"
+    local npm_bin="$(npm bin -g 2>/dev/null || true)"
+    if [ -n "$npm_bin" ] && [ "$npm_bin" != "$bun_bin" ]; then
+        rm -f "$npm_bin/opencode-jce" "$npm_bin/opencode-jce.cmd" "$npm_bin/opencode-jce.exe" "$npm_bin/opencode-jce.bunx"
+    fi
     cat > "$bun_bin/opencode-jce" <<EOF
 #!/usr/bin/env sh
 exec bun run "$install_dir/src/index.ts" "\$@"
