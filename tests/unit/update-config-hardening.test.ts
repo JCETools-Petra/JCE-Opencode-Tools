@@ -47,4 +47,29 @@ describe("update config hardening", () => {
     expect(merged.plugin).toContain("custom-plugin");
     expect(merged.plugin.length).toBe(new Set(merged.plugin).size);
   });
+
+  test("adds native JCE agent entries for OpenCode Desktop without overwriting user agents", () => {
+    const configDir = tempConfigDir();
+    const configPath = join(configDir, "opencode.json");
+    writeFileSync(configPath, JSON.stringify({
+      agent: {
+        "jce-worker": { mode: "primary", prompt: "custom worker" },
+        "custom-review": { mode: "subagent", prompt: "custom review" },
+      },
+    }, null, 2), "utf8");
+
+    ensureOpenCodeJsonEntries(configDir);
+
+    const merged = JSON.parse(readFileSync(configPath, "utf8"));
+    expect(merged.agent["jce-worker"].prompt).toBe("custom worker");
+    expect(merged.agent["custom-review"].prompt).toBe("custom review");
+    expect(merged.agent["jce-researcher"]).toMatchObject({
+      description: expect.any(String),
+      mode: "all",
+      prompt: expect.stringContaining("Research Scope"),
+    });
+    expect(merged.agent.explorer.mode).toBe("all");
+    expect(merged.agent.frontend.mode).toBe("all");
+    expect(merged.agent.oracle.mode).toBe("all");
+  });
 });

@@ -71,6 +71,7 @@ export function ensureOpenCodeJsonEntries(configDir: string): EnsureOpenCodeJson
   const merged: Record<string, unknown> = { ...current };
   if (!("$schema" in merged) && "$schema" in defaults) merged.$schema = defaults.$schema;
   merged.plugin = mergeStringArray(merged.plugin, defaults.plugin);
+  merged.agent = mergeRecord(merged.agent, defaults.agent);
   merged.mcp = mergeRecord(merged.mcp, defaults.mcp);
   merged.lsp = mergeRecord(merged.lsp, defaults.lsp);
   cleanupLegacyMcpEntries(merged as Record<string, any>);

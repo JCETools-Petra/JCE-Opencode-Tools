@@ -11,6 +11,7 @@ import { join } from "path";
 import { existsSync, readFileSync } from "fs";
 import { execFileSync } from "child_process";
 import { platform } from "os";
+import { buildAgentConfigs } from "../plugin/config.js";
 
 // ─── LSP Auto-Detection ──────────────────────────────────────
 
@@ -79,6 +80,28 @@ interface LspEntry {
   extensions: string[];
 }
 
+interface NativeAgentEntry {
+  description: string;
+  mode: "primary" | "subagent" | "all";
+  prompt: string;
+}
+
+const AGENT_DESCRIPTIONS: Record<string, string> = {
+  "jce-worker": "Autonomous engineering worker for planning, delegation, execution, review, and verification.",
+  oracle: "Architecture and debugging specialist for hard technical decisions and root-cause analysis.",
+  "jce-researcher": "Evidence-first technical research analyst for docs, libraries, codebases, GitHub, and web sources.",
+  explorer: "Fast codebase navigation agent for mapping files, symbols, references, and implementation details.",
+  frontend: "UI/UX and frontend specialist for components, accessibility, responsive design, and visual verification.",
+};
+
+const AGENT_MODES: Record<string, NativeAgentEntry["mode"]> = {
+  "jce-worker": "primary",
+  oracle: "all",
+  "jce-researcher": "all",
+  explorer: "all",
+  frontend: "all",
+};
+
 /**
  * Scan lsp.json and return LSP servers whose commands are found in PATH.
  */
@@ -116,6 +139,15 @@ export function detectInstalledLsp(configDir: string): Record<string, LspEntry> 
   }
 
   return result;
+}
+
+export function buildNativeJceAgents(): Record<string, NativeAgentEntry> {
+  const agents = buildAgentConfigs();
+  return Object.fromEntries(Object.entries(agents).map(([id, config]) => [id, {
+    description: AGENT_DESCRIPTIONS[id] ?? id,
+    mode: AGENT_MODES[id] ?? "all",
+    prompt: config.systemPrompt,
+  }])) as Record<string, NativeAgentEntry>;
 }
 
 // ─── Template Builder ────────────────────────────────────────
@@ -179,6 +211,7 @@ export function buildDefaultOpenCodeJson(configDir: string): Record<string, unkn
       "superpowers@git+https://github.com/obra/superpowers.git",
       `file://${configDir.replace(/\\/g, "/")}/cli/src/plugin/index.ts`,
     ],
+    agent: buildNativeJceAgents(),
     mcp: buildDefaultMcpConfig(configDir),
     lsp,
   };
