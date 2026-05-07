@@ -42,16 +42,41 @@ describe("plugin agents", () => {
 
   test("jce-worker agent has boulder/todo system prompt", () => {
     const agents = buildAgentConfigs();
-    expect(agents["jce-worker"].systemPrompt).toContain("todo");
-    expect(agents["jce-worker"].systemPrompt).toContain("boulder");
-    expect(agents["jce-worker"].systemPrompt).toContain("JCE-Worker");
+    const prompt = agents["jce-worker"].systemPrompt;
+    const lower = prompt.toLowerCase();
+    expect(lower).toContain("todo");
+    expect(lower).toContain("boulder");
+    expect(prompt).toContain("JCE-Worker");
   });
 
   test("jce-worker prompt describes planning, delegation review, and verification", () => {
     const agents = buildAgentConfigs();
-    expect(agents["jce-worker"].systemPrompt).toContain("planning");
-    expect(agents["jce-worker"].systemPrompt).toContain("verification");
-    expect(agents["jce-worker"].systemPrompt).toContain("review delegated work");
+    expect(agents["jce-worker"].systemPrompt).toContain("Planning Rules");
+    expect(agents["jce-worker"].systemPrompt).toContain("Verification Evidence");
+    expect(agents["jce-worker"].systemPrompt).toContain("verify delegated work");
+  });
+
+  test("jce-worker prompt defines v3 full hybrid execution contract", () => {
+    const agents = buildAgentConfigs();
+    const prompt = agents["jce-worker"].systemPrompt;
+
+    expect(prompt).toContain("Principal Engineer");
+    expect(prompt).toContain("Acceptance Criteria");
+    expect(prompt).toContain("Root Cause");
+    expect(prompt).toContain("Delegation Contract");
+    expect(prompt).toContain("jce_workflow");
+    expect(prompt).toContain("safe_commit_plan");
+    expect(prompt).toContain("release_ready");
+    expect(prompt).toContain("advisory");
+    expect(prompt).toContain("read-only");
+    expect(prompt).toContain("permission to commit or push");
+    expect(prompt).toContain("Verification Evidence");
+    expect(prompt).toContain("Release Safety");
+    expect(prompt).toContain("Anti-Patterns");
+    expect(prompt).toContain("Final Response Contract");
+    expect(prompt).toContain("What was found, or what changed if edits were made.");
+    expect(prompt).toContain("Continue within the user-approved scope.");
+    expect(prompt).toContain("Stop when blocked, unsafe, or explicitly instructed.");
   });
 
   test("jce-researcher prompt defines deep research modes", () => {
@@ -164,7 +189,7 @@ describe("plugin agents", () => {
     expect(prompt).toContain("Research delegations must return");
     expect(prompt).toContain("Evidence");
     expect(prompt).toContain("Sources");
-    expect(prompt).toContain("If researcher evidence is missing or weak");
+    expect(prompt).toContain("Missing evidence means not verified");
   });
 
   test("agents omit model by default so OpenCode uses the active user model", () => {

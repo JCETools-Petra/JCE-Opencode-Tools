@@ -1,11 +1,13 @@
 import type { PluginModule, Plugin, Hooks } from "@opencode-ai/plugin";
 import { BackgroundManager } from "./background/manager.js";
+import { extractPromptText } from "./background/spawner.js";
 import { buildDispatchTool, buildStatusTool, buildCollectTool } from "./tools/dispatch.js";
 import { buildAgentConfigs } from "./config.js";
 import { analyzeCommentDensity, COMMENT_WARNING } from "./hooks/comment-checker.js";
 import { looksLikeCompletionClaim, shouldWarnForMissingVerification, VERIFICATION_WARNING } from "./hooks/jce-worker-guard.js";
 import { loadExecutionMemory, mergeExecutionMemorySnapshot, saveExecutionMemory } from "./lib/execution-memory.js";
 import type { ExecutionMemory } from "./lib/execution-memory.js";
+import { buildChineseTranslationPrompt, filterChineseOutput, type ChineseTranslator } from "./lib/chinese-output-filter.js";
 import { evaluateExecutionPolicy, formatExecutionPolicyDecision } from "./lib/execution-policy.js";
 import type { ExecutionPolicyDecision } from "./lib/execution-policy.js";
 import { evaluateFinalReviewGate } from "./lib/final-review-gate.js";
@@ -14,6 +16,7 @@ import { routeJceWorkerIntent } from "./lib/skill-router.js";
 import type { JceWorkerAgentHint } from "./lib/skill-router.js";
 import { applyWorkflowIntentRoute } from "./lib/workflow.js";
 import type { WorkflowIntentRouteSource } from "./lib/workflow.js";
+import { buildWorkflowTool } from "./tools/workflow.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -38,8 +41,38 @@ function isJceWorkerAgentHint(value: string): value is JceWorkerAgentHint {
   return value === "oracle" || value === "jce-researcher" || value === "explorer" || value === "frontend";
 }
 
+function extractTranslationText(result: unknown): string | undefined {
+  const text = extractPromptText(result);
+  return text === "Task completed" ? undefined : text;
+}
+
+function buildChineseTranslator(client: any): ChineseTranslator | undefined {
+  if (!client?.session?.create) return undefined;
+  return async (text: string) => {
+    const session = await client.session.create({});
+    if (!session?.id) throw new Error("Translation session returned no id");
+    const prompt = text.includes("<<<CHINESE_OUTPUT_TO_TRANSLATE>>>") ? text : buildChineseTranslationPrompt(text);
+    const promptRequest = { path: { id: session.id }, body: { agent: "jce-worker", parts: [{ type: "text" as const, text: prompt }] } };
+    const result = typeof client.session.prompt === "function"
+      ? await client.session.prompt(promptRequest)
+      : typeof client.session.promptAsync === "function"
+        ? await client.session.promptAsync(promptRequest)
+        : typeof client.session.chat === "function"
+          ? await client.session.chat({ params: { id: session.id }, body: { content: prompt, agent: "jce-worker" } })
+          : await Promise.reject(new Error("No supported session prompt method found: expected session.prompt, session.promptAsync, or session.chat"));
+    const translated = extractTranslationText(result);
+    if (!translated) throw new Error("Translation returned no text");
+    return translated;
+  };
+}
+
+function shouldTranslateToolOutput(tool: string): boolean {
+  return tool === "Task" || tool === "bg_collect" || tool === "jce_workflow";
+}
+
 const jcePlugin: Plugin = async (input) => {
   const { client } = input;
+  const chineseTranslator = buildChineseTranslator(client);
   const manager = new BackgroundManager({ maxConcurrency: 5 });
   const agents = buildAgentConfigs();
   const projectRoot = input.directory || input.worktree || process.cwd();
@@ -118,7 +151,8 @@ const jcePlugin: Plugin = async (input) => {
         if (policy.status === "warn") return { status: "warn", message: formatExecutionPolicyDecision(policy) };
       }),
       bg_status: buildStatusTool(manager),
-      bg_collect: buildCollectTool(manager, client, persistCurrentMemory),
+      bg_collect: buildCollectTool(manager, client, persistCurrentMemory, chineseTranslator),
+      jce_workflow: buildWorkflowTool(),
     },
 
     "tool.execute.after": async (input, output) => {
@@ -164,12 +198,15 @@ const jcePlugin: Plugin = async (input) => {
         const policyText = blockedPolicy ? `${formatExecutionPolicyDecision(blockedPolicy)}\n\n` : "";
         if (reasons.length > 0) {
           output.output = `${output.output}\n\n${policyText}FINAL REVIEW GATE: Completion is blocked.\n${Array.from(new Set(reasons)).map((reason) => `- ${reason}`).join("\n")}`;
-          return;
         }
       }
 
       if (typeof output.output === "string" && shouldWarnForMissingVerification(output.output)) {
         output.output = `${output.output}${VERIFICATION_WARNING}`;
+      }
+
+      if (typeof output.output === "string" && shouldTranslateToolOutput(input.tool)) {
+        output.output = await filterChineseOutput(output.output, chineseTranslator);
       }
     },
   };

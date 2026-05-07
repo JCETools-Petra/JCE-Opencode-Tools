@@ -1,3 +1,62 @@
+# JCE-Worker v3 Full Hybrid Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Upgrade `jce-worker` into a stronger full-hybrid execution lead while preserving existing runtime features.
+
+**Architecture:** This is a prompt-first upgrade. The JCE-Worker system prompt becomes a structured v3 contract, and tests assert key behavioral markers so future edits do not regress the agent role. Native OpenCode Desktop agent generation already derives from this prompt, so no separate Desktop wiring is needed.
+
+**Tech Stack:** TypeScript, Bun test runner, OpenCode plugin agent config.
+
+---
+
+## File Structure
+
+- Modify `src/plugin/agents/jce-worker.ts`: replace short prompt with JCE-Worker v3 Full Hybrid prompt.
+- Modify `tests/unit/plugin-agents.test.ts`: add prompt marker assertions for v3 behavior contract.
+- Modify release version files: `package.json`, `install.sh`, `install.ps1`, `src/lib/constants.ts`, `src/lib/version.ts`, `src/mcp/context-keeper.ts`, `README.md`, `tests/unit/ui.test.ts`.
+
+## Task 1: JCE-Worker v3 Prompt Contract
+
+**Files:**
+- Modify: `tests/unit/plugin-agents.test.ts`
+- Modify: `src/plugin/agents/jce-worker.ts`
+
+- [ ] **Step 1: Write failing prompt tests**
+
+Add this test after `jce-worker prompt describes planning, delegation review, and verification` in `tests/unit/plugin-agents.test.ts`:
+
+```ts
+  test("jce-worker prompt defines v3 full hybrid execution contract", () => {
+    const agents = buildAgentConfigs();
+    const prompt = agents["jce-worker"].systemPrompt;
+
+    expect(prompt).toContain("Principal Engineer");
+    expect(prompt).toContain("Acceptance Criteria");
+    expect(prompt).toContain("Root Cause");
+    expect(prompt).toContain("Delegation Contract");
+    expect(prompt).toContain("Verification Evidence");
+    expect(prompt).toContain("Release Safety");
+    expect(prompt).toContain("Anti-Patterns");
+    expect(prompt).toContain("Final Response Contract");
+  });
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+bun test tests/unit/plugin-agents.test.ts --test-name-pattern "v3 full hybrid"
+```
+
+Expected: FAIL because the current short prompt does not contain the v3 markers.
+
+- [ ] **Step 3: Replace JCE-Worker prompt**
+
+Replace all contents of `src/plugin/agents/jce-worker.ts` with:
+
+```ts
 export function buildJceWorkerAgent() {
   return {
     systemPrompt: `You are JCE-Worker — the JCE Full Hybrid execution lead.
@@ -74,13 +133,6 @@ When these conflict, explain the trade-off and choose the safer path unless the 
 - Research delegations must return Evidence, Sources, confidence/strength, risks, and a recommended next step.
 - Missing evidence means not verified. Do not treat weak delegated output as fact.
 
-## Workflow Assistant Tool
-- Use jce_workflow summary when the user asks what happened, what changed, or what remains.
-- Use jce_workflow verification_recipe before choosing verification for unfamiliar task types.
-- Use jce_workflow safe_commit_plan before any commit request to avoid staging context, scratch, secrets, or unrelated files.
-- Use jce_workflow release_ready before release commits or pushes to check version sync, verification needs, and safe staging.
-- The tool is advisory and read-only. Do not treat it as permission to commit or push.
-
 ## Verification Evidence
 - Code or behavior changes require fresh relevant verification.
 - Passing command evidence must be explicit; do not infer success from partial logs.
@@ -118,12 +170,118 @@ When these conflict, explain the trade-off and choose the safer path unless the 
 
 ## Final Response Contract
 When work is complete or blocked, respond with:
-- What was found, or what changed if edits were made.
+- What changed or what was found.
 - Verification Evidence: commands run and results, or what could not be verified.
 - Risks or blockers if any.
 - Next step only when useful.
 
 ## The Boulder Rule
-Stopping early is failure. Continue within the user-approved scope. Stop when blocked, unsafe, or explicitly instructed. If the boulder rolls back, continue within those constraints. Completion means the work is planned, executed, reviewed, and verified.`,
+Stopping early is failure. If the boulder rolls back, continue. Completion means the work is planned, executed, reviewed, and verified.`,
   };
 }
+```
+
+- [ ] **Step 4: Run focused prompt tests**
+
+Run:
+
+```bash
+bun test tests/unit/plugin-agents.test.ts --test-name-pattern "jce-worker"
+```
+
+Expected: PASS, all JCE-Worker prompt tests pass.
+
+## Task 2: Version 2.0.9 Release Bump
+
+**Files:**
+- Modify: `package.json`
+- Modify: `install.sh`
+- Modify: `install.ps1`
+- Modify: `src/lib/constants.ts`
+- Modify: `src/lib/version.ts`
+- Modify: `src/mcp/context-keeper.ts`
+- Modify: `README.md`
+- Modify: `tests/unit/ui.test.ts`
+
+- [ ] **Step 1: Update version strings**
+
+Replace `2.0.8` with `2.0.9` in these files:
+
+```text
+package.json
+install.sh
+install.ps1
+src/lib/constants.ts
+src/lib/version.ts
+src/mcp/context-keeper.ts
+README.md
+```
+
+- [ ] **Step 2: Verify no old release strings remain in tracked release files**
+
+Run:
+
+```bash
+bun ./src/index.ts --version
+```
+
+Expected: `2.0.9`
+
+Run:
+
+```bash
+bun test tests/unit/ui.test.ts
+```
+
+Expected: PASS, banner test expects `v2.0.9`.
+
+## Task 3: Verification and Release Commit
+
+**Files:**
+- No code edits expected unless verification fails.
+
+- [ ] **Step 1: Run full verification**
+
+Run:
+
+```bash
+bun run typecheck && bun test && bun ./src/index.ts validate && bash -n install.sh && bun ./src/index.ts --version
+```
+
+Expected:
+
+```text
+tsc --noEmit exits 0
+bun test reports 0 fail
+All 24 config files are valid
+bash -n install.sh exits 0 with no output
+2.0.9
+```
+
+- [ ] **Step 2: Review relevant diff**
+
+Run:
+
+```bash
+git diff -- src/plugin/agents/jce-worker.ts tests/unit/plugin-agents.test.ts package.json install.sh install.ps1 src/lib/constants.ts src/lib/version.ts src/mcp/context-keeper.ts README.md tests/unit/ui.test.ts docs/superpowers/specs/2026-05-07-jce-worker-v3-full-hybrid-design.md docs/superpowers/plans/2026-05-07-jce-worker-v3-full-hybrid.md
+```
+
+Expected: Diff contains only JCE-Worker v3 prompt, tests, version bump, and planning/spec docs.
+
+- [ ] **Step 3: Commit if user requested release push**
+
+If user requested commit/push, run:
+
+```bash
+git add src/plugin/agents/jce-worker.ts tests/unit/plugin-agents.test.ts package.json install.sh install.ps1 src/lib/constants.ts src/lib/version.ts src/mcp/context-keeper.ts README.md tests/unit/ui.test.ts docs/superpowers/specs/2026-05-07-jce-worker-v3-full-hybrid-design.md docs/superpowers/plans/2026-05-07-jce-worker-v3-full-hybrid.md
+git commit -m "feat(plugin): upgrade JCE worker prompt"
+git push
+```
+
+Expected: Commit succeeds and push updates `main`.
+
+## Self-Review
+
+- Spec coverage: prompt identity, mission, operating loop, decision hierarchy, task classification, planning, implementation, debugging, delegation, verification, review, release safety, communication, anti-patterns, final response, and version bump are all covered.
+- Placeholder scan: no `TBD`, `TODO`, or unresolved steps.
+- Type consistency: prompt test markers match exact prompt text; version target is consistently `2.0.9`.

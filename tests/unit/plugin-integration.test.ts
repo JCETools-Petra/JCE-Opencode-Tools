@@ -28,6 +28,10 @@ const mockInput = {
   experimental_workspace: { register: () => {} },
 } as any;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 describe("plugin integration", () => {
   test("plugin server returns hooks with tools and event handler", async () => {
     const mod = await import("../../src/plugin/index.ts");
@@ -557,6 +561,165 @@ describe("plugin integration", () => {
 
     expect(persisted.completedSummaries).toContainEqual(expect.objectContaining({ id: taskId, reviewStatus: "accepted" }));
     expect(output.output).not.toContain("Delegated work has not been accepted by review");
+  });
+
+  test("tool.execute.after translates Chinese string output with prompt request and parts response", async () => {
+    const promptRequests: unknown[] = [];
+    const client = {
+      session: {
+        create: async () => ({ id: "translation-session" }),
+        prompt: async (request: unknown) => {
+          promptRequests.push(request);
+          return { parts: [{ type: "text", text: "Please fix this error." }] };
+        },
+      },
+    } as any;
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+    const output = { output: "请修复这个错误" } as any;
+
+    await hooks["tool.execute.after"]!({ tool: "Task", args: {} } as any, output);
+
+    expect(promptRequests).toHaveLength(1);
+    expect(promptRequests[0]).toMatchObject({
+      path: { id: "translation-session" },
+      body: { agent: "jce-worker", parts: [{ type: "text" }] },
+    });
+    const request = promptRequests[0] as any;
+    expect(request.body.parts[0].text).toContain("请修复这个错误");
+    expect(request.body.parts[0].text.match(/<<<CHINESE_OUTPUT_TO_TRANSLATE>>>/g)).toHaveLength(2);
+    expect(output.output).toContain("Please fix this error.");
+    expect(output.output).toContain("Chinese text was automatically translated to English.");
+    expect(output.output).not.toContain("请修复这个错误");
+  });
+
+  test("tool.execute.after translates Chinese string output with chat fallback request shape", async () => {
+    const chatRequests: unknown[] = [];
+    const client = {
+      session: {
+        create: async () => ({ id: "translation-session" }),
+        chat: async (request: unknown) => {
+          chatRequests.push(request);
+          return { content: "Please fix this error." };
+        },
+      },
+    } as any;
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+    const output = { output: "请修复这个错误" } as any;
+
+    await hooks["tool.execute.after"]!({ tool: "Task", args: {} } as any, output);
+
+    expect(chatRequests).toHaveLength(1);
+    expect(chatRequests[0]).toMatchObject({
+      params: { id: "translation-session" },
+      body: { agent: "jce-worker" },
+    });
+    const request = chatRequests[0] as any;
+    expect(request.body.content).toContain("请修复这个错误");
+    expect(request.body.content.match(/<<<CHINESE_OUTPUT_TO_TRANSLATE>>>/g)).toHaveLength(2);
+    expect(output.output).toContain("Please fix this error.");
+    expect(output.output).toContain("Chinese text was automatically translated to English.");
+  });
+
+  test("tool.execute.after preserves Chinese output with warning when session prompt method is unsupported", async () => {
+    const client = {
+      session: {
+        create: async () => ({ id: "translation-session" }),
+      },
+    } as any;
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+    const output = { output: "请修复这个错误" } as any;
+
+    await hooks["tool.execute.after"]!({ tool: "Task", args: {} } as any, output);
+
+    expect(output.output).toContain("请修复这个错误");
+    expect(output.output).toContain("Chinese text was detected, but automatic translation failed. Original output preserved.");
+  });
+
+  test("tool.execute.after preserves Chinese output with warning when translator unavailable", async () => {
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client: {} as any });
+    const output = { output: "请修复这个错误" } as any;
+
+    await hooks["tool.execute.after"]!({ tool: "Task", args: {} } as any, output);
+
+    expect(output.output).toContain("请修复这个错误");
+    expect(output.output).toContain("Chinese text was detected, but automatic translation failed. Original output preserved.");
+  });
+
+  test("tool.execute.after translates Chinese blocked completion output after final review gate text", async () => {
+    const root = tempRoot();
+    const memory = createEmptyExecutionMemory("2026-05-06T00:00:00.000Z");
+    let run = createWorkflowRun({ id: "wf-chinese-final", goal: "Ship final gate", acceptanceCriteria: ["tests pass"] });
+    run = addWorkflowStep(run, { id: "step-1", title: "Implement", taskType: "code", expectedOutput: "code", verification: ["bun test"] });
+    memory.activeWorkflow = updateWorkflowStepStatus(run, "step-1", "completed");
+    saveExecutionMemory(root, memory, "2026-05-06T00:01:00.000Z");
+    const promptMessages: string[] = [];
+    const client = {
+      session: {
+        create: async () => ({ id: "translation-session" }),
+        prompt: async (request: unknown) => {
+          const message = isRecord(request) && isRecord(request.body) && Array.isArray(request.body.parts) ? (request.body.parts[0] as any)?.text ?? "" : "";
+          promptMessages.push(message);
+          if (message.includes("已完成这个修复") && message.includes("<<<CHINESE_OUTPUT_TO_TRANSLATE>>>")) {
+            if (!message.includes("FINAL REVIEW GATE")) return { text: "unexpected translation request" };
+            return { text: "This fix is complete. Verification: bun test passed.\n\nFINAL REVIEW GATE: Completion is blocked.\n- Completion claim route requires fresh verification evidence before reporting done." };
+          }
+          return { text: "No translation requested." };
+        },
+      },
+    } as any;
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client, directory: root });
+    const output = { output: "已完成这个修复。Implemented and complete. Verification: bun test passed." } as any;
+
+    await hooks["tool.execute.after"]!({ tool: "Task", sessionID: "s", callID: "c", args: {} }, output);
+
+    expect(promptMessages).toHaveLength(1);
+    expect(output.output).toContain("This fix is complete. Verification: bun test passed.");
+    expect(output.output).toContain("FINAL REVIEW GATE");
+    expect(output.output).toContain("Chinese text was automatically translated to English.");
+    expect(output.output).not.toContain("已完成这个修复");
+  });
+
+  test("tool.execute.after does not translate Chinese Write or Edit output", async () => {
+    const client = {
+      session: {
+        create: async () => ({ id: "translation-session" }),
+        chat: async () => ({ text: "Please fix this error." }),
+      },
+    } as any;
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+
+    for (const tool of ["Write", "Edit"] as const) {
+      const output = { output: "请修复这个错误" } as any;
+      await hooks["tool.execute.after"]!({ tool, args: {} } as any, output);
+      expect(output.output).toBe("请修复这个错误");
+    }
+  });
+
+  test("tool.execute.after does not translate unsafe technical or user-derived tool output", async () => {
+    const client = {
+      session: {
+        create: async () => ({ id: "translation-session" }),
+        chat: async () => ({ text: "Please fix this error." }),
+      },
+    } as any;
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+
+    for (const tool of ["Bash", "Read", "Grep", "Glob", "dispatch"] as const) {
+      const output = { output: "请修复这个错误" } as any;
+      await hooks["tool.execute.after"]!({ tool, args: {} } as any, output);
+      expect(output.output).toBe("请修复这个错误");
+    }
   });
 
   test("event hook runs JCE-Worker monitor without throwing", async () => {

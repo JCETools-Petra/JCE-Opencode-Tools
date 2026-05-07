@@ -24,4 +24,21 @@ describe("plugin entry point", () => {
     expect(hooks).toBeDefined();
     expect(typeof hooks).toBe("object");
   });
+
+  test("server exposes jce_workflow tool", async () => {
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server(
+      {
+        client: {} as any,
+        project: {} as any,
+        directory: "/tmp",
+        worktree: "/tmp",
+        serverUrl: new URL("http://localhost:3000"),
+        $: {} as any,
+        experimental_workspace: { register: () => {} },
+      } as any,
+    );
+
+    expect(hooks.tool?.jce_workflow).toBeDefined();
+  });
 });

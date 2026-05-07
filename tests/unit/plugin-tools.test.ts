@@ -152,6 +152,67 @@ describe("plugin tools", () => {
     expect(result).toContain("## Blocker");
   });
 
+  test("collect tool translates Chinese completed output", async () => {
+    const manager = new BackgroundManager({ maxConcurrency: 3 });
+    const task = manager.createTask({
+      description: "test",
+      prompt: "p",
+      agent: "explorer",
+      parentSessionId: "s",
+      parentMessageId: "m",
+    });
+    manager.completeTask(task.id, "## Summary\n请修复这个错误\n\n## Files\n- none\n\n## Verification\n- not run\n\n## Risks\n- none");
+
+    const tool = buildCollectTool(manager, undefined, undefined, async (prompt) => {
+      expect(prompt).toContain("请修复这个错误");
+      return "## Summary\nPlease fix this error.\n\n## Files\n- none\n\n## Verification\n- not run\n\n## Risks\n- none";
+    });
+    const result = await tool.execute({ taskId: task.id } as any, {
+      sessionID: "s",
+      messageID: "m",
+      agent: "explorer",
+      directory: "/tmp",
+      worktree: "/tmp",
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: () => { throw new Error("not implemented"); },
+    } as any);
+
+    expect(result).toContain("Please fix this error.");
+    expect(result).toContain("Chinese text was automatically translated to English.");
+    expect(result).not.toContain("<<<CHINESE_OUTPUT_TO_TRANSLATE>>>");
+    expect(result).not.toContain("请修复这个错误");
+  });
+
+  test("collect tool preserves Chinese output with warning when translation fails", async () => {
+    const manager = new BackgroundManager({ maxConcurrency: 3 });
+    const task = manager.createTask({
+      description: "test",
+      prompt: "p",
+      agent: "explorer",
+      parentSessionId: "s",
+      parentMessageId: "m",
+    });
+    manager.completeTask(task.id, "## Summary\n请修复这个错误\n\n## Files\n- none\n\n## Verification\n- not run\n\n## Risks\n- none");
+
+    const tool = buildCollectTool(manager, undefined, undefined, async () => {
+      throw new Error("translator unavailable");
+    });
+    const result = await tool.execute({ taskId: task.id } as any, {
+      sessionID: "s",
+      messageID: "m",
+      agent: "explorer",
+      directory: "/tmp",
+      worktree: "/tmp",
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: () => { throw new Error("not implemented"); },
+    } as any);
+
+    expect(result).toContain("请修复这个错误");
+    expect(result).toContain("Chinese text was detected, but automatic translation failed. Original output preserved.");
+  });
+
   test("status tool returns empty message when no tasks", async () => {
     const manager = new BackgroundManager({ maxConcurrency: 3 });
     const tool = buildStatusTool(manager);

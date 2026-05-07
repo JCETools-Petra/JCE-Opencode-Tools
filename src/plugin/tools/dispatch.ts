@@ -7,6 +7,7 @@ import { buildDelegatedResultContractInstructions } from "../lib/contracts.js";
 import { buildDelegationEnvelope, formatDelegationEnvelope } from "../lib/delegation-envelope.js";
 import { buildExecutionSummary } from "../lib/execution-summary.js";
 import { buildHandoffReport } from "../lib/handoff.js";
+import { filterChineseOutput, type ChineseTranslator } from "../lib/chinese-output-filter.js";
 import { appendResearchOutputWarning } from "../lib/research-output-guard.js";
 import { buildRetryPrompt, decideRecovery } from "../lib/recovery.js";
 import { classifyDelegatedReview } from "../lib/review.js";
@@ -187,24 +188,30 @@ export function buildStatusTool(manager: BackgroundManager): ToolDefinition {
   });
 }
 
-export function buildCollectTool(manager: BackgroundManager, client?: any, afterMutation?: () => void): ToolDefinition {
+export function buildCollectTool(
+  manager: BackgroundManager,
+  client?: any,
+  afterMutation?: () => void,
+  chineseTranslator?: ChineseTranslator,
+): ToolDefinition {
   return tool({
     description: "Collect the result of a completed background task by its ID.",
     args: {
       taskId: z.string().describe("The task ID returned by dispatch"),
     },
     async execute(args) {
+      const filterOutput = (text: string) => filterChineseOutput(text, chineseTranslator);
       const taskId = args.taskId as string;
       const task = manager.getTask(taskId);
-      if (!task) return `Task not found: ${taskId}`;
-      if (task.status === "pending") return `Task ${taskId} is still pending.`;
-      if (task.status === "running") return `Task ${taskId} is still running.`;
-      if (task.status === "cancelled") return `Task ${taskId} was cancelled.`;
+      if (!task) return filterOutput(`Task not found: ${taskId}`);
+      if (task.status === "pending") return filterOutput(`Task ${taskId} is still pending.`);
+      if (task.status === "running") return filterOutput(`Task ${taskId} is still running.`);
+      if (task.status === "cancelled") return filterOutput(`Task ${taskId} was cancelled.`);
       if (task.status === "error") {
         const errorText = task.error || task.failureReason || "Task failed";
         const result = `Task ${taskId} failed: ${errorText}\n${await handleRecovery(manager, client, task, errorText)}`;
         afterMutation?.();
-        return result;
+        return filterOutput(result);
       }
 
       const review = task.result
@@ -223,14 +230,14 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
         manager.recordRetryableFailure(task.id, reason);
         const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${formatTaskResult(task)}`;
         afterMutation?.();
-        return result;
+        return filterOutput(result);
       }
 
       if (review.status === "needs_followup" && review.missing.length) {
         const reason = review.notes.join(", ") || "Delegated result did not satisfy the required contract";
         const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${formatTaskResult(task)}`;
         afterMutation?.();
-        return result;
+        return filterOutput(result);
       }
 
       if (review.status === "blocked") {
@@ -251,8 +258,9 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
           retries: task.retryCount > 0 ? [`${task.id} retries: ${task.retryCount}/${task.maxRetries}`] : [],
           traceHighlights: (task.traceEvents ?? []).map((event) => event.type).slice(-5),
         });
+        const result = `Task ${taskId} blocked:\nReview: ${review.status}\n\n${summary}\n\n${buildHandoffReport(handoff)}\n\n${formatTaskResult(task)}`;
         afterMutation?.();
-        return `Task ${taskId} blocked:\nReview: ${review.status}\n\n${summary}\n\n${buildHandoffReport(handoff)}\n\n${formatTaskResult(task)}`;
+        return filterOutput(result);
       }
 
       const summary = buildExecutionSummary({
@@ -266,7 +274,7 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
       });
 
       afterMutation?.();
-      return `Task ${taskId} completed:\nReview: ${review.status}${review.missing.length ? ` (${review.missing.join(", ")})` : ""}\n\n${summary}\n\n${formatTaskResult(task)}`;
+      return filterOutput(`Task ${taskId} completed:\nReview: ${review.status}${review.missing.length ? ` (${review.missing.join(", ")})` : ""}\n\n${summary}\n\n${formatTaskResult(task)}`);
     },
   });
 }
