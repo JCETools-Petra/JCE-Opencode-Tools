@@ -105,7 +105,11 @@ async function handleRecovery(manager: BackgroundManager, client: any, task: Bac
     case "created":
       if (client) {
         const launched = await launchExistingBackgroundTask(manager, client, result.task.id);
-        if (!launched && result.task.status === "pending") {
+        const retryTask = manager.getTask(result.task.id);
+        if (retryTask?.status === "error") {
+          return `Recovery: retry failed to launch (${decision.category})\nRetry task: ${retryTask.id}\nReason: ${retryTask.error ?? retryTask.failureReason ?? "unknown launch failure"}`;
+        }
+        if (!launched && retryTask?.status === "pending") {
           return `Recovery: retry pending (${decision.category})\nRetry task: ${result.task.id}\nReason: ${decision.reason}\nRetry was created but not launched because concurrency is saturated; collect or monitor the retry task after capacity frees.`;
         }
       }

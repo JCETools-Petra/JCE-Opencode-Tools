@@ -1,5 +1,5 @@
 import { join } from "path";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createHash, randomBytes } from "crypto";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -64,6 +64,27 @@ export class MemoryStore {
     return join(this.memoryDir, GLOBAL_FILE);
   }
 
+  private withFileLock<T>(filePath: string, operation: () => T): T {
+    this.ensureMemoryDir();
+    const lockPath = `${filePath}.lock`;
+    let fd: number | undefined;
+    const started = Date.now();
+    while (fd === undefined) {
+      try {
+        fd = openSync(lockPath, "wx");
+      } catch {
+        if (Date.now() - started > 5000) throw new Error(`Timed out waiting for memory lock: ${lockPath}`);
+        Bun.sleepSync(25);
+      }
+    }
+    try {
+      return operation();
+    } finally {
+      closeSync(fd);
+      rmSync(lockPath, { force: true });
+    }
+  }
+
   /**
    * Load entries from a memory file.
    */
@@ -90,21 +111,22 @@ export class MemoryStore {
    * Save entries to a memory file.
    */
   private saveFile(filePath: string, entries: MemoryEntry[], mergeLatest = true): void {
-    this.ensureMemoryDir();
-    const latestEntries = mergeLatest ? this.loadFile(filePath) : [];
-    const merged = new Map<string, MemoryEntry>();
+    this.withFileLock(filePath, () => {
+      const latestEntries = mergeLatest ? this.loadFile(filePath) : [];
+      const merged = new Map<string, MemoryEntry>();
 
-    for (const entry of latestEntries) {
-      merged.set(entry.key, entry);
-    }
-    for (const entry of entries) {
-      merged.set(entry.key, entry);
-    }
+      for (const entry of latestEntries) {
+        merged.set(entry.key, entry);
+      }
+      for (const entry of entries) {
+        merged.set(entry.key, entry);
+      }
 
-    const data: MemoryFile = { entries: Array.from(merged.values()) };
-    const tmpPath = filePath + ".tmp";
-    writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-    renameSync(tmpPath, filePath);
+      const data: MemoryFile = { entries: Array.from(merged.values()) };
+      const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+      writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+      renameSync(tmpPath, filePath);
+    });
   }
 
   /**

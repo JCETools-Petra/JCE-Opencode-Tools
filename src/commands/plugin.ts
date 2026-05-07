@@ -20,15 +20,24 @@ import {
 const installCommand = new Command("install")
   .description("Install a plugin from a GitHub repository")
   .argument("<github-url>", "GitHub repository URL (e.g. https://github.com/user/repo)")
-  .action(async (githubUrl: string) => {
+  .option("--yes", "Apply plugin MCP config after review without interactive confirmation")
+  .action(async (githubUrl: string, opts: { yes?: boolean }) => {
     logCommandStart("plugin install", { url: sanitizeGitUrl(githubUrl) });
 
     info(`Installing plugin from: ${sanitizeGitUrl(githubUrl)}`);
     console.log();
 
-    const result = await installPlugin(githubUrl);
+    const result = await installPlugin(githubUrl, { trusted: opts.yes === true });
 
     if (!result.success) {
+      if (result.requiresTrust && result.mcpPreview) {
+        error(result.error!);
+        info("MCP config preview:");
+        console.log(JSON.stringify(result.mcpPreview, null, 2));
+        info("Review commands/env above, then re-run with --yes if trusted.");
+        logCommandError("plugin install", "MCP trust confirmation required");
+        process.exit(EXIT_ERROR);
+      }
       error(result.error!);
       logCommandError("plugin install", result.error!);
       process.exit(EXIT_ERROR);

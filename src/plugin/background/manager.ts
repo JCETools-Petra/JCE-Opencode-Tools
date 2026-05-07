@@ -20,6 +20,7 @@ export class BackgroundManager {
   private maxConcurrency: number;
   private now: () => string;
   private traceEvents: TraceEvent[] = [];
+  private launchPending?: (taskId: string) => void;
 
   constructor(options: BackgroundManagerOptions) {
     this.maxConcurrency = options.maxConcurrency;
@@ -37,6 +38,18 @@ export class BackgroundManager {
 
   private touch(task: BackgroundTask): void {
     task.lastActivityAt = this.now();
+  }
+
+  setPendingLauncher(launcher: (taskId: string) => void): void {
+    this.launchPending = launcher;
+  }
+
+  private pumpPending(): void {
+    if (!this.launchPending) return;
+    for (const task of this.tasks.values()) {
+      if (!this.canLaunch()) return;
+      if (task.status === "pending") this.launchPending(task.id);
+    }
   }
 
   createTask(input: LaunchInput): BackgroundTask {
@@ -92,16 +105,25 @@ export class BackgroundManager {
   completeTask(id: string, result: string): void {
     const task = this.tasks.get(id);
     if (!task) return;
+    if (task.status === "cancelled") {
+      this.recordTrace("verification.recorded", task.id, `Ignored late completion for ${task.status} task`);
+      return;
+    }
     task.status = "completed";
     task.result = result;
     task.completedAt = this.now();
     this.touch(task);
     this.recordTrace("task.completed", task.id, "Task completed");
+    this.pumpPending();
   }
 
   failTask(id: string, error: string): void {
     const task = this.tasks.get(id);
     if (!task) return;
+    if (task.status === "cancelled" || task.status === "completed") {
+      this.recordTrace("verification.recorded", task.id, `Ignored late failure for ${task.status} task`, { error });
+      return;
+    }
     task.status = "error";
     task.error = error;
     task.failureReason = error;
@@ -109,11 +131,13 @@ export class BackgroundManager {
     task.completedAt = this.now();
     this.touch(task);
     this.recordTrace("task.failed", task.id, error);
+    this.pumpPending();
   }
 
   markRunning(id: string, sessionId: string): void {
     const task = this.tasks.get(id);
     if (!task) return;
+    if (task.status !== "pending") return;
     task.status = "running";
     task.sessionId = sessionId;
     this.touch(task);
@@ -140,8 +164,16 @@ export class BackgroundManager {
         task.stale = true;
         stale.push(task);
         this.recordTrace("task.stale_detected", task.id, "Task is stale", { staleAfterMs });
+        if (task.status === "running") {
+          task.status = "error";
+          task.logicalState = "blocked";
+          task.failureReason = `Task stale for more than ${staleAfterMs}ms`;
+          task.completedAt = this.now();
+          this.recordTrace("task.failed", task.id, task.failureReason);
+        }
       }
     }
+    this.pumpPending();
     return stale;
   }
 

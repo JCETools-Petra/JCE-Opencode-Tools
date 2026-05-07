@@ -17,6 +17,7 @@ import type { JceWorkerAgentHint } from "./lib/skill-router.js";
 import { applyWorkflowIntentRoute } from "./lib/workflow.js";
 import type { WorkflowIntentRouteSource } from "./lib/workflow.js";
 import { buildWorkflowTool } from "./tools/workflow.js";
+import { createWorkflowRun } from "./lib/workflow.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -70,6 +71,10 @@ function shouldTranslateToolOutput(tool: string): boolean {
   return tool === "Task" || tool === "bg_collect" || tool === "jce_workflow";
 }
 
+function shouldInspectCompletionOutput(tool: string): boolean {
+  return !["Read", "Grep", "Glob", "LS", "Bash", "TodoWrite"].includes(tool);
+}
+
 const jcePlugin: Plugin = async (input) => {
   const { client } = input;
   const chineseTranslator = buildChineseTranslator(client);
@@ -96,6 +101,16 @@ const jcePlugin: Plugin = async (input) => {
       workflow: currentMemory.activeWorkflow,
       delegatedReviews: delegatedReviewStrings(currentMemory),
     });
+  };
+
+  const ensureActiveWorkflow = (text: string, source: WorkflowIntentRouteSource) => {
+    if (currentMemory.activeWorkflow || !text.trim()) return;
+    const route = routeJceWorkerIntent(text);
+    currentMemory.activeWorkflow = applyWorkflowIntentRoute(
+      createWorkflowRun({ id: `workflow-${Date.now()}`, goal: text.trim().slice(0, 240) || "JCE worker session" }),
+      { ...route, source },
+    );
+    currentMemory = saveExecutionMemory(projectRoot, currentMemory).memory;
   };
 
   const shouldApplyRoute = (source: WorkflowIntentRouteSource, nextRoute: ReturnType<typeof routeJceWorkerIntent>): boolean => {
@@ -168,13 +183,14 @@ const jcePlugin: Plugin = async (input) => {
       }
 
       let routeUpdatePolicy: ExecutionPolicyDecision | undefined;
-      if (typeof output.output === "string") {
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool)) {
+        ensureActiveWorkflow(output.output, looksLikeCompletionClaim(output.output) ? "completion" : "message");
         const routeSource = looksLikeCompletionClaim(output.output) ? "completion" : "message";
         routeUpdatePolicy = evaluateRouteUpdatePolicy(routeSource, routeJceWorkerIntent(output.output));
         applyRuntimeRoute(output.output, routeSource);
       }
 
-      if (typeof output.output === "string" && looksLikeCompletionClaim(output.output) && currentMemory.activeWorkflow) {
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeCompletionClaim(output.output) && currentMemory.activeWorkflow) {
         const executionPolicy = evaluateExecutionPolicy({
           action: "completion_claim",
           profile: currentPolicyProfile(),
@@ -201,7 +217,7 @@ const jcePlugin: Plugin = async (input) => {
         }
       }
 
-      if (typeof output.output === "string" && shouldWarnForMissingVerification(output.output)) {
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && shouldWarnForMissingVerification(output.output)) {
         output.output = `${output.output}${VERIFICATION_WARNING}`;
       }
 

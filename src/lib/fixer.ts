@@ -382,6 +382,7 @@ export async function fixContextKeeper(): Promise<FixResult[]> {
     config.mcp["context-keeper"] = {
       type: "local",
       command: ["bun", "run", normalizedPath],
+      env: { PROJECT_ROOT: "${PROJECT_ROOT}" },
       enabled: true,
     };
 

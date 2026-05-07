@@ -83,6 +83,9 @@ export async function spawnBackgroundTask(
   client: any,
   input: LaunchInput,
 ): Promise<string> {
+  manager.setPendingLauncher((taskId) => {
+    void launchExistingBackgroundTask(manager, client, taskId);
+  });
   const task = manager.createTask(input);
   await launchExistingBackgroundTask(manager, client, task.id);
   return task.id;

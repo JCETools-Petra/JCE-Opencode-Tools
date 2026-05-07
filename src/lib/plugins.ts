@@ -37,6 +37,10 @@ export interface InstalledPlugin {
   appliedMcp?: Record<string, unknown>;
 }
 
+export interface InstallPluginOptions {
+  trusted?: boolean;
+}
+
 const PLUGIN_TYPES = ["mcp", "agent", "prompt"] as const;
 
 function isPluginType(value: unknown): value is PluginManifest["type"] {
@@ -106,7 +110,7 @@ export async function savePluginsRegistry(plugins: InstalledPlugin[]): Promise<v
  * Install a plugin from a GitHub URL.
  * Clones the repo, reads plugin.json, and registers it.
  */
-export async function installPlugin(githubUrl: string): Promise<{ success: boolean; plugin?: InstalledPlugin; error?: string }> {
+export async function installPlugin(githubUrl: string, options: InstallPluginOptions = {}): Promise<{ success: boolean; plugin?: InstalledPlugin; error?: string; requiresTrust?: boolean; mcpPreview?: Record<string, unknown> }> {
   const pluginsDir = getPluginsDir();
 
   if (!existsSync(pluginsDir)) {
@@ -184,6 +188,15 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
   }
 
   const appliedMcp = getPluginMcpConfig(manifest);
+  if (appliedMcp && !options.trusted) {
+    removeDir(pluginDir);
+    return {
+      success: false,
+      error: "Plugin declares MCP commands. Re-run with --yes after reviewing the MCP preview.",
+      requiresTrust: true,
+      mcpPreview: appliedMcp,
+    };
+  }
 
   // Register the plugin
   const plugin: InstalledPlugin = {
@@ -197,15 +210,15 @@ export async function installPlugin(githubUrl: string): Promise<{ success: boole
     ...(appliedMcp ? { appliedMcp } : {}),
   };
 
-  await applyPluginConfig(manifest);
-  existing.push(plugin);
   try {
+    await applyPluginConfig(manifest);
+    existing.push(plugin);
     await savePluginsRegistry(existing);
   } catch (err) {
     await rollbackAppliedPluginConfig(plugin);
     removeDir(pluginDir);
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, error: `Failed to save plugin registry: ${msg}` };
+    return { success: false, error: `Failed to install plugin safely: ${msg}` };
   }
 
   return { success: true, plugin };

@@ -48,5 +48,4 @@ export const routeCommand = new Command("route")
     }
 
     logCommandSuccess("route", `complexity=${complexity} profile=${decision.profile}`);
-    process.exit(EXIT_SUCCESS);
   });

@@ -126,7 +126,7 @@ async function selfUpdateCli(latestVersion: string): Promise<boolean> {
   }
 
   try {
-    await updateLocalCliFolder();
+    await updateLocalCliFolder(latestVersion);
     await ensureCliShim();
     success(`CLI updated to v${latestVersion}.`);
     return true;
@@ -164,7 +164,7 @@ function resolveHandoffCommand(): string[] {
  * tsconfig.json, and installs dependencies.
  * Throws on failure so selfUpdateCli can report it.
  */
-async function updateLocalCliFolder(): Promise<void> {
+async function updateLocalCliFolder(latestVersion: string): Promise<void> {
   const configDir = getConfigDir();
   const cliDir = join(configDir, "cli");
 
@@ -183,13 +183,15 @@ async function updateLocalCliFolder(): Promise<void> {
     }
 
     // Clone latest
+    const releaseRef = `v${latestVersion}`;
     const cloneProc = Bun.spawn(
-      ["git", "clone", "--depth", "1", `https://github.com/${GITHUB_REPO}.git`, tempDir],
+      ["git", "clone", "--depth", "1", "--branch", releaseRef, `https://github.com/${GITHUB_REPO}.git`, tempDir],
       { stdout: "pipe", stderr: "pipe" }
     );
     const cloneExit = await cloneProc.exited;
     if (cloneExit !== 0) {
-      throw new Error("Could not clone repo from GitHub.");
+      const stderr = await new Response(cloneProc.stderr).text();
+      throw new Error(`Could not clone release ${releaseRef} from GitHub.${stderr ? ` ${stderr}` : ""}`);
     }
 
     for (const dir of [stagingDir, backupDir]) {
@@ -221,13 +223,13 @@ async function updateLocalCliFolder(): Promise<void> {
 
     // Install dependencies
     const installProc = Bun.spawn(
-      ["bun", "install"],
+      ["bun", "install", "--ignore-scripts"],
       { stdout: "pipe", stderr: "pipe", cwd: stagingDir }
     );
     const installExit = await installProc.exited;
     if (installExit !== 0) {
       const stderr = await new Response(installProc.stderr).text();
-      throw new Error(`bun install failed while updating CLI dependencies.${stderr ? ` ${stderr}` : ""}`);
+      throw new Error(`bun install --ignore-scripts failed while updating CLI dependencies.${stderr ? ` ${stderr}` : ""}`);
     }
 
     try {
@@ -545,6 +547,18 @@ async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
   return result.changed;
 }
 
+async function backupConfigForUpdate(configDir: string): Promise<void> {
+  if (!existsSync(configDir)) return;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const backupDir = `${configDir}.update-backup.${timestamp}`;
+  info(`Backing up current config to: ${backupDir}`);
+  await cp(configDir, backupDir, {
+    recursive: true,
+    filter: (src) => !src.includes(`${sep}cli${sep}`) && !src.endsWith(`${sep}cli`),
+  });
+  success("Backup created.");
+}
+
 // ─── Main Merge Orchestrator ─────────────────────────────────
 
 /**
@@ -730,6 +744,17 @@ export const updateCommand = new Command("update")
       process.exit(EXIT_SUCCESS);
     }
 
+    const configDir = getConfigDir();
+    try {
+      await backupConfigForUpdate(configDir);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      error(`Backup failed: ${msg}`);
+      error("Update aborted before changing CLI or configuration because no recovery backup could be created.");
+      logCommandError("update", `backup failed: ${msg}`);
+      process.exit(EXIT_ERROR);
+    }
+
     // Step 1: Self-update CLI
     console.log();
     heading("Step 1: Update CLI");
@@ -745,27 +770,6 @@ export const updateCommand = new Command("update")
     // Step 2: Merge config files
     console.log();
     heading("Step 2: Merge Configuration");
-
-    // Backup current config
-    const configDir = getConfigDir();
-    if (existsSync(configDir)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      const backupDir = `${configDir}.update-backup.${timestamp}`;
-      info(`Backing up current config to: ${backupDir}`);
-      try {
-        await cp(configDir, backupDir, {
-          recursive: true,
-          filter: (src) => !src.includes(`${sep}cli${sep}`) && !src.endsWith(`${sep}cli`),
-        });
-        success("Backup created.");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        error(`Backup failed: ${msg}`);
-        error("Update aborted because no recovery backup could be created.");
-        logCommandError("update", `backup failed: ${msg}`);
-        process.exit(EXIT_ERROR);
-      }
-    }
 
     // Merge remote configs into local
     info("Downloading and merging latest configuration...");

@@ -13,7 +13,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { readFile, writeFile, stat } from "fs/promises";
+import { readFile, writeFile, stat, rename } from "fs/promises";
 import { join } from "path";
 import { z } from "zod";
 import {
@@ -38,6 +38,7 @@ import {
   readRelatedContext,
   formatRelatedSummary,
 } from "../lib/context-cross-project.js";
+import { detectConflict, mergeContexts } from "../lib/context-lock.js";
 
 // ─── Re-export section utilities (extracted to prevent circular deps) ────
 export { countLines, getSection, replaceSection } from "../lib/context-sections.js";
@@ -85,7 +86,13 @@ async function writeContext(content: string): Promise<void> {
     /> Last updated:.*/,
     `> Last updated: ${today}`
   );
-  await writeFile(contextPath(), updated, "utf-8");
+  await writeFileAtomic(contextPath(), updated);
+}
+
+async function writeFileAtomic(path: string, content: string): Promise<void> {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tmp, content, "utf-8");
+  await rename(tmp, path);
 }
 
 function refreshContentHash(content: string): string {
@@ -200,7 +207,7 @@ async function appendArchive(content: string): Promise<void> {
     archiveContent = `# Context Archive\n> Historical decisions and notes. Reference only.\n\n`;
   }
   archiveContent += content;
-  await writeFile(archivePath(), archiveContent, "utf-8");
+  await writeFileAtomic(archivePath(), archiveContent);
 }
 
 // ─── MCP Server ──────────────────────────────────────────────
@@ -208,7 +215,7 @@ async function appendArchive(content: string): Promise<void> {
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "2.0.10",
+    version: "2.0.11",
   },
   {
     instructions: [
@@ -382,8 +389,9 @@ server.tool(
       .describe(
         'Lines to add/replace. Use "- [x] task" for completed, "- [ ] task" for pending.'
       ),
+    expectedHash: z.string().optional().describe("Optional content hash from context_read for optimistic concurrency checks"),
   },
-  async ({ section, action, lines: rawLines }) => {
+  async ({ section, action, lines: rawLines, expectedHash }) => {
     // Sanitize: strip lines that could corrupt section structure
     const lines = rawLines
       .map((l) => (l.startsWith("## ") ? `- ${l.slice(3)}` : l))
@@ -426,6 +434,16 @@ server.tool(
     // Update content hash
     updated = refreshContentHash(updated);
 
+    const current = await readContext();
+    const currentHash = current ? computeContentHash(current) : "";
+    const conflict = detectConflict(expectedHash, currentHash);
+    let conflictNote = "";
+    if (conflict.hasConflict && current) {
+      updated = mergeContexts(content, updated, current);
+      updated = markUpdated(refreshContentHash(updated));
+      conflictNote = " Conflict detected; merged non-overlapping section additions.";
+    }
+
     await writeContext(updated);
 
     const lineCount = countLines(updated);
@@ -438,7 +456,7 @@ server.tool(
       content: [
         {
           type: "text" as const,
-          text: `Updated ## ${section} (${action}). File: ${lineCount} lines.${warning}\nREMINDER: Call context_checkpoint before session ends or before committing.`,
+              text: `Updated ## ${section} (${action}). File: ${lineCount} lines.${conflictNote}${warning}\nREMINDER: Call context_checkpoint before session ends or before committing.`,
         },
       ],
     };

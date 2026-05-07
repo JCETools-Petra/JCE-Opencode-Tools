@@ -193,12 +193,23 @@ interface OpenCodeMcpEntry {
   command?: string[];
   url?: string;
   enabled?: boolean;
-  environment?: Record<string, string>;
+  env?: Record<string, string>;
 }
 
 interface OpenCodeConfig {
   mcp?: Record<string, OpenCodeMcpEntry>;
   [key: string]: unknown;
+}
+
+function requiredMcpEnv(name: string): string[] {
+  switch (name) {
+  case "context-keeper":
+    return ["PROJECT_ROOT"];
+  case "github-search":
+    return ["GITHUB_PERSONAL_ACCESS_TOKEN"];
+  default:
+    return [];
+  }
 }
 
 export async function checkMcpServers(): Promise<CheckResult[]> {
@@ -237,6 +248,12 @@ export async function checkMcpServers(): Promise<CheckResult[]> {
         results.push({ name: `MCP: ${name}`, status: "pass", message: `${cmd} found` });
       } else {
         results.push({ name: `MCP: ${name}`, status: "warn", message: `${cmd} not found in PATH` });
+      }
+    }
+    const requiredEnv = requiredMcpEnv(name);
+    for (const key of requiredEnv) {
+      if (!entry.env || typeof entry.env[key] !== "string" || !entry.env[key]) {
+        results.push({ name: `MCP: ${name} env`, status: "warn", message: `missing env.${key}` });
       }
     }
   }

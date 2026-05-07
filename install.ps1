@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "2.0.10"
+$Version = "2.0.11"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -323,7 +323,7 @@ function Backup-ExistingConfig {
         Copy-Item $ConfigDir $backupDir -Recurse -Force
         Write-Ok "Backup created: $backupDir"
     } catch {
-        Write-Warn "Backup failed: $($_.Exception.Message) - continuing anyway."
+        Write-Err "Backup failed: $($_.Exception.Message). Aborting to protect existing config."
     }
 }
 
@@ -414,7 +414,7 @@ function Deploy-Config {
     Write-Info "Downloading configuration from GitHub..."
     $prevErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    git clone --depth 1 $RepoUrl $TempDir 2>$null
+    git clone --depth 1 --branch "v$Version" $RepoUrl $TempDir 2>$null
     $ErrorActionPreference = $prevErrorAction
     if (!(Test-Path (Join-Path $TempDir "config"))) {
         Write-Err "Failed to clone config repository. Check your internet connection."
@@ -439,12 +439,12 @@ function Deploy-Config {
         Push-Location $TempDir
         $prevErrorAction2 = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        bun install 2>$null
+        bun install --ignore-scripts 2>$null
         $bunInstallExit = $LASTEXITCODE
         $ErrorActionPreference = $prevErrorAction2
         Pop-Location
         if ($bunInstallExit -ne 0) {
-            throw "bun install failed while preparing opencode-jce CLI dependencies"
+            throw "bun install --ignore-scripts failed while preparing opencode-jce CLI dependencies"
         }
 
         # Create .cmd wrapper in bun bin directory
@@ -653,16 +653,32 @@ function Register-ContextKeeper {
 
     try {
         if (Test-Path $opencodeJson) {
-            $config = Get-Content $opencodeJson -Raw | ConvertFrom-Json
+            try {
+                $config = Get-Content $opencodeJson -Raw | ConvertFrom-Json
+            } catch {
+                $backupPath = "$opencodeJson.invalid-$(Get-Date -Format 'yyyy-MM-ddTHH-mm-ss')"
+                Move-Item $opencodeJson $backupPath -Force
+                Write-Warn "Malformed opencode.json backed up to $backupPath and rebuilt."
+                $config = [PSCustomObject]@{
+                    '$schema' = "https://opencode.ai/config.json"
+                    plugin = @("file://$($ConfigDir -replace '\\','/')/cli/src/plugin/index.ts")
+                    mcp = [PSCustomObject]@{}
+                    lsp = [PSCustomObject]@{}
+                }
+            }
         } else {
             Write-Info "opencode.json not found. Creating with default MCP servers..."
             $config = [PSCustomObject]@{
                 '$schema' = "https://opencode.ai/config.json"
-                plugin = @("superpowers@git+https://github.com/obra/superpowers.git")
+                plugin = @("file://$($ConfigDir -replace '\\','/')/cli/src/plugin/index.ts")
                 mcp = [PSCustomObject]@{}
                 lsp = [PSCustomObject]@{}
             }
         }
+
+        $jcePlugin = "file://$($ConfigDir -replace '\\','/')/cli/src/plugin/index.ts"
+        if (-not $config.plugin) { $config | Add-Member -NotePropertyName "plugin" -NotePropertyValue @() }
+        if (@($config.plugin) -notcontains $jcePlugin) { $config.plugin = @($config.plugin) + $jcePlugin }
 
         # Ensure mcp section exists
         if (-not $config.mcp) {

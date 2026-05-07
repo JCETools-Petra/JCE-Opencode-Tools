@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="2.0.10"
+VERSION="2.0.11"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -100,7 +100,7 @@ backup_existing_config() {
     if cp -r "$CONFIG_DIR" "$backup_dir" 2>/dev/null; then
         success "Backup created: $backup_dir"
     else
-        warn "Backup failed — continuing anyway."
+        error "Backup failed. Aborting to protect existing config."
     fi
 }
 
@@ -241,7 +241,7 @@ download_repo_tarball() {
 
     rm -rf "$archive" "$extract_dir"
     mkdir -p "$extract_dir"
-    curl -fsSL "https://github.com/JCETools-Petra/JCE-Opencode-Tools/archive/refs/heads/main.tar.gz" -o "$archive" || return 1
+    curl -fsSL "https://github.com/JCETools-Petra/JCE-Opencode-Tools/archive/refs/tags/v${VERSION}.tar.gz" -o "$archive" || return 1
     tar -xzf "$archive" -C "$extract_dir" || return 1
 
     local extracted
@@ -256,8 +256,8 @@ deploy_config() {
 
     # Clone config repo
     rm -rf "$TEMP_DIR"
-    if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR" 2>/dev/null; then
-        warn "Git clone failed. Falling back to GitHub archive download..."
+    if ! git clone --depth 1 --branch "v${VERSION}" "$REPO_URL" "$TEMP_DIR" 2>/dev/null; then
+        warn "Release clone failed. Falling back to GitHub release archive download..."
         rm -rf "$TEMP_DIR"
         download_repo_tarball || error "Failed to download config repository. Check your internet connection."
     fi
@@ -349,8 +349,8 @@ deploy_config() {
 
     # Install opencode-jce CLI globally
     info "Installing opencode-jce CLI..."
-    if ! (cd "$TEMP_DIR" && bun install) 2>/dev/null; then
-        error "bun install failed while preparing opencode-jce CLI dependencies"
+    if ! (cd "$TEMP_DIR" && bun install --ignore-scripts) 2>/dev/null; then
+        error "bun install --ignore-scripts failed while preparing opencode-jce CLI dependencies"
     fi
 
     # Copy CLI source to persistent location (same as PS1 installer)
@@ -423,7 +423,9 @@ import fs from "fs";
 import path from "path";
 const opencodeJson = process.env.OPENCODE_JSON;
 const cliDir = process.env.CLI_DIR;
+const configDir = path.dirname(opencodeJson);
 const contextKeeperPath = path.join(cliDir, "src", "mcp", "context-keeper.ts").replace(/\\/g, "/");
+const pluginPath = `file://${path.join(cliDir, "src", "plugin", "index.ts").replace(/\\/g, "/")}`;
 const defaults = {
   "context-keeper": { type: "local", command: ["bun", "run", contextKeeperPath], env: { PROJECT_ROOT: "${PROJECT_ROOT}" }, enabled: true },
   "context7": { type: "remote", url: "https://mcp.context7.com/mcp", enabled: true },
@@ -432,8 +434,17 @@ const defaults = {
   "playwright": { type: "local", command: ["npx", "-y", "@playwright/mcp@0.0.28"], enabled: true },
   "sequential-thinking": { type: "local", command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"], enabled: true }
 };
-let config = { "$schema": "https://opencode.ai/config.json", plugin: ["superpowers@git+https://github.com/obra/superpowers.git"], mcp: {}, lsp: {} };
-if (fs.existsSync(opencodeJson)) config = JSON.parse(fs.readFileSync(opencodeJson, "utf8"));
+let config = { "$schema": "https://opencode.ai/config.json", plugin: [pluginPath], mcp: {}, lsp: {} };
+if (fs.existsSync(opencodeJson)) {
+  try {
+    config = JSON.parse(fs.readFileSync(opencodeJson, "utf8"));
+  } catch {
+    const backup = `${opencodeJson}.invalid-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
+    fs.renameSync(opencodeJson, backup);
+  }
+}
+if (!Array.isArray(config.plugin)) config.plugin = [];
+if (!config.plugin.includes(pluginPath)) config.plugin.push(pluginPath);
 if (!config.mcp || typeof config.mcp !== "object") config.mcp = {};
 let added = 0;
 for (const [key, value] of Object.entries(defaults)) {

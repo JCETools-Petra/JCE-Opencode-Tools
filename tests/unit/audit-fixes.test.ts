@@ -135,9 +135,9 @@ describe("audit fixes", () => {
     const sh = readFileSync(join(process.cwd(), "install.sh"), "utf-8");
 
     expect(sh).toContain("download_repo_tarball");
-    expect(sh).toContain("archive/refs/heads/main.tar.gz");
+    expect(sh).toContain("archive/refs/tags/v${VERSION}.tar.gz");
     expect(sh).toContain("tar -xzf");
-    expect(sh).toContain("git clone --depth 1");
+    expect(sh).toContain("git clone --depth 1 --branch");
   });
 
   test("setup no longer prompts for raw API keys or writes api-keys.env", () => {

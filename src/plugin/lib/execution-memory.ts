@@ -92,6 +92,12 @@ export function mergeExecutionMemorySnapshot(previous: ExecutionMemory, next: Ex
   });
 }
 
+function writeJsonAtomic(path: string, value: unknown): void {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+  renameSync(tmp, path);
+}
+
 export function loadExecutionMemory(projectRoot: string, now = new Date().toISOString()): LoadExecutionMemoryResult {
   const path = getExecutionMemoryPath(projectRoot);
   if (!existsSync(path)) {
@@ -111,7 +117,8 @@ export function loadExecutionMemory(projectRoot: string, now = new Date().toISOS
 export function saveExecutionMemory(projectRoot: string, memory: ExecutionMemory, now = new Date().toISOString()): { path: string; memory: ExecutionMemory } {
   const path = getExecutionMemoryPath(projectRoot);
   mkdirSync(dirname(path), { recursive: true });
-  const pruned = pruneExecutionMemory({ ...memory, updatedAt: now });
-  writeFileSync(path, `${JSON.stringify(pruned, null, 2)}\n`, "utf-8");
+  const disk = loadExecutionMemory(projectRoot, now).memory;
+  const pruned = mergeExecutionMemorySnapshot(disk, { ...memory, updatedAt: now }, { preserveWorkflowRuntime: true });
+  writeJsonAtomic(path, pruned);
   return { path, memory: pruned };
 }
