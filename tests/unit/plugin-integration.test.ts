@@ -269,6 +269,45 @@ describe("plugin integration", () => {
     expect(output.output).toContain("verification");
   });
 
+  test("bg_collect appends research quality warning for incomplete jce-researcher output", async () => {
+    const client = {
+      session: {
+        create: async () => ({ id: "child-1" }),
+        prompt: async () => ({ parts: [{ type: "text", text: "## Summary\nDone\n\n## Files\n- none\n\n## Verification\n- not run\n\n## Risks\n- none\n\n# Short Answer\nUse docs, but sources omitted." }] }),
+      },
+    } as any;
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+    const context = { sessionID: "s", messageID: "m", agent: "jce-worker", directory: "/tmp", worktree: "/tmp", abort: new AbortController().signal, metadata: () => {}, ask: () => {} } as any;
+
+    const launch = await hooks.tool!.dispatch.execute({ description: "Research API", prompt: "Research API", agent: "jce-researcher" } as any, context);
+    await Promise.resolve();
+    const taskId = String(launch).match(/Background task launched: (\S+)/)?.[1];
+    const collect = await hooks.tool!.bg_collect.execute({ taskId } as any, context);
+
+    expect(collect).toContain("RESEARCH QUALITY WARNING");
+    expect(collect).toContain("Section: Research Scope");
+  });
+
+  test("bg_collect does not append research quality warning for non-researcher output", async () => {
+    const client = {
+      session: {
+        create: async () => ({ id: "child-1" }),
+        prompt: async () => ({ parts: [{ type: "text", text: "## Summary\nDone\n\n## Files\n- none\n\n## Verification\n- not run\n\n## Risks\n- none\n\n# Short Answer\nUse docs, but sources omitted." }] }),
+      },
+    } as any;
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, client });
+    const context = { sessionID: "s", messageID: "m", agent: "jce-worker", directory: "/tmp", worktree: "/tmp", abort: new AbortController().signal, metadata: () => {}, ask: () => {} } as any;
+
+    const launch = await hooks.tool!.dispatch.execute({ description: "Explore API", prompt: "Explore API", agent: "explorer" } as any, context);
+    await Promise.resolve();
+    const taskId = String(launch).match(/Background task launched: (\S+)/)?.[1];
+    const collect = await hooks.tool!.bg_collect.execute({ taskId } as any, context);
+
+    expect(collect).not.toContain("RESEARCH QUALITY WARNING");
+  });
+
   test("tool.execute.after appends final review gate warning for blocked active workflow completion", async () => {
     const root = tempRoot();
     const memory = createEmptyExecutionMemory("2026-05-06T00:00:00.000Z");

@@ -7,6 +7,7 @@ import { buildDelegatedResultContractInstructions } from "../lib/contracts.js";
 import { buildDelegationEnvelope, formatDelegationEnvelope } from "../lib/delegation-envelope.js";
 import { buildExecutionSummary } from "../lib/execution-summary.js";
 import { buildHandoffReport } from "../lib/handoff.js";
+import { appendResearchOutputWarning } from "../lib/research-output-guard.js";
 import { buildRetryPrompt, decideRecovery } from "../lib/recovery.js";
 import { classifyDelegatedReview } from "../lib/review.js";
 import type { SkillRoute } from "../lib/skill-router.js";
@@ -60,6 +61,12 @@ function fallbackHandoff(task: BackgroundTask, blocker: string, evidence: string
     evidence: evidence.length ? evidence : [task.failureReason || task.error || "Task failed"],
     nextOptions: ["Inspect failure and decide next action."],
   };
+}
+
+function formatTaskResult(task: BackgroundTask): string {
+  const result = task.result ?? "";
+  if (task.agent !== "jce-researcher") return result;
+  return appendResearchOutputWarning(result);
 }
 
 async function handleRecovery(manager: BackgroundManager, client: any, task: BackgroundTask, errorText: string): Promise<string> {
@@ -214,14 +221,14 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
       if (review.status === "retryable_failure") {
         const reason = review.notes.join(", ") || "Delegated result did not satisfy the required contract";
         manager.recordRetryableFailure(task.id, reason);
-        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${task.result}`;
+        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${formatTaskResult(task)}`;
         afterMutation?.();
         return result;
       }
 
       if (review.status === "needs_followup" && review.missing.length) {
         const reason = review.notes.join(", ") || "Delegated result did not satisfy the required contract";
-        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${task.result}`;
+        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${formatTaskResult(task)}`;
         afterMutation?.();
         return result;
       }
@@ -231,7 +238,7 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
           status: "blocked" as const,
           completed: [task.description],
           blocker: review.notes.join(", ") || task.failureReason || "Delegated task is blocked",
-          evidence: [task.result || "No delegated output"],
+          evidence: [formatTaskResult(task) || "No delegated output"],
           nextOptions: ["Resolve blocker and rerun delegated task", "Accept documented risk and continue manually"],
         };
         manager.blockTaskForRecovery(task.id, "delegated_contract_failure", handoff.blocker, handoff);
@@ -245,7 +252,7 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
           traceHighlights: (task.traceEvents ?? []).map((event) => event.type).slice(-5),
         });
         afterMutation?.();
-        return `Task ${taskId} blocked:\nReview: ${review.status}\n\n${summary}\n\n${buildHandoffReport(handoff)}\n\n${task.result}`;
+        return `Task ${taskId} blocked:\nReview: ${review.status}\n\n${summary}\n\n${buildHandoffReport(handoff)}\n\n${formatTaskResult(task)}`;
       }
 
       const summary = buildExecutionSummary({
@@ -259,7 +266,7 @@ export function buildCollectTool(manager: BackgroundManager, client?: any, after
       });
 
       afterMutation?.();
-      return `Task ${taskId} completed:\nReview: ${review.status}${review.missing.length ? ` (${review.missing.join(", ")})` : ""}\n\n${summary}\n\n${task.result}`;
+      return `Task ${taskId} completed:\nReview: ${review.status}${review.missing.length ? ` (${review.missing.join(", ")})` : ""}\n\n${summary}\n\n${formatTaskResult(task)}`;
     },
   });
 }
