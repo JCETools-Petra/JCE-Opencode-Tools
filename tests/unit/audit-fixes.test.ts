@@ -109,6 +109,11 @@ describe("audit fixes", () => {
     expect(sh).toContain("install_marksman_linux");
     expect(sh).toContain("install_rust_analyzer");
     expect(sh).toContain("install_csharp_ls");
+    expect(sh).toContain("install_kotlin_language_server_linux");
+    expect(sh).toContain("install_dart_linux");
+    expect(sh).toContain("install_terraform_ls_linux");
+    expect(sh).toContain("install_zls_linux");
+    expect(sh).toContain("download_github_release_asset");
     expect(sh).toContain("jdt-language-server-latest.tar.gz");
     expect(sh).toContain('mkdir -p "$TEMP_DIR"');
     expect(sh).not.toContain('"rustup component add rust-analyzer"');
@@ -129,6 +134,22 @@ describe("audit fixes", () => {
     expect(sh).not.toContain("brew install zls || cargo install zls");
     expect(sh).not.toContain("brew install elixir-ls || mix archive.install hex elixir_ls");
     expect(sh).not.toContain("brew install metals || cs install metals");
+    expect(sh).not.toContain("command -v cargo >/dev/null && cargo install zls");
+    expect(sh).not.toContain("command -v sdk >/dev/null && sdk install kotlin-language-server");
+  });
+
+  test("default LSP install commands avoid macOS and Windows commands for Linux-only config guidance", () => {
+    const lsp = JSON.parse(readFileSync(join(process.cwd(), "config", "lsp.json"), "utf-8"));
+    const commands = Object.values(lsp.lsp).map((entry: any) => entry.installCommand).join("\n");
+
+    expect(commands).not.toContain("brew install");
+    expect(commands).not.toContain("choco install");
+    expect(commands).not.toContain("cargo install lua-language-server");
+    expect(commands).not.toContain("snap install zls");
+    expect(commands).toContain("sudo apt-get update && sudo apt-get install -y clangd");
+    expect(commands).toContain("fwcd/kotlin-language-server");
+    expect(commands).toContain("hashicorp/terraform-ls");
+    expect(commands).toContain("zigtools/zls");
   });
 
   test("Bash installer falls back to GitHub tarball when git clone fails", () => {

@@ -606,6 +606,93 @@ install_marksman_linux() {
     return 1
 }
 
+download_github_release_asset() {
+    local repo="$1"
+    local asset_pattern="$2"
+    local output="$3"
+    local api_url="https://api.github.com/repos/${repo}/releases/latest"
+    local asset_url
+    asset_url=$(curl -fsSL "$api_url" | grep -Eo '"browser_download_url": "[^"]+"' | cut -d'"' -f4 | grep -E "$asset_pattern" | head -n 1)
+    [ -n "$asset_url" ] || return 1
+    curl -fsSL "$asset_url" -o "$output"
+}
+
+install_kotlin_language_server_linux() {
+    local jce_bin="${HOME}/.local/bin"
+    local install_dir="${HOME}/.local/share/opencode-jce/lsp/kotlin-language-server"
+    local archive="${TEMP_DIR}/kotlin-language-server.zip"
+    mkdir -p "$TEMP_DIR" "$jce_bin"
+
+    command -v unzip &>/dev/null || lsp_system_install_command unzip unzip unzip unzip >/dev/null || return 1
+    if ! command -v unzip &>/dev/null; then
+        eval "$(lsp_system_install_command unzip unzip unzip unzip)" || return 1
+    fi
+
+    download_github_release_asset "fwcd/kotlin-language-server" 'server\.zip$' "$archive"
+    rm -rf "$install_dir"
+    mkdir -p "$install_dir"
+    unzip -q "$archive" -d "$install_dir"
+    local server_bin
+    server_bin=$(find "$install_dir" -type f -path '*/bin/kotlin-language-server' -print -quit)
+    [ -n "$server_bin" ] || return 1
+    chmod 755 "$server_bin"
+    ln -sf "$server_bin" "$jce_bin/kotlin-language-server"
+    export PATH="$jce_bin:$PATH"
+    command -v kotlin-language-server &>/dev/null
+}
+
+install_dart_linux() {
+    case "$PKG_MGR" in
+        apt)
+            sudo apt-get update
+            sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+            sudo install -d -m 0755 /usr/share/keyrings
+            curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/dart.gpg
+            echo "deb [signed-by=/usr/share/keyrings/dart.gpg arch=$(dpkg --print-architecture)] https://storage.googleapis.com/download.dartlang.org/linux/debian stable main" | sudo tee /etc/apt/sources.list.d/dart_stable.list >/dev/null
+            sudo apt-get update && sudo apt-get install -y dart
+            ;;
+        *) lsp_system_install_command dart dart dart dart >/dev/null || return 1; eval "$(lsp_system_install_command dart dart dart dart)";;
+    esac
+}
+
+install_terraform_ls_linux() {
+    local jce_bin="${HOME}/.local/bin"
+    local archive="${TEMP_DIR}/terraform-ls.zip"
+    mkdir -p "$TEMP_DIR" "$jce_bin"
+
+    command -v unzip &>/dev/null || lsp_system_install_command unzip unzip unzip unzip >/dev/null || return 1
+    if ! command -v unzip &>/dev/null; then
+        eval "$(lsp_system_install_command unzip unzip unzip unzip)" || return 1
+    fi
+
+    download_github_release_asset "hashicorp/terraform-ls" "linux_${ARCH}\.zip$" "$archive"
+    unzip -qo "$archive" -d "$jce_bin"
+    chmod 755 "$jce_bin/terraform-ls"
+    export PATH="$jce_bin:$PATH"
+    command -v terraform-ls &>/dev/null
+}
+
+install_zls_linux() {
+    local jce_bin="${HOME}/.local/bin"
+    local archive="${TEMP_DIR}/zls.tar.xz"
+    local asset_arch
+    case "$ARCH" in
+        x64) asset_arch="x86_64";;
+        arm64) asset_arch="aarch64";;
+        *) return 1;;
+    esac
+    mkdir -p "$TEMP_DIR" "$jce_bin"
+
+    download_github_release_asset "zigtools/zls" "${asset_arch}-linux.*\.tar\.xz$" "$archive"
+    tar -xJf "$archive" -C "$TEMP_DIR"
+    local zls_bin
+    zls_bin=$(find "$TEMP_DIR" -type f -name zls -print -quit)
+    [ -n "$zls_bin" ] || return 1
+    install -m 0755 "$zls_bin" "$jce_bin/zls"
+    export PATH="$jce_bin:$PATH"
+    command -v zls &>/dev/null
+}
+
 lsp_system_install_command() {
     local apt_pkg="$1"
     local dnf_pkg="${2:-$apt_pkg}"
@@ -646,20 +733,20 @@ lsp_install_command() {
             if [ "$OS" = "macos" ]; then
                 echo "brew install kotlin-language-server"
             else
-                echo "command -v sdk >/dev/null && sdk install kotlin-language-server"
+                echo "install_kotlin_language_server_linux"
             fi
             ;;
-        16) lsp_system_install_command dart dart dart dart;;
+        16) [ "$OS" = "macos" ] && echo "brew install dart" || echo "install_dart_linux";;
         17) lsp_system_install_command lua-language-server lua-language-server lua-language-server lua-language-server;;
         18) echo "npm install -g svelte-language-server";;
         19) echo "npm install -g @vue/language-server";;
-        20) lsp_system_install_command terraform-ls terraform-ls terraform-ls hashicorp/tap/terraform-ls;;
+        20) [ "$OS" = "macos" ] && echo "brew install hashicorp/tap/terraform-ls" || echo "install_terraform_ls_linux";;
         21) echo "npm install -g @tailwindcss/language-server";;
         22)
             if [ "$OS" = "macos" ]; then
                 echo "brew install zls"
             else
-                echo "command -v cargo >/dev/null && cargo install zls"
+                echo "install_zls_linux"
             fi
             ;;
         23) [ "$OS" = "macos" ] && echo "brew install marksman" || echo "install_marksman_linux";;
