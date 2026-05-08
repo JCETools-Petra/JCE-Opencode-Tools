@@ -53,5 +53,6 @@ export interface LaunchInput {
 
 export interface BackgroundManagerOptions {
   maxConcurrency: number;
+  staleAfterMs?: number;
   now?: () => string;
 }

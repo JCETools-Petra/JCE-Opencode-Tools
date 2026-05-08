@@ -92,6 +92,28 @@ describe("plugin settings", () => {
     expect(isModelAvailable("openai/gpt-5.5-fast")).toBe(true);
   });
 
+  test("caches OpenCode CLI model discovery briefly", () => {
+    const configDir = tempConfigDir("opencode-model-cache");
+    const binDir = join(configDir, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const bunPath = process.execPath;
+    const counterPath = join(configDir, "counter.txt");
+    const script = `#!/usr/bin/env sh\nprintf '1' >> ${JSON.stringify(counterPath)}\nprintf 'openai/gpt-5.5-fast\\n'\n`;
+    writeFileSync(join(binDir, "opencode"), script, { mode: 0o755 });
+    const opencodeCmdPath = join(binDir, "opencode.cmd");
+    writeFileSync(opencodeCmdPath, `@echo off\r\n>>"${counterPath}" echo 1\r\necho openai/gpt-5.5-fast\r\n`, "utf-8");
+    process.env.PATH = `${binDir}${process.platform === "win32" ? ";" : ":"}${originalPath ?? ""}`;
+    process.env.Path = process.env.PATH;
+    process.env.OPENCODE_JCE_OPENCODE_COMMAND = join(binDir, process.platform === "win32" ? "opencode.cmd" : "opencode");
+
+    if (process.platform === "win32") expect(readFileSync(opencodeCmdPath, "utf-8")).toContain("openai/gpt-5.5-fast");
+
+    expect(listAvailableModels()).toContain("openai/gpt-5.5-fast");
+    expect(listAvailableModels()).toContain("openai/gpt-5.5-fast");
+
+    expect(readFileSync(counterPath, "utf-8").trim()).toBe("1");
+  });
+
   test("validates model strings against available OpenCode provider models", () => {
     const configDir = tempConfigDir("validate");
     writeFileSync(join(configDir, "opencode.json"), JSON.stringify({

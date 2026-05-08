@@ -3,6 +3,15 @@ import { addWorkflowStep, attachStepEvidence, createWorkflowRun } from "../../sr
 import { evaluateWorkflowCompletionGate, evaluateWorkflowStepGate } from "../../src/plugin/lib/verification-gate.ts";
 
 describe("workflow verification gate", () => {
+  test("requires evidence before completing empty workflows", () => {
+    const run = createWorkflowRun({ id: "wf-empty", goal: "Claim done" });
+
+    const result = evaluateWorkflowCompletionGate(run, "balanced");
+
+    expect(result.status).toBe("needs_verification");
+    expect(result.reasons).toContain("Workflow requires at least one verification evidence item before completion.");
+  });
+
   test("requires command evidence for code steps", () => {
     let run = createWorkflowRun({ id: "wf-1", goal: "Code" });
     run = addWorkflowStep(run, {

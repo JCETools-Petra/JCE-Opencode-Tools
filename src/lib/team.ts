@@ -46,15 +46,15 @@ function validateTeamBranch(branch: string): string | null {
 /**
  * Get the path to the team config file.
  */
-export function getTeamConfigPath(): string {
-  return join(getConfigDir(), TEAM_CONFIG_FILE);
+export function getTeamConfigPath(configDir = getConfigDir()): string {
+  return join(configDir, TEAM_CONFIG_FILE);
 }
 
 /**
  * Load team config. Returns null if not initialized.
  */
-export async function loadTeamConfig(): Promise<TeamConfig | null> {
-  const configPath = getTeamConfigPath();
+export async function loadTeamConfig(configDir = getConfigDir()): Promise<TeamConfig | null> {
+  const configPath = getTeamConfigPath(configDir);
 
   if (!existsSync(configPath)) {
     return null;
@@ -71,9 +71,8 @@ export async function loadTeamConfig(): Promise<TeamConfig | null> {
 /**
  * Save team config.
  */
-export async function saveTeamConfig(config: TeamConfig): Promise<void> {
-  const configPath = getTeamConfigPath();
-  const configDir = getConfigDir();
+export async function saveTeamConfig(config: TeamConfig, configDir = getConfigDir()): Promise<void> {
+  const configPath = getTeamConfigPath(configDir);
 
   if (!existsSync(configDir)) {
     await mkdir(configDir, { recursive: true });
@@ -112,7 +111,8 @@ export async function initTeamSync(
  * Push current config to the team repository.
  */
 export async function pushTeamConfig(): Promise<{ success: boolean; error?: string }> {
-  const teamConfig = await loadTeamConfig();
+  const configDir = getConfigDir();
+  const teamConfig = await loadTeamConfig(configDir);
 
   if (!teamConfig) {
     return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
@@ -123,7 +123,6 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
   const branchError = validateTeamBranch(teamConfig.branch);
   if (branchError) return { success: false, error: branchError };
 
-  const configDir = getConfigDir();
   const tempDir = join(configDir, ".team-sync");
 
   try {
@@ -163,7 +162,10 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
       }
       const { readdirSync } = await import("fs");
       const profiles = readdirSync(profilesDir).filter((f) => f.endsWith(".json"));
+      const safeProfilesRoot = resolve(tempProfilesDir);
       for (const profile of profiles) {
+        const resolvedDst = resolve(join(tempProfilesDir, profile));
+        if (!resolvedDst.startsWith(safeProfilesRoot + sep)) continue;
         const content = await readFile(join(profilesDir, profile), "utf-8");
         await writeFile(join(tempProfilesDir, profile), content, "utf-8");
       }
@@ -207,7 +209,7 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
 
     // Update last sync time
     teamConfig.lastSync = new Date().toISOString();
-    await saveTeamConfig(teamConfig);
+    await saveTeamConfig(teamConfig, configDir);
 
     await cleanup(tempDir);
     return { success: true };
@@ -221,7 +223,8 @@ export async function pushTeamConfig(): Promise<{ success: boolean; error?: stri
  * Pull latest config from the team repository.
  */
 export async function pullTeamConfig(): Promise<{ success: boolean; error?: string }> {
-  const teamConfig = await loadTeamConfig();
+  const configDir = getConfigDir();
+  const teamConfig = await loadTeamConfig(configDir);
 
   if (!teamConfig) {
     return { success: false, error: "Team sync not initialized. Run: opencode-jce team init <git-url>" };
@@ -232,7 +235,6 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
   const branchError = validateTeamBranch(teamConfig.branch);
   if (branchError) return { success: false, error: branchError };
 
-  const configDir = getConfigDir();
   const tempDir = join(configDir, ".team-sync");
 
   try {
@@ -293,9 +295,10 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
       }
       const { readdirSync } = await import("fs");
       const profiles = readdirSync(tempProfilesDir).filter((f) => f.endsWith(".json"));
+      const safeProfilesRoot = resolve(profilesDir);
       for (const profile of profiles) {
         const resolvedDst = resolve(join(profilesDir, profile));
-        if (!resolvedDst.startsWith(resolve(profilesDir) + sep)) continue; // skip traversal
+        if (!resolvedDst.startsWith(safeProfilesRoot + sep)) continue; // skip traversal
         const srcProfile = join(tempProfilesDir, profile);
         const dstProfile = join(profilesDir, profile);
         // Backup existing before overwrite
@@ -313,7 +316,7 @@ export async function pullTeamConfig(): Promise<{ success: boolean; error?: stri
 
     // Update last sync time
     teamConfig.lastSync = new Date().toISOString();
-    await saveTeamConfig(teamConfig);
+    await saveTeamConfig(teamConfig, configDir);
 
     await cleanup(tempDir);
     return { success: true };

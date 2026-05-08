@@ -18,12 +18,14 @@ export type RetryTaskResult =
 export class BackgroundManager {
   private tasks: Map<string, BackgroundTask> = new Map();
   private maxConcurrency: number;
+  private staleAfterMs: number;
   private now: () => string;
   private traceEvents: TraceEvent[] = [];
   private launchPending?: (taskId: string) => void;
 
   constructor(options: BackgroundManagerOptions) {
     this.maxConcurrency = options.maxConcurrency;
+    this.staleAfterMs = options.staleAfterMs ?? 30 * 60 * 1000;
     this.now = options.now ?? (() => new Date().toISOString());
   }
 
@@ -81,10 +83,12 @@ export class BackgroundManager {
   }
 
   getTask(id: string): BackgroundTask | undefined {
+    this.markStaleTasks(this.staleAfterMs, { pumpPending: false });
     return this.tasks.get(id);
   }
 
   listTasks(): BackgroundTask[] {
+    this.markStaleTasks(this.staleAfterMs, { pumpPending: false });
     return Array.from(this.tasks.values());
   }
 
@@ -156,7 +160,7 @@ export class BackgroundManager {
     this.recordTrace(reviewStatus === "blocked" ? "task.blocked" : "verification.recorded", task.id, `Review: ${reviewStatus}`);
   }
 
-  markStaleTasks(staleAfterMs: number): BackgroundTask[] {
+  markStaleTasks(staleAfterMs: number = this.staleAfterMs, options: { pumpPending?: boolean } = {}): BackgroundTask[] {
     const nowMs = Date.parse(this.now());
     const stale: BackgroundTask[] = [];
     for (const task of this.tasks.values()) {
@@ -173,7 +177,7 @@ export class BackgroundManager {
         }
       }
     }
-    this.pumpPending();
+    if (options.pumpPending !== false) this.pumpPending();
     return stale;
   }
 

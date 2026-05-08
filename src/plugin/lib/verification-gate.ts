@@ -92,6 +92,10 @@ export function evaluateWorkflowCompletionGate(run: WorkflowRun, profile: Policy
   ];
   if (blockedReasons.length > 0) return { status: "blocked", reasons: blockedReasons };
 
+  if (run.steps.length === 0 && !run.evidence.some((evidence) => evidence.passed !== false)) {
+    return { status: profile === "strict" ? "blocked" : "needs_verification", reasons: ["Workflow requires at least one verification evidence item before completion."] };
+  }
+
   const reasons = run.steps.flatMap((step) => evaluateWorkflowStepGate(step, profile).reasons);
   if (reasons.length === 0) return { status: "passed", reasons: [] };
   return { status: profile === "strict" ? "blocked" : "needs_verification", reasons };

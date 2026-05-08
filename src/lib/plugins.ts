@@ -1,6 +1,6 @@
 import { join, dirname, resolve, sep } from "path";
 import { existsSync, mkdirSync, rmSync } from "fs";
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, rename } from "fs/promises";
 
 import { getConfigDir } from "./config.js";
 import { ensureOpenCodeJsonEntries, mergePluginMcpIntoOpenCodeJson, readOrRepairOpenCodeJson, writeOpenCodeJsonAtomic } from "./opencode-config-merge.js";
@@ -42,9 +42,55 @@ export interface InstallPluginOptions {
 }
 
 const PLUGIN_TYPES = ["mcp", "agent", "prompt"] as const;
+const MCP_TYPES = ["local", "remote"] as const;
 
 function isPluginType(value: unknown): value is PluginManifest["type"] {
   return typeof value === "string" && (PLUGIN_TYPES as readonly string[]).includes(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validatePluginManifest(value: unknown): PluginManifest {
+  if (!isRecord(value)) throw new Error("plugin.json must be an object.");
+  if (typeof value.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,98}$/.test(value.name)) throw new Error("plugin.json has invalid name.");
+  if (typeof value.version !== "string" || value.version.trim().length === 0) throw new Error("plugin.json has invalid version.");
+  if (!isPluginType(value.type)) throw new Error("plugin.json has unsupported type. Expected one of: mcp, agent, prompt.");
+  if ("description" in value && typeof value.description !== "string") throw new Error("plugin.json description must be a string.");
+  if (!isRecord(value.config)) throw new Error("plugin.json config must be an object.");
+
+  const manifest: PluginManifest = {
+    name: value.name,
+    version: value.version,
+    type: value.type,
+    description: typeof value.description === "string" ? value.description : "",
+    config: value.config,
+  };
+  validatePluginMcpConfig(getPluginMcpConfig(manifest));
+  return manifest;
+}
+
+function validatePluginMcpConfig(pluginMcp: Record<string, unknown> | null): void {
+  if (!pluginMcp) return;
+  const validName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,98}$/;
+  for (const [name, entry] of Object.entries(pluginMcp)) {
+    if (!validName.test(name)) throw new Error(`Invalid MCP key: ${name}`);
+    if (!isRecord(entry)) throw new Error(`Invalid MCP config for ${name}: entry must be an object.`);
+    if (typeof entry.type !== "string" || !(MCP_TYPES as readonly string[]).includes(entry.type)) throw new Error(`Invalid MCP config for ${name}: type must be local or remote.`);
+    if (entry.type === "local") {
+      if (!Array.isArray(entry.command) || entry.command.length === 0 || !entry.command.every((item) => typeof item === "string" && item.trim().length > 0)) {
+        throw new Error(`Invalid MCP config for ${name}: local command must be a non-empty string array.`);
+      }
+    }
+    if (entry.type === "remote") {
+      if (typeof entry.url !== "string" || !/^https:\/\//.test(entry.url)) throw new Error(`Invalid MCP config for ${name}: remote url must be https.`);
+    }
+    if ("env" in entry && (!isRecord(entry.env) || !Object.values(entry.env).every((value) => typeof value === "string"))) {
+      throw new Error(`Invalid MCP config for ${name}: env values must be strings.`);
+    }
+    if ("enabled" in entry && typeof entry.enabled !== "boolean") throw new Error(`Invalid MCP config for ${name}: enabled must be boolean.`);
+  }
 }
 
 export interface PluginsRegistry {
@@ -86,13 +132,13 @@ export async function loadPluginsRegistry(): Promise<InstalledPlugin[]> {
   } catch {
     throw new Error(`Failed to parse ${registryPath}: invalid JSON`);
   }
-  return registry.plugins || [];
+  return Array.isArray(registry.plugins) ? registry.plugins : [];
 }
 
 /**
  * Save the plugins registry.
  */
-export async function savePluginsRegistry(plugins: InstalledPlugin[]): Promise<void> {
+export async function savePluginsRegistry(plugins: InstalledPlugin[], options: { mergeLatest?: boolean } = {}): Promise<void> {
   const registryPath = getPluginsPath();
   const dir = dirname(registryPath);
 
@@ -100,8 +146,14 @@ export async function savePluginsRegistry(plugins: InstalledPlugin[]): Promise<v
     mkdirSync(dir, { recursive: true });
   }
 
-  const registry: PluginsRegistry = { plugins };
-  await writeFile(registryPath, JSON.stringify(registry, null, 2), "utf-8");
+  const existing = options.mergeLatest && existsSync(registryPath) ? await loadPluginsRegistry() : [];
+  const merged = new Map<string, InstalledPlugin>();
+  for (const plugin of existing) merged.set(plugin.name, plugin);
+  for (const plugin of plugins) merged.set(plugin.name, plugin);
+  const registry: PluginsRegistry = { plugins: Array.from(merged.values()) };
+  const tmpPath = `${registryPath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tmpPath, JSON.stringify(registry, null, 2) + "\n", "utf-8");
+  await rename(tmpPath, registryPath);
 }
 
 // ─── Plugin Operations ───────────────────────────────────────
@@ -165,21 +217,10 @@ export async function installPlugin(githubUrl: string, options: InstallPluginOpt
   let manifest: PluginManifest;
   try {
     const content = await readFile(manifestPath, "utf-8");
-    manifest = JSON.parse(content);
+    manifest = validatePluginManifest(JSON.parse(content));
   } catch {
     removeDir(pluginDir);
     return { success: false, error: "Invalid plugin.json — could not parse manifest." };
-  }
-
-  // Validate manifest
-  if (!manifest.name || !manifest.version || !manifest.type) {
-    removeDir(pluginDir);
-    return { success: false, error: "plugin.json is missing required fields (name, version, type)." };
-  }
-
-  if (!isPluginType(manifest.type)) {
-    removeDir(pluginDir);
-    return { success: false, error: "plugin.json has unsupported type. Expected one of: mcp, agent, prompt." };
   }
 
   if (existing.some((p) => p.name === manifest.name)) {
@@ -213,7 +254,7 @@ export async function installPlugin(githubUrl: string, options: InstallPluginOpt
   try {
     await applyPluginConfig(manifest);
     existing.push(plugin);
-    await savePluginsRegistry(existing);
+    await savePluginsRegistry(existing, { mergeLatest: true });
   } catch (err) {
     await rollbackAppliedPluginConfig(plugin);
     removeDir(pluginDir);
@@ -228,6 +269,7 @@ export async function installPlugin(githubUrl: string, options: InstallPluginOpt
  * Merge supported plugin config into opencode.json.
  */
 export async function applyPluginConfig(manifest: PluginManifest): Promise<void> {
+  manifest = validatePluginManifest(manifest);
   const configDir = getConfigDir();
   ensureOpenCodeJsonEntries(configDir);
 

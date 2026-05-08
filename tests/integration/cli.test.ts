@@ -4,21 +4,28 @@ import { readFileSync } from "fs";
 
 const pkgVersion = JSON.parse(readFileSync("package.json", "utf-8")).version;
 
+async function runCli(args: string[], timeoutMs = 10000): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  const proc = Bun.spawn(["bun", "run", "src/index.ts", ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = new Response(proc.stdout).text();
+  const stderr = new Response(proc.stderr).text();
+  const exited = await Promise.race([
+    proc.exited,
+    new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
+  ]);
+  if (exited === "timeout") {
+    proc.kill();
+    throw new Error(`${args.join(" ") || "CLI"} timed out after ${timeoutMs}ms`);
+  }
+  const [stdoutText, stderrText] = await Promise.all([stdout, stderr]);
+  return { stdout: stdoutText, stderr: stderrText, exitCode: proc.exitCode };
+}
+
 describe("CLI Commands", () => {
   test("--help shows all commands", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", "--help"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exited = await Promise.race([
-      proc.exited,
-      new Promise(resolve => setTimeout(() => resolve("timeout"), 10000)),
-    ]);
-    if (exited === "timeout") {
-      proc.kill();
-      throw new Error("--help timed out after 10s");
-    }
-    const result = await new Response(proc.stdout).text();
+    const { stdout: result } = await runCli(["--help"]);
     expect(result).toContain("validate");
     expect(result).toContain("use");
     expect(result).toContain("doctor");
@@ -44,56 +51,28 @@ describe("CLI Commands", () => {
   });
 
   test("validate command runs without crash", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", "validate"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exited = await Promise.race([
-      proc.exited,
-      new Promise(resolve => setTimeout(() => resolve("timeout"), 15000)),
-    ]);
-    if (exited === "timeout") {
-      proc.kill();
-      // Timeout is acceptable in CI — validate reads many files
-      return;
-    }
+    const proc = await runCli(["validate"], 15000);
     // May exit 1 if no config deployed, but shouldn't crash
     expect([0, 1]).toContain(proc.exitCode as number);
   });
 
   test("use --list runs without crash", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", "use", "--list"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await proc.exited;
+    const proc = await runCli(["use", "--list"]);
     expect([0, 1]).toContain(proc.exitCode as number);
   });
 
   test("route command runs without crash", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", "route", "hello world"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await proc.exited;
+    const proc = await runCli(["route", "hello world"]);
     expect([0, 1]).toContain(proc.exitCode as number);
   });
 
   test("agent list runs", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", "agent", "list"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await proc.exited;
+    const proc = await runCli(["agent", "list"]);
     expect([0, 1]).toContain(proc.exitCode as number);
   });
 
   test("prompts list runs without crash", async () => {
-    const proc = Bun.spawn(["bun", "run", "src/index.ts", "prompts", "list"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await proc.exited;
+    const proc = await runCli(["prompts", "list"]);
     expect([0, 1]).toContain(proc.exitCode as number);
   });
 });

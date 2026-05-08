@@ -16,6 +16,8 @@ interface OpenCodeConfig {
   provider?: Record<string, { models?: Record<string, unknown> }>;
 }
 
+let modelCache: { key: string; models: string[]; expiresAt: number } | undefined;
+
 export function getJcePluginSettingsPath(): string {
   return join(getConfigDir(), "jce-plugin.json");
 }
@@ -50,6 +52,8 @@ export async function saveJcePluginSettings(settings: JcePluginSettings): Promis
 
 export function listAvailableModels(): string[] {
   const config = readJsonFile<OpenCodeConfig>(join(getConfigDir(), "opencode.json"));
+  const cacheKey = `${getConfigDir()}\0${process.env.OPENCODE_JCE_OPENCODE_COMMAND ?? "opencode"}\0${process.env.NODE_ENV ?? ""}`;
+  if (modelCache && modelCache.key === cacheKey && modelCache.expiresAt > Date.now()) return [...modelCache.models];
   const result: string[] = [];
   const opencodeCommand = process.env.OPENCODE_JCE_OPENCODE_COMMAND ?? "opencode";
   if (process.env.NODE_ENV !== "test" || process.env.OPENCODE_JCE_OPENCODE_COMMAND) {
@@ -66,7 +70,9 @@ export function listAvailableModels(): string[] {
       result.push(`${providerID}/${modelID}`);
     }
   }
-  return [...new Set(result)];
+  const models = [...new Set(result)];
+  modelCache = { key: cacheKey, models, expiresAt: Date.now() + 30_000 };
+  return [...models];
 }
 
 export function isModelAvailable(model: string): boolean {

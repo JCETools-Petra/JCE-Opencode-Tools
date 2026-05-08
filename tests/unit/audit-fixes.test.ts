@@ -10,7 +10,7 @@ import { checkProviderHealth, loadFallbackConfig } from "../../src/lib/fallback.
 import { loadPromptTemplate } from "../../src/lib/prompts.js";
 import { MemoryStore } from "../../src/lib/memory.js";
 import { TokenTracker } from "../../src/lib/tokens.js";
-import { applyPluginConfig, parseGitHubPluginUrl, removePlugin, savePluginsRegistry } from "../../src/lib/plugins.js";
+import { applyPluginConfig, loadPluginsRegistry, parseGitHubPluginUrl, removePlugin, savePluginsRegistry } from "../../src/lib/plugins.js";
 import { getSafeNpmInstallArgs } from "../../src/lib/fixer.js";
 import { validateTeamRepoUrl } from "../../src/lib/team.js";
 import { pruneAndArchiveContext } from "../../src/mcp/context-keeper.js";
@@ -138,6 +138,11 @@ describe("audit fixes", () => {
     expect(sh).toContain("archive/refs/tags/v${VERSION}.tar.gz");
     expect(sh).toContain("tar -xzf");
     expect(sh).toContain("git clone --depth 1 --branch");
+    expect(sh).toContain('basename "$extracted"');
+    expect(sh).toContain('JCE-Opencode-Tools-*');
+    expect(sh).toContain('[ -f "$extracted/package.json" ] || return 1');
+    expect(sh).toContain('[ -f "$extracted/src/index.ts" ] || return 1');
+    expect(sh).toContain('[ -d "$extracted/config" ] || return 1');
   });
 
   test("setup no longer prompts for raw API keys or writes api-keys.env", () => {
@@ -409,6 +414,16 @@ describe("audit fixes", () => {
     expect(validateTeamRepoUrl("https://evil.example/acme/config.git").valid).toBe(false);
   });
 
+  test("team sync pins config path and rejects profile traversal", () => {
+    const source = readFileSync(join(process.cwd(), "src", "lib", "team.ts"), "utf-8");
+
+    expect(source).toContain("getTeamConfigPath(configDir)");
+    expect(source).toContain("loadTeamConfig(configDir)");
+    expect(source).toContain("saveTeamConfig(teamConfig, configDir)");
+    expect(source).toContain("const safeProfilesRoot = resolve(tempProfilesDir)");
+    expect(source).toContain("!resolvedDst.startsWith(safeProfilesRoot + sep)");
+  });
+
   test("prompt templates cannot escape to sibling directories with the same prefix", async () => {
     const xdg = tempDir("prompts");
     const configDir = join(xdg, "opencode");
@@ -560,6 +575,40 @@ describe("audit fixes", () => {
     expect(updated.mcp.demo.command).toEqual(["npx", "demo-mcp"]);
   });
 
+  test("plugin config activation rejects malformed MCP declarations", async () => {
+    const xdg = tempDir("plugin-invalid-mcp");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+    writeFileSync(join(configDir, "opencode.json"), JSON.stringify({ mcp: {} }), "utf-8");
+
+    await expect(applyPluginConfig({
+      name: "bad-plugin",
+      version: "1.0.0",
+      type: "mcp",
+      description: "bad",
+      config: { mcp: { bad: { type: "local", command: [] } } },
+    })).rejects.toThrow("local command must be a non-empty string array");
+
+    const updated = JSON.parse(readFileSync(join(configDir, "opencode.json"), "utf-8"));
+    expect(updated.mcp).toEqual({});
+  });
+
+  test("plugin registry merge preserves entries added by another writer", async () => {
+    const xdg = tempDir("plugin-registry-merge");
+    const configDir = join(xdg, "opencode");
+    mkdirSync(configDir, { recursive: true });
+    process.env.XDG_CONFIG_HOME = xdg;
+
+    const first = { name: "first", version: "1.0.0", type: "mcp" as const, description: "first", source: "https://github.com/a/first", installedAt: "2026-05-08T00:00:00.000Z" };
+    const second = { name: "second", version: "1.0.0", type: "mcp" as const, description: "second", source: "https://github.com/a/second", installedAt: "2026-05-08T00:00:01.000Z" };
+
+    await savePluginsRegistry([first]);
+    await savePluginsRegistry([second], { mergeLatest: true });
+
+    expect((await loadPluginsRegistry()).map((plugin) => plugin.name).sort()).toEqual(["first", "second"]);
+  });
+
   test("plugin config activation rejects MCP key collisions", async () => {
     const xdg = tempDir("plugin-collision");
     const configDir = join(xdg, "opencode");
@@ -580,7 +629,7 @@ describe("audit fixes", () => {
     const source = readFileSync(join(process.cwd(), "src", "lib", "plugins.ts"), "utf-8");
 
     expect(source).toContain("rollbackAppliedPluginConfig");
-    expect(source).toContain("await savePluginsRegistry(existing)");
+    expect(source).toContain("await savePluginsRegistry(existing, { mergeLatest: true })");
     expect(source).toContain("catch (err)");
   });
 

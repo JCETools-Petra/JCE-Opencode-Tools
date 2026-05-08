@@ -69,4 +69,21 @@ describe("background manager", () => {
     manager.completeTask(t1.id, "done");
     expect(manager.canLaunch()).toBe(true);
   });
+
+  test("stale running task becomes error and frees launch slot on status read", () => {
+    let now = "2026-05-06T00:00:00.000Z";
+    const manager = new BackgroundManager({ maxConcurrency: 1, staleAfterMs: 1000, now: () => now });
+    const running = manager.createTask({ description: "t1", prompt: "p1", agent: "explorer", parentSessionId: "s1", parentMessageId: "m1" });
+
+    manager.markRunning(running.id, "sess-1");
+    expect(manager.canLaunch()).toBe(false);
+
+    now = "2026-05-06T00:00:02.000Z";
+    const updated = manager.getTask(running.id)!;
+
+    expect(updated.status).toBe("error");
+    expect(updated.stale).toBe(true);
+    expect(updated.failureReason).toContain("Task stale");
+    expect(manager.canLaunch()).toBe(true);
+  });
 });

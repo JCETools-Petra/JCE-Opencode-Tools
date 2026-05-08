@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="2.0.11"
+VERSION="2.0.12"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -247,6 +247,13 @@ download_repo_tarball() {
     local extracted
     extracted=$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)
     [ -n "$extracted" ] || return 1
+    case "$(basename "$extracted")" in
+        JCE-Opencode-Tools-*) ;;
+        *) return 1 ;;
+    esac
+    [ -f "$extracted/package.json" ] || return 1
+    [ -f "$extracted/src/index.ts" ] || return 1
+    [ -d "$extracted/config" ] || return 1
     mv "$extracted" "$TEMP_DIR" || return 1
     rm -rf "$archive" "$extract_dir"
 }
