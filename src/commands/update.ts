@@ -46,6 +46,12 @@ interface MergeStats {
 
 type FallbackStatus = "written" | "skipped" | "fetch-failed";
 
+interface DirectoryMergeResult {
+  added: number;
+  failed: number;
+  listingFailed: boolean;
+}
+
 // ─── GitHub Fetch Helpers ────────────────────────────────────
 
 /**
@@ -236,7 +242,14 @@ async function updateLocalCliFolder(latestVersion: string): Promise<void> {
       if (existsSync(cliDir)) {
         await rename(cliDir, backupDir);
       }
-      await rename(stagingDir, cliDir);
+      try {
+        await rename(stagingDir, cliDir);
+      } catch (err) {
+        if (!existsSync(cliDir) && existsSync(backupDir)) {
+          await rename(backupDir, cliDir);
+        }
+        throw err;
+      }
       if (existsSync(backupDir)) {
         await rm(backupDir, { recursive: true, force: true });
       }
@@ -461,15 +474,15 @@ async function mergeLspEntries(configDir: string): Promise<number> {
  * Merge a directory: copy new files only, skip existing filenames.
  * Returns the number of new files added.
  */
-async function mergeDirectory(configDir: string, dirName: string): Promise<number> {
+async function mergeDirectory(configDir: string, dirName: string): Promise<DirectoryMergeResult> {
   const localDir = join(configDir, dirName);
   const remoteFiles = await fetchDirectoryListing(dirName);
   if (remoteFiles.length === 0) {
     // Distinguish "nothing new" from "fetch failed"
     if (!existsSync(localDir) || readdirSync(localDir).length === 0) {
-      return -1; // Likely fetch failure — local dir is empty/missing
+      return { added: 0, failed: 0, listingFailed: true }; // Likely fetch failure — local dir is empty/missing
     }
-    return 0;
+    return { added: 0, failed: 0, listingFailed: false };
   }
 
   if (!existsSync(localDir)) {
@@ -477,6 +490,7 @@ async function mergeDirectory(configDir: string, dirName: string): Promise<numbe
   }
 
   let addedCount = 0;
+  let failedCount = 0;
 
   for (const fileName of remoteFiles) {
     const localPath = join(localDir, fileName);
@@ -488,10 +502,12 @@ async function mergeDirectory(configDir: string, dirName: string): Promise<numbe
     if (content) {
       await writeTextFile(localPath, content);
       addedCount++;
+    } else {
+      failedCount++;
     }
   }
 
-  return addedCount;
+  return { added: addedCount, failed: failedCount, listingFailed: false };
 }
 
 /**
@@ -610,18 +626,27 @@ async function mergeUpdatedConfigs(): Promise<MergeStats> {
   // 2. Merge directories (only add new files)
   info("Merging profiles/...");
   stats.fetchAttempted++;
-  stats.profiles = await mergeDirectory(configDir, "profiles");
-  if (stats.profiles < 0) { stats.fetchFailed++; stats.profiles = 0; }
+  const profileMerge = await mergeDirectory(configDir, "profiles");
+  stats.profiles = profileMerge.added;
+  if (profileMerge.listingFailed) stats.fetchFailed++;
+  stats.fetchFailed += profileMerge.failed;
+  stats.fetchAttempted += profileMerge.added + profileMerge.failed;
 
   info("Merging prompts/...");
   stats.fetchAttempted++;
-  stats.prompts = await mergeDirectory(configDir, "prompts");
-  if (stats.prompts < 0) { stats.fetchFailed++; stats.prompts = 0; }
+  const promptMerge = await mergeDirectory(configDir, "prompts");
+  stats.prompts = promptMerge.added;
+  if (promptMerge.listingFailed) stats.fetchFailed++;
+  stats.fetchFailed += promptMerge.failed;
+  stats.fetchAttempted += promptMerge.added + promptMerge.failed;
 
   info("Merging skills/...");
   stats.fetchAttempted++;
-  stats.skills = await mergeDirectory(configDir, "skills");
-  if (stats.skills < 0) { stats.fetchFailed++; stats.skills = 0; }
+  const skillMerge = await mergeDirectory(configDir, "skills");
+  stats.skills = skillMerge.added;
+  if (skillMerge.listingFailed) stats.fetchFailed++;
+  stats.fetchFailed += skillMerge.failed;
+  stats.fetchAttempted += skillMerge.added + skillMerge.failed;
 
   // 3. AGENTS.md — overwrite only if remote is newer, preserve user edits otherwise
   info("Updating AGENTS.md...");

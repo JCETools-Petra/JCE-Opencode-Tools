@@ -14,6 +14,14 @@ export interface ExecutionMemory {
   traceEvents: TraceEvent[];
   activeWorkflow?: WorkflowRun;
   workflowRuns: WorkflowRun[];
+  contextBudgetSummary?: ContextBudgetSummary;
+}
+
+export interface ContextBudgetSummary {
+  originalChars: number;
+  compressedChars: number;
+  estimatedSavingsPercent: number;
+  tasks: number;
 }
 
 export interface LoadExecutionMemoryResult {
@@ -77,6 +85,7 @@ export function pruneExecutionMemory(memory: ExecutionMemory): ExecutionMemory {
     traceEvents: newest(memory.traceEvents, 200),
     activeWorkflow: memory.activeWorkflow,
     workflowRuns: newest(memory.workflowRuns ?? [], 10),
+    contextBudgetSummary: memory.contextBudgetSummary,
   };
 }
 
@@ -89,6 +98,7 @@ export function mergeExecutionMemorySnapshot(previous: ExecutionMemory, next: Ex
     traceEvents: next.traceEvents.length > 0 ? next.traceEvents : previous.traceEvents,
     activeWorkflow: options.clearWorkflowRuntime ? next.activeWorkflow : next.activeWorkflow ?? previous.activeWorkflow,
     workflowRuns: options.clearWorkflowRuntime ? next.workflowRuns : next.workflowRuns.length > 0 ? next.workflowRuns : previous.workflowRuns,
+    contextBudgetSummary: next.contextBudgetSummary ?? previous.contextBudgetSummary,
   });
 }
 

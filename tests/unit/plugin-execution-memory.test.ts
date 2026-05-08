@@ -170,6 +170,21 @@ describe("execution memory", () => {
     expect(merged.traceEvents).toEqual(next.traceEvents);
   });
 
+  test("preserves context budget summary during persisted memory merge", () => {
+    const previous = createEmptyExecutionMemory("2026-05-06T00:00:00.000Z");
+    previous.contextBudgetSummary = {
+      originalChars: 1000,
+      compressedChars: 700,
+      estimatedSavingsPercent: 30,
+      tasks: 2,
+    };
+    const next = createEmptyExecutionMemory("2026-05-06T00:01:00.000Z");
+
+    const merged = mergeExecutionMemorySnapshot(previous, next, { preserveWorkflowRuntime: true });
+
+    expect(merged.contextBudgetSummary).toEqual(previous.contextBudgetSummary);
+  });
+
   test("preserve merge can explicitly clear workflow runtime fields", () => {
     const previous = createEmptyExecutionMemory("2026-05-06T00:00:00.000Z");
     previous.activeWorkflow = createWorkflowRun({

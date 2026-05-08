@@ -211,6 +211,23 @@ describe("audit fixes", () => {
     expect(source).toContain("AGENTS.md changed — backup saved to");
   });
 
+  test("update counts individual directory file fetch failures", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+
+    expect(source).toContain("failedCount++");
+    expect(source).toContain("stats.fetchFailed += profileMerge.failed");
+    expect(source).toContain("stats.fetchFailed += promptMerge.failed");
+    expect(source).toContain("stats.fetchFailed += skillMerge.failed");
+  });
+
+  test("CLI folder rollback runs immediately if staging promotion fails", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+
+    expect(source).toContain("await rename(stagingDir, cliDir);");
+    expect(source).toContain("if (!existsSync(cliDir) && existsSync(backupDir))");
+    expect(source).toContain("await rename(backupDir, cliDir);");
+  });
+
   test("install merge repairs malformed opencode.json by backing it up", () => {
     const source = readFileSync(join(process.cwd(), "scripts", "merge-config.ts"), "utf-8");
     const helper = readFileSync(join(process.cwd(), "src", "lib", "opencode-config-merge.ts"), "utf-8");
@@ -222,9 +239,11 @@ describe("audit fixes", () => {
 
   test("update merges default plugin entries into existing opencode.json", () => {
     const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+    const helper = readFileSync(join(process.cwd(), "src", "lib", "opencode-config-merge.ts"), "utf-8");
 
     expect(source).toContain("ensureOpenCodeJsonEntries(configDir)");
     expect(source).toContain("Malformed opencode.json was backed up to");
+    expect(helper).toContain("needsCliPath");
   });
 
   test("plugin config activation keeps unrelated top-level opencode.json keys", async () => {

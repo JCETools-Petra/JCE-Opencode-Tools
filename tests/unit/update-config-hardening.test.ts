@@ -72,4 +72,25 @@ describe("update config hardening", () => {
     expect(merged.agent.frontend.mode).toBe("all");
     expect(merged.agent.oracle.mode).toBe("all");
   });
+
+  test("refreshes stale context-keeper command path during ensure flow", () => {
+    const configDir = tempConfigDir();
+    const configPath = join(configDir, "opencode.json");
+    writeFileSync(configPath, JSON.stringify({
+      mcp: {
+        "context-keeper": {
+          type: "local",
+          command: ["bun", "run", "/old/cli/src/mcp/context-keeper.ts"],
+          env: { PROJECT_ROOT: "${PROJECT_ROOT}" },
+          enabled: true,
+        },
+      },
+    }, null, 2), "utf8");
+
+    const result = ensureOpenCodeJsonEntries(configDir);
+    const merged = JSON.parse(readFileSync(configPath, "utf8"));
+
+    expect(result.changed).toBe(true);
+    expect(merged.mcp["context-keeper"].command[2]).toContain(`${configDir.replace(/\\/g, "/")}/cli/src/mcp/context-keeper.ts`);
+  });
 });

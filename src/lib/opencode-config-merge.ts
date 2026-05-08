@@ -76,24 +76,30 @@ export function ensureOpenCodeJsonEntries(configDir: string): EnsureOpenCodeJson
   merged.lsp = mergeRecord(merged.lsp, defaults.lsp);
   cleanupLegacyMcpEntries(merged as Record<string, any>);
 
-  const contextKeeper = merged.mcp && typeof merged.mcp === "object" && !Array.isArray(merged.mcp)
-    ? (merged.mcp as Record<string, unknown>)["context-keeper"]
-    : undefined;
+  const mcp = merged.mcp && typeof merged.mcp === "object" && !Array.isArray(merged.mcp)
+    ? merged.mcp as Record<string, unknown>
+    : {};
   const defaultContextKeeper = defaults.mcp && typeof defaults.mcp === "object" && !Array.isArray(defaults.mcp)
     ? (defaults.mcp as Record<string, unknown>)["context-keeper"]
     : undefined;
-  if (
-    contextKeeper &&
-    typeof contextKeeper === "object" &&
-    !Array.isArray(contextKeeper) &&
-    defaultContextKeeper &&
-    typeof defaultContextKeeper === "object" &&
-    !Array.isArray(defaultContextKeeper) &&
-    (!(contextKeeper as Record<string, unknown>).env ||
-      typeof (contextKeeper as Record<string, unknown>).env !== "object" ||
-      !("PROJECT_ROOT" in ((contextKeeper as Record<string, unknown>).env as Record<string, unknown>)))
-  ) {
-    (merged.mcp as Record<string, unknown>)["context-keeper"] = defaultContextKeeper;
+  const contextKeeper = mcp["context-keeper"];
+  if (defaultContextKeeper && typeof defaultContextKeeper === "object" && !Array.isArray(defaultContextKeeper)) {
+    const currentContextKeeper = contextKeeper && typeof contextKeeper === "object" && !Array.isArray(contextKeeper)
+      ? contextKeeper as Record<string, unknown>
+      : undefined;
+    const currentCommand = currentContextKeeper?.command;
+    const defaultCommand = (defaultContextKeeper as Record<string, unknown>).command;
+    const currentEnv = currentContextKeeper?.env;
+    const needsProjectRoot = !currentEnv ||
+      typeof currentEnv !== "object" ||
+      !("PROJECT_ROOT" in (currentEnv as Record<string, unknown>));
+    const needsCliPath = !Array.isArray(currentCommand) ||
+      !Array.isArray(defaultCommand) ||
+      JSON.stringify(currentCommand) !== JSON.stringify(defaultCommand);
+
+    if (currentContextKeeper && (needsProjectRoot || needsCliPath)) {
+      mcp["context-keeper"] = defaultContextKeeper;
+    }
   }
 
   const before = JSON.stringify(current);
