@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="2.0.15"
+VERSION="2.0.16"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="/tmp/opencode-jce-install"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -461,6 +461,38 @@ fs.writeFileSync(opencodeJson, JSON.stringify(config, null, 2) + "\n");
 console.log(added);
 ' 2>/dev/null && success "opencode.json MCP defaults registered" \
     || warn "Failed to register MCP defaults. Run 'opencode-jce doctor --fix' after install."
+}
+
+register_tui_plugin() {
+    info "Registering Token Savings TUI plugin in tui.json..."
+
+    local tui_json="${CONFIG_DIR}/tui.json"
+    local cli_dir="${CONFIG_DIR}/cli"
+
+    TUI_JSON="$tui_json" CLI_DIR="$cli_dir" bun -e '
+import fs from "fs";
+import path from "path";
+const tuiJson = process.env.TUI_JSON;
+const cliDir = process.env.CLI_DIR;
+const pluginPath = `file://${path.join(cliDir, "src", "plugin", "tui.tsx").replace(/\\/g, "/")}`;
+let config = { "$schema": "https://opencode.ai/tui.json", plugin: [], plugin_enabled: {} };
+if (fs.existsSync(tuiJson)) {
+  try {
+    config = JSON.parse(fs.readFileSync(tuiJson, "utf8"));
+  } catch {
+    const backup = `${tuiJson}.invalid-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
+    fs.renameSync(tuiJson, backup);
+  }
+}
+if (!config || typeof config !== "object" || Array.isArray(config)) config = {};
+if (!config["$schema"]) config["$schema"] = "https://opencode.ai/tui.json";
+if (!Array.isArray(config.plugin)) config.plugin = [];
+if (!config.plugin.includes(pluginPath)) config.plugin.push(pluginPath);
+if (!config.plugin_enabled || typeof config.plugin_enabled !== "object" || Array.isArray(config.plugin_enabled)) config.plugin_enabled = {};
+if (!("opencode-jce-token-savings" in config.plugin_enabled)) config.plugin_enabled["opencode-jce-token-savings"] = true;
+fs.writeFileSync(tuiJson, JSON.stringify(config, null, 2) + "\n");
+' 2>/dev/null && success "tui.json Token Savings plugin registered" \
+    || warn "Failed to register Token Savings TUI plugin. Run 'opencode-jce update' after install."
 }
 
 # API keys are managed by OpenCode CLI directly - no setup needed here
@@ -1251,6 +1283,7 @@ main() {
 
     deploy_config
     register_context_keeper
+    register_tui_plugin
     precache_mcp_packages
     select_and_install_lsp
     print_summary

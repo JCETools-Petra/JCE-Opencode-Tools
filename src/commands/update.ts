@@ -5,7 +5,7 @@ import { cp, mkdir, writeFile, readFile, chmod, rename } from "fs/promises";
 import { platform } from "os";
 import chalk from "chalk";
 import { getConfigDir } from "../lib/config.js";
-import { ensureOpenCodeJsonEntries } from "../lib/opencode-config-merge.js";
+import { ensureOpenCodeJsonEntries, ensureTuiJsonEntries } from "../lib/opencode-config-merge.js";
 import { banner, heading, info, success, warn, error } from "../lib/ui.js";
 import { logCommandStart, logCommandSuccess, logCommandError } from "../lib/logger.js";
 import {
@@ -31,6 +31,7 @@ interface GitHubContentEntry {
 
 interface MergeStats {
   opencodeJsonChanged: boolean;
+  tuiJsonChanged: boolean;
   agents: number;
   mcpServers: number;
   lspEntries: number;
@@ -563,6 +564,14 @@ async function ensureOpenCodeJson(configDir: string): Promise<boolean> {
   return result.changed;
 }
 
+async function ensureTuiJson(configDir: string): Promise<boolean> {
+  const result = ensureTuiJsonEntries(configDir);
+  if (result.repaired && result.backupPath) {
+    warn(`Malformed tui.json was backed up to ${result.backupPath} and rebuilt.`);
+  }
+  return result.changed;
+}
+
 async function backupConfigForUpdate(configDir: string): Promise<void> {
   if (!existsSync(configDir)) return;
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -591,6 +600,7 @@ async function mergeUpdatedConfigs(): Promise<MergeStats> {
 
   const stats: MergeStats = {
     opencodeJsonChanged: false,
+    tuiJsonChanged: false,
     agents: 0,
     mcpServers: 0,
     lspEntries: 0,
@@ -607,6 +617,9 @@ async function mergeUpdatedConfigs(): Promise<MergeStats> {
   // 1. Merge JSON config files
   info("Ensuring opencode.json...");
   stats.opencodeJsonChanged = await ensureOpenCodeJson(configDir);
+
+  info("Ensuring tui.json...");
+  stats.tuiJsonChanged = await ensureTuiJson(configDir);
 
   info("Merging agents.json...");
   stats.fetchAttempted++;
@@ -699,6 +712,9 @@ function printMergeReport(stats: MergeStats): void {
 
   if (stats.opencodeJsonChanged) {
     success("opencode.json updated with missing defaults.");
+  }
+  if (stats.tuiJsonChanged) {
+    success("tui.json updated with Token Savings TUI plugin defaults.");
   }
 }
 
@@ -809,7 +825,8 @@ export const updateCommand = new Command("update")
       stats.prompts +
       stats.skills +
       (stats.agentsMdUpdated ? 1 : 0) +
-      (stats.opencodeJsonChanged ? 1 : 0);
+      (stats.opencodeJsonChanged ? 1 : 0) +
+      (stats.tuiJsonChanged ? 1 : 0);
 
     if (stats.fetchFailed > 0) {
       warn(`${stats.fetchFailed}/${stats.fetchAttempted} fetch(es) failed. Update may have failed.`);

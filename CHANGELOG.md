@@ -6,6 +6,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [2.0.16] - 2026-05-08
+
+### Fixed
+- Registered Token Savings as an OpenCode TUI plugin via `tui.json` so fresh installs load the sidebar widget on OpenCode 1.14.34.
+- Split `opencode-jce` server plugin and `opencode-jce-token-savings` TUI plugin exports to match OpenCode plugin loader requirements.
+
+### Changed
+- Converted Token Savings sidebar source to `src/plugin/tui.tsx` using OpenTUI Solid JSX.
+- Bumped project, installer, config, MCP, README, and release workflow test versions to `2.0.16`.
+
+### Verified
+- `bun run typecheck`
+- `bun test` (`700 pass`, `0 fail`)
+
+---
+
 ## [2.0.15] - 2026-05-08
 
 ### Added

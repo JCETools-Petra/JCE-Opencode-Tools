@@ -18,7 +18,6 @@ import { applyWorkflowIntentRoute } from "./lib/workflow.js";
 import type { WorkflowIntentRouteSource } from "./lib/workflow.js";
 import { buildWorkflowTool } from "./tools/workflow.js";
 import { createWorkflowRun } from "./lib/workflow.js";
-import { tui } from "./tui.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -234,7 +233,6 @@ const jcePlugin: Plugin = async (input) => {
 const pluginModule = {
   id: "opencode-jce",
   server: jcePlugin,
-  tui,
 };
 
 export default pluginModule;

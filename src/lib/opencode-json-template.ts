@@ -215,3 +215,15 @@ export function buildDefaultOpenCodeJson(configDir: string): Record<string, unkn
     lsp,
   };
 }
+
+export function buildDefaultTuiJson(configDir: string): Record<string, unknown> {
+  return {
+    $schema: "https://opencode.ai/tui.json",
+    plugin: [
+      `file://${configDir.replace(/\\/g, "/")}/cli/src/plugin/tui.tsx`,
+    ],
+    plugin_enabled: {
+      "opencode-jce-token-savings": true,
+    },
+  };
+}

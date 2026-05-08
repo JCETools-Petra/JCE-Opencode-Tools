@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "2.0.15"
+$Version = "2.0.16"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -716,6 +716,51 @@ function Register-ContextKeeper {
     }
 }
 
+function Register-TuiPlugin {
+    Write-Info "Registering Token Savings TUI plugin in tui.json..."
+
+    $tuiJson = Join-Path $ConfigDir "tui.json"
+    $tuiPlugin = "file://$($ConfigDir -replace '\\','/')/cli/src/plugin/tui.tsx"
+
+    try {
+        if (Test-Path $tuiJson) {
+            try {
+                $config = Get-Content $tuiJson -Raw | ConvertFrom-Json
+            } catch {
+                $backupPath = "$tuiJson.invalid-$(Get-Date -Format 'yyyy-MM-ddTHH-mm-ss')"
+                Move-Item $tuiJson $backupPath -Force
+                Write-Warn "Malformed tui.json backed up to $backupPath and rebuilt."
+                $config = [PSCustomObject]@{
+                    '$schema' = "https://opencode.ai/tui.json"
+                    plugin = @()
+                    plugin_enabled = [PSCustomObject]@{}
+                }
+            }
+        } else {
+            $config = [PSCustomObject]@{
+                '$schema' = "https://opencode.ai/tui.json"
+                plugin = @()
+                plugin_enabled = [PSCustomObject]@{}
+            }
+        }
+
+        if (-not $config.PSObject.Properties['$schema']) { $config | Add-Member -NotePropertyName '$schema' -NotePropertyValue "https://opencode.ai/tui.json" }
+        if (-not $config.plugin) { $config | Add-Member -NotePropertyName "plugin" -NotePropertyValue @() }
+        if (@($config.plugin) -notcontains $tuiPlugin) { $config.plugin = @($config.plugin) + $tuiPlugin }
+        if (-not $config.plugin_enabled) { $config | Add-Member -NotePropertyName "plugin_enabled" -NotePropertyValue ([PSCustomObject]@{}) }
+        if (-not $config.plugin_enabled.PSObject.Properties["opencode-jce-token-savings"]) {
+            $config.plugin_enabled | Add-Member -NotePropertyName "opencode-jce-token-savings" -NotePropertyValue $true
+        }
+
+        $jsonOut = $config | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($tuiJson, $jsonOut, [System.Text.UTF8Encoding]::new($false))
+        Write-Ok "tui.json Token Savings plugin registered"
+    } catch {
+        Write-Warn "Failed to register Token Savings TUI plugin: $($_.Exception.Message)"
+        Write-Info "Add manually to tui.json plugin: $tuiPlugin"
+    }
+}
+
 # API keys are managed by OpenCode CLI directly - no need to configure here
 
 function Install-McpPackages {
@@ -1025,6 +1070,7 @@ Install-OpenCode
 Write-Host ""
 Deploy-Config
 Register-ContextKeeper
+Register-TuiPlugin
 Install-McpPackages
 Install-LspServers
 Write-Summary

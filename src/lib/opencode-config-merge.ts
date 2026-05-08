@@ -1,9 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { join } from "path";
-import { buildDefaultOpenCodeJson } from "./opencode-json-template.js";
+import { buildDefaultOpenCodeJson, buildDefaultTuiJson } from "./opencode-json-template.js";
 import { cleanupLegacyMcpEntries } from "./version.js";
 
 export interface EnsureOpenCodeJsonResult {
+  changed: boolean;
+  repaired: boolean;
+  backupPath?: string;
+}
+
+export interface EnsureTuiJsonResult {
   changed: boolean;
   repaired: boolean;
   backupPath?: string;
@@ -31,6 +37,12 @@ export function writeOpenCodeJsonAtomic(configDir: string, data: unknown): void 
   writeJsonAtomic(configPath, data);
 }
 
+export function writeTuiJsonAtomic(configDir: string, data: unknown): void {
+  const configPath = join(configDir, "tui.json");
+  mkdirSync(configDir, { recursive: true });
+  writeJsonAtomic(configPath, data);
+}
+
 function mergeStringArray(existing: unknown, defaults: unknown): string[] {
   const base = Array.isArray(existing) ? existing.filter((item): item is string => typeof item === "string") : [];
   const additions = Array.isArray(defaults) ? defaults.filter((item): item is string => typeof item === "string") : [];
@@ -45,6 +57,26 @@ function mergeRecord(existing: unknown, defaults: unknown): Record<string, unkno
 
 export function readOrRepairOpenCodeJson(configDir: string): ReadOpenCodeJsonResult {
   const configPath = join(configDir, "opencode.json");
+  mkdirSync(configDir, { recursive: true });
+
+  if (!existsSync(configPath)) return { config: {}, repaired: false };
+
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { config: parsed as Record<string, unknown>, repaired: false };
+    }
+  } catch {
+    // handled below
+  }
+
+  const backupPath = `${configPath}.invalid-${timestamp()}`;
+  renameSync(configPath, backupPath);
+  return { config: {}, repaired: true, backupPath };
+}
+
+export function readOrRepairTuiJson(configDir: string): ReadOpenCodeJsonResult {
+  const configPath = join(configDir, "tui.json");
   mkdirSync(configDir, { recursive: true });
 
   if (!existsSync(configPath)) return { config: {}, repaired: false };
@@ -106,6 +138,26 @@ export function ensureOpenCodeJsonEntries(configDir: string): EnsureOpenCodeJson
   const after = JSON.stringify(merged);
   if (!existsSync(configPath) || repaired || before !== after) {
     writeOpenCodeJsonAtomic(configDir, merged);
+    return { changed: true, repaired, backupPath };
+  }
+
+  return { changed: false, repaired, backupPath };
+}
+
+export function ensureTuiJsonEntries(configDir: string): EnsureTuiJsonResult {
+  const defaults = buildDefaultTuiJson(configDir) as Record<string, unknown>;
+  const configPath = join(configDir, "tui.json");
+  const { config: current, repaired, backupPath } = readOrRepairTuiJson(configDir);
+
+  const merged: Record<string, unknown> = { ...current };
+  if (!("$schema" in merged) && "$schema" in defaults) merged.$schema = defaults.$schema;
+  merged.plugin = mergeStringArray(merged.plugin, defaults.plugin);
+  merged.plugin_enabled = mergeRecord(merged.plugin_enabled, defaults.plugin_enabled);
+
+  const before = JSON.stringify(current);
+  const after = JSON.stringify(merged);
+  if (!existsSync(configPath) || repaired || before !== after) {
+    writeTuiJsonAtomic(configDir, merged);
     return { changed: true, repaired, backupPath };
   }
 

@@ -20,7 +20,7 @@ import {
 } from "fs";
 import { join } from "path";
 import { execFileSync } from "child_process";
-import { ensureOpenCodeJsonEntries } from "../src/lib/opencode-config-merge.js";
+import { ensureOpenCodeJsonEntries, ensureTuiJsonEntries } from "../src/lib/opencode-config-merge.js";
 
 /** Write JSON atomically: write to .tmp then rename */
 function writeJsonAtomic(filePath: string, data: unknown): void {
@@ -404,6 +404,31 @@ function ensureOpenCodeJson() {
   }
 }
 
+function ensureTuiJson() {
+  const targetFile = join(targetDir, "tui.json");
+  const existed = existsSync(targetFile);
+  const before = existed ? readFileSync(targetFile, "utf8") : null;
+  const result = ensureTuiJsonEntries(targetDir);
+  const after = readFileSync(targetFile, "utf8");
+
+  if (result.repaired && result.backupPath) {
+    console.log(`  [!] tui.json was invalid; backed up to ${result.backupPath}`);
+    console.log(`  [+] tui.json created (repaired)`);
+    return;
+  }
+
+  if (!existed) {
+    console.log(`  [+] tui.json created (new) — Token Savings TUI plugin registered`);
+    return;
+  }
+
+  if (before !== after) {
+    console.log(`  [+] tui.json defaults merged`);
+  } else {
+    console.log(`  [=] tui.json exists, all defaults present`);
+  }
+}
+
 // --- Run all merges ---
 console.log("");
 console.log("Merging configuration (preserving existing settings)...");
@@ -468,6 +493,7 @@ console.log("");
 console.log("Other configs:");
 try {
   ensureOpenCodeJson();
+  ensureTuiJson();
   copyIfMissing("AGENTS.md");
   copyIfMissing("fallback.json");
 } catch (err: any) {

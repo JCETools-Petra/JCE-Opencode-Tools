@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 describe("plugin entry point", () => {
   test("exports a valid PluginModule with id and server function", async () => {
@@ -6,6 +8,15 @@ describe("plugin entry point", () => {
     expect(mod.default).toBeDefined();
     expect(mod.default.id).toBe("opencode-jce");
     expect(typeof mod.default.server).toBe("function");
+    expect((mod.default as any).tui).toBeUndefined();
+  });
+
+  test("provides a TUI-only Token Savings module", () => {
+    const source = readFileSync(join(process.cwd(), "src", "plugin", "tui.tsx"), "utf8");
+    expect(source).toContain("/** @jsxImportSource @opentui/solid */");
+    expect(source).toContain('id: "opencode-jce-token-savings"');
+    expect(source).toContain("tui,");
+    expect(source).not.toContain("server:");
   });
 
   test("server function returns a hooks object", async () => {
