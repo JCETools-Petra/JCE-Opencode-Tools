@@ -45,7 +45,7 @@ describe("plugin tools", () => {
       parentSessionId: "s",
       parentMessageId: "m",
     });
-    manager.recordContextBudget(task.id, { originalChars: 100, compressedChars: 70, estimatedSavingsPercent: 30, changed: true });
+    manager.recordContextBudget(task.id, { originalChars: 100, compressedChars: 70, estimatedTokensSaved: 8, estimatedSavingsPercent: 30, changed: true });
     const tool = buildStatusTool(manager);
     const result = await tool.execute({} as any, {
       sessionID: "s",
@@ -58,7 +58,7 @@ describe("plugin tools", () => {
       ask: () => { throw new Error("not implemented"); },
     } as any);
 
-    expect(result).toContain("budget: 30% saved (100->70 chars)");
+    expect(result).toContain("budget: ~8 token(s) saved");
   });
 
   test("dispatch tool wraps prompt with delegated result contract", async () => {

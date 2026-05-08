@@ -20,6 +20,7 @@ export interface ExecutionMemory {
 export interface ContextBudgetSummary {
   originalChars: number;
   compressedChars: number;
+  estimatedTokensSaved: number;
   estimatedSavingsPercent: number;
   tasks: number;
 }

@@ -141,8 +141,7 @@ function formatRetryStatus(task: BackgroundTask): string {
 function formatContextBudget(task: BackgroundTask): string {
   const budget = task.contextBudget;
   if (!budget) return "budget: pending";
-  if (!budget.changed) return `budget: 0% saved (${budget.originalChars}->${budget.compressedChars} chars)`;
-  return `budget: ${budget.estimatedSavingsPercent}% saved (${budget.originalChars}->${budget.compressedChars} chars)`;
+  return `budget: ~${budget.estimatedTokensSaved} token(s) saved`;
 }
 
 export function buildDispatchTool(

@@ -64,6 +64,7 @@ export async function launchExistingBackgroundTask(manager: BackgroundManager, c
     manager.recordContextBudget(task.id, {
       originalChars: budgeted.originalChars,
       compressedChars: budgeted.compressedChars,
+      estimatedTokensSaved: budgeted.estimatedTokensSaved,
       estimatedSavingsPercent: budgeted.estimatedSavingsPercent,
       changed: budgeted.changed,
     });

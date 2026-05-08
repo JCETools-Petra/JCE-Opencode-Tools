@@ -36,6 +36,7 @@ export interface BackgroundTask {
   contextBudget?: {
     originalChars: number;
     compressedChars: number;
+    estimatedTokensSaved: number;
     estimatedSavingsPercent: number;
     changed: boolean;
   };

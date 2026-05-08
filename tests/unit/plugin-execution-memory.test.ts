@@ -175,6 +175,7 @@ describe("execution memory", () => {
     previous.contextBudgetSummary = {
       originalChars: 1000,
       compressedChars: 700,
+      estimatedTokensSaved: 75,
       estimatedSavingsPercent: 30,
       tasks: 2,
     };

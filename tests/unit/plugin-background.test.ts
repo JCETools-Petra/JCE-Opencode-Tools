@@ -174,9 +174,10 @@ describe("background manager reliability metadata", () => {
     const task = manager.getTask(taskId)!;
     expect(task.contextBudget?.changed).toBe(true);
     expect(task.contextBudget?.estimatedSavingsPercent).toBeGreaterThan(0);
+    expect(task.contextBudget?.estimatedTokensSaved).toBeGreaterThan(0);
     expect(task.contextBudget?.originalChars).toBeGreaterThan(task.contextBudget?.compressedChars ?? 0);
     expect(manager.toExecutionMemory().contextBudgetSummary?.tasks).toBe(1);
-    expect(manager.toExecutionMemory().contextBudgetSummary?.estimatedSavingsPercent).toBe(task.contextBudget?.estimatedSavingsPercent);
+    expect(manager.toExecutionMemory().contextBudgetSummary?.estimatedTokensSaved).toBe(task.contextBudget?.estimatedTokensSaved);
     expect(requests[0].body.parts[0].text.match(/same low value context line repeated/g)).toHaveLength(1);
   });
 

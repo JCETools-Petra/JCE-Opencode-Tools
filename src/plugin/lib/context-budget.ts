@@ -2,6 +2,7 @@ export interface ContextBudgetResult {
   text: string;
   originalChars: number;
   compressedChars: number;
+  estimatedTokensSaved: number;
   estimatedSavingsPercent: number;
   changed: boolean;
 }
@@ -13,6 +14,11 @@ export interface ContextBudgetOptions {
 
 const DEFAULT_MAX_LINES_PER_BLOCK = 40;
 const DEFAULT_MIN_DUPLICATE_LINE_LENGTH = 24;
+const APPROX_CHARS_PER_TOKEN = 4;
+
+export function estimateTokensFromChars(chars: number): number {
+  return Math.max(0, Math.ceil(chars / APPROX_CHARS_PER_TOKEN));
+}
 
 function isProtectedLine(line: string): boolean {
   const trimmed = line.trim();
@@ -108,12 +114,14 @@ export function applyContextBudget(text: string, options: ContextBudgetOptions =
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const compacted = compactRepeatedBlankLines(compactLongPassingBlocks(compactDuplicateLines(lines, minLength), maxLines)).join("\n");
   const compressedChars = compacted.length;
+  const estimatedTokensSaved = Math.max(0, estimateTokensFromChars(originalChars) - estimateTokensFromChars(compressedChars));
   const estimatedSavingsPercent = originalChars === 0 ? 0 : Math.max(0, Math.round((1 - compressedChars / originalChars) * 100));
 
   return {
     text: compacted,
     originalChars,
     compressedChars,
+    estimatedTokensSaved,
     estimatedSavingsPercent,
     changed: compacted !== text,
   };

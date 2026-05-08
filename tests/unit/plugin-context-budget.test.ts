@@ -10,6 +10,7 @@ describe("context budget pipeline", () => {
     expect(result.text.match(/same low value context line repeated/g)).toHaveLength(1);
     expect(result.text).toContain("removed 2 duplicate low-value lines");
     expect(result.estimatedSavingsPercent).toBeGreaterThan(0);
+    expect(result.estimatedTokensSaved).toBeGreaterThan(0);
   });
 
   test("preserves latest user, caveman, RTK, commands, paths, and errors", () => {

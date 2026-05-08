@@ -293,6 +293,7 @@ export class BackgroundManager {
     const budgets = tasks.map((task) => task.contextBudget).filter((budget): budget is NonNullable<BackgroundTask["contextBudget"]> => Boolean(budget));
     const originalChars = budgets.reduce((sum, budget) => sum + budget.originalChars, 0);
     const compressedChars = budgets.reduce((sum, budget) => sum + budget.compressedChars, 0);
+    const estimatedTokensSaved = budgets.reduce((sum, budget) => sum + budget.estimatedTokensSaved, 0);
     const resolvedRetryRootIds = new Set(
       tasks
         .filter((task) => task.status === "completed" && task.reviewStatus === "accepted" && task.rootTaskId)
@@ -349,6 +350,7 @@ export class BackgroundManager {
       contextBudgetSummary: budgets.length > 0 ? {
         originalChars,
         compressedChars,
+        estimatedTokensSaved,
         estimatedSavingsPercent: originalChars === 0 ? 0 : Math.max(0, Math.round((1 - compressedChars / originalChars) * 100)),
         tasks: budgets.length,
       } : undefined,
