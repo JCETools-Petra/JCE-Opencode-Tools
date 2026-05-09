@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { buildDefaultOpenCodeJson, buildDefaultTuiJson } from "./opencode-json-template.js";
 import { cleanupLegacyMcpEntries } from "./version.js";
@@ -33,6 +33,7 @@ function writeJsonAtomic(filePath: string, data: unknown): void {
 
 /**
  * Clean up old malformed JSON backups, keeping only the latest 3.
+ * Deletes older backup files permanently via unlinkSync.
  */
 function cleanupOldBackups(configDir: string, patternStr: string): void {
   try {
@@ -41,21 +42,13 @@ function cleanupOldBackups(configDir: string, patternStr: string): void {
       .filter((f: string) => pattern.test(f))
       .sort()
       .reverse();
-    
+
     // Keep latest 3, delete older ones
     for (const file of files.slice(3)) {
       try {
         const fullPath = join(configDir, file);
         if (existsSync(fullPath)) {
-          renameSync(fullPath, `${fullPath}.deleted`);
-          // Attempt async delete
-          setTimeout(() => {
-            try {
-              if (existsSync(`${fullPath}.deleted`)) {
-                renameSync(`${fullPath}.deleted`, fullPath);
-              }
-            } catch {}
-          }, 100);
+          unlinkSync(fullPath);
         }
       } catch {}
     }

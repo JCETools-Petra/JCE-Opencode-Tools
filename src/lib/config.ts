@@ -47,9 +47,27 @@ export function getLegacyConfigDir(): string {
 }
 
 /**
+ * Validate a relative path to prevent path traversal attacks.
+ * Rejects paths containing "..", absolute paths, and null bytes.
+ */
+function validateRelativePath(relativePath: string): void {
+  if (!relativePath || relativePath.includes("\0")) {
+    throw new Error(`Invalid config path: contains null bytes`);
+  }
+  if (/^[/\\]|^[a-zA-Z]:/.test(relativePath)) {
+    throw new Error(`Invalid config path: absolute paths not allowed: ${relativePath}`);
+  }
+  const segments = relativePath.split(/[/\\]/);
+  if (segments.some((seg) => seg === "..")) {
+    throw new Error(`Invalid config path: path traversal not allowed: ${relativePath}`);
+  }
+}
+
+/**
  * Check if a config file exists at the given path relative to config dir.
  */
 export function configFileExists(relativePath: string): boolean {
+  validateRelativePath(relativePath);
   const fullPath = join(getConfigDir(), relativePath);
   return existsSync(fullPath);
 }
@@ -59,6 +77,7 @@ export function configFileExists(relativePath: string): boolean {
  * Returns the parsed object or throws with a user-friendly message.
  */
 export async function loadConfigFile<T>(relativePath: string): Promise<T> {
+  validateRelativePath(relativePath);
   const fullPath = join(getConfigDir(), relativePath);
 
   if (!existsSync(fullPath)) {
@@ -78,6 +97,7 @@ export async function loadConfigFile<T>(relativePath: string): Promise<T> {
  * Get the full path to a config file.
  */
 export function getConfigPath(relativePath: string): string {
+  validateRelativePath(relativePath);
   return join(getConfigDir(), relativePath);
 }
 

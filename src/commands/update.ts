@@ -179,7 +179,6 @@ async function updateLocalCliFolder(latestVersion: string): Promise<void> {
 
   // Clone to temp, copy relevant files
   const tempDir = join(configDir, ".cli-update-tmp");
-  const { rm } = await import("fs/promises");
 
   const stagingDir = join(configDir, ".cli-update-new");
   const backupDir = join(configDir, ".cli-update-backup");
@@ -282,7 +281,6 @@ export async function ensureCliShim(): Promise<void> {
     await mkdir(bunBinDir, { recursive: true });
   }
 
-  const { rm } = await import("fs/promises");
   const isWindows = platform() === "win32";
   let npmBinDir: string | null = null;
   if (!isWindows) {

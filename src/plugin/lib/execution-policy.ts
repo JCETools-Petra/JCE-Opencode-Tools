@@ -1,6 +1,7 @@
 import type { JceWorkerAgentHint } from "./skill-router.js";
 import { evaluateWorkflowCompletionGate, type PolicyProfile } from "./verification-gate.js";
 import type { WorkflowEvidence, WorkflowIntentRoute, WorkflowRun } from "./workflow.js";
+import { hasAcceptedReview, hasUnresolvedExhaustedRetry } from "./shared-predicates.js";
 
 export type ExecutionPolicyAction = "route_update" | "dispatch" | "completion_claim" | "final_review";
 export type ExecutionPolicyDecisionStatus = "allow" | "warn" | "block";
@@ -37,31 +38,6 @@ function allow(policyId = "policy.allow"): ExecutionPolicyDecision {
 
 function hasPassingCommandEvidence(workflow?: WorkflowRun): boolean {
   return !!workflow?.evidence.some((evidence) => evidence.kind === "command" && evidence.command && evidence.passed === true);
-}
-
-function hasAcceptedReview(reviews: string[] = []): boolean {
-  return reviews.some((review) => /^accepted(?:$|[:\s])/i.test(review.trim()) || /\b(?:status|review)\s*[:=]\s*accepted\b/i.test(review));
-}
-
-function hasUnresolvedExhaustedRetry(entry: unknown): boolean {
-  if (typeof entry !== "object" || entry === null) return false;
-  const record = entry as Record<string, unknown>;
-  if (record.resolved === true || record.reviewStatus === "accepted" || record.status === "completed") return false;
-  const exhaustedText = [record.failureReason, record.handoffReason, record.status, record.recoveryStatus].some(
-    (value) => typeof value === "string" && /(?:retry (?:budget|limit) )?exhausted/i.test(value),
-  );
-  if (exhaustedText || record.retryExhausted === true || record.exhausted === true) return true;
-  const failureMarker = [record.status, record.reviewStatus, record.logicalState].some(
-    (value) => typeof value === "string" && /^(blocked|error|failed)$/i.test(value.trim()),
-  ) || typeof record.failureReason === "string" || typeof record.handoffReason === "string";
-  return (
-    typeof record.retryCount === "number" &&
-    typeof record.maxRetries === "number" &&
-    Number.isFinite(record.maxRetries) &&
-    record.maxRetries >= 0 &&
-    record.retryCount >= record.maxRetries &&
-    failureMarker
-  );
 }
 
 function evaluateTaskTypeVerification(input: ExecutionPolicyInput): ExecutionPolicyDecision | undefined {

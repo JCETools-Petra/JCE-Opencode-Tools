@@ -18,10 +18,7 @@ import { applyWorkflowIntentRoute } from "./lib/workflow.js";
 import type { WorkflowIntentRouteSource } from "./lib/workflow.js";
 import { buildWorkflowTool } from "./tools/workflow.js";
 import { createWorkflowRun } from "./lib/workflow.js";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+import { isRecord } from "./lib/shared-predicates.js";
 
 function delegatedReviewStrings(memory: ExecutionMemory): string[] {
   return [...memory.completedSummaries, ...memory.verificationEvidence]

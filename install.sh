@@ -6,13 +6,13 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="2.0.16"
+VERSION="2.0.17"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
-TEMP_DIR="/tmp/opencode-jce-install"
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/opencode-jce-install.XXXXXXXXXX")"
 # CONFIG_DIR is set by detect_opencode_config() in main()
 
 # Cleanup on exit/interrupt
-trap 'rm -rf "$TEMP_DIR" 2>/dev/null' EXIT INT TERM
+trap '[ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR" 2>/dev/null' EXIT INT TERM
 
 # Colors
 RED='\033[0;31m'
@@ -655,8 +655,15 @@ ensure_coursier() {
     info "Coursier is required for Metals. Installing Coursier..."
     local jce_bin="${HOME}/.local/bin"
     mkdir -p "$jce_bin"
-    curl -fLo "$jce_bin/cs" https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz
-    gunzip -f "$jce_bin/cs"
+    local cs_arch
+    case "$ARCH" in
+        x64)    cs_arch="x86_64";;
+        arm64)  cs_arch="aarch64";;
+        *)      warn "Unsupported architecture for Coursier: $ARCH"; return 1;;
+    esac
+    local cs_url="https://github.com/coursier/launchers/raw/master/cs-${cs_arch}-pc-linux.gz"
+    curl -fLo "$jce_bin/cs.gz" "$cs_url" || return 1
+    gunzip -f "$jce_bin/cs.gz"
     chmod 755 "$jce_bin/cs"
     export PATH="$jce_bin:$PATH"
     command -v cs &>/dev/null

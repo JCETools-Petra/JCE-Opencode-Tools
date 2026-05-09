@@ -5,9 +5,9 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "2.0.16"
+$Version = "2.0.17"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
-$TempDir = Join-Path $env:TEMP "opencode-jce-install"
+$TempDir = Join-Path $env:TEMP "opencode-jce-install-$([System.IO.Path]::GetRandomFileName())"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
 $JceLspDir = Join-Path $env:LOCALAPPDATA "opencode-jce\lsp"
 
@@ -1069,17 +1069,24 @@ Backup-ExistingConfig $ConfigDir
 Write-Info "Config directory: $ConfigDir"
 Write-Host ""
 
-if (-not (Test-Command "winget")) {
-    Write-Warn "winget not found. Some installations may fail."
-    Write-Info "Get winget from: https://aka.ms/getwinget"
+try {
+    if (-not (Test-Command "winget")) {
+        Write-Warn "winget not found. Some installations may fail."
+        Write-Info "Get winget from: https://aka.ms/getwinget"
+    }
+    Install-Git
+    Install-Bun
+    Install-OpenCode
+    Write-Host ""
+    Deploy-Config
+    Register-ContextKeeper
+    Register-TuiPlugin
+    Install-McpPackages
+    Install-LspServers
+    Write-Summary
+} finally {
+    # Cleanup temp directory regardless of success or failure
+    if ($TempDir -and (Test-Path $TempDir)) {
+        Remove-Item $TempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
-Install-Git
-Install-Bun
-Install-OpenCode
-Write-Host ""
-Deploy-Config
-Register-ContextKeeper
-Register-TuiPlugin
-Install-McpPackages
-Install-LspServers
-Write-Summary
