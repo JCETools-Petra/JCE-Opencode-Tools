@@ -116,6 +116,30 @@ async function fetchDirectoryListing(dir: string): Promise<string[]> {
   }
 }
 
+/**
+ * Fetch the list of subdirectories in a directory from the GitHub repository.
+ */
+async function fetchSubdirectoryListing(dir: string): Promise<string[]> {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/config/${dir}`,
+      {
+        headers: { Accept: "application/vnd.github.v3+json" },
+        signal: AbortSignal.timeout(15000),
+      }
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const entries = (await response.json()) as GitHubContentEntry[];
+    return entries
+      .filter((f) => f.type === "dir")
+      .map((f) => f.name);
+  } catch {
+    return [];
+  }
+}
+
 // ─── Self-Update CLI ─────────────────────────────────────────
 
 /**
@@ -510,6 +534,63 @@ async function mergeDirectory(configDir: string, dirName: string): Promise<Direc
 }
 
 /**
+ * Merge skill directories: each skill is a subdirectory containing SKILL.md.
+ * Only adds new skill directories, skips existing ones.
+ */
+async function mergeSkillDirectories(configDir: string): Promise<DirectoryMergeResult> {
+  const localDir = join(configDir, "skills");
+  const remoteSkills = await fetchSubdirectoryListing("skills");
+  if (remoteSkills.length === 0) {
+    if (!existsSync(localDir) || readdirSync(localDir).length === 0) {
+      return { added: 0, failed: 0, listingFailed: true };
+    }
+    return { added: 0, failed: 0, listingFailed: false };
+  }
+
+  if (!existsSync(localDir)) {
+    await mkdir(localDir, { recursive: true });
+  }
+
+  let addedCount = 0;
+  let failedCount = 0;
+
+  for (const skillName of remoteSkills) {
+    const localSkillDir = join(localDir, skillName);
+    if (existsSync(localSkillDir)) {
+      continue; // Skip existing skill directories
+    }
+
+    // Fetch files inside the skill directory
+    const skillFiles = await fetchDirectoryListing(`skills/${skillName}`);
+    if (skillFiles.length === 0) {
+      failedCount++;
+      continue;
+    }
+
+    await mkdir(localSkillDir, { recursive: true });
+    let skillAdded = false;
+
+    for (const fileName of skillFiles) {
+      const content = await fetchRemoteFile(`skills/${skillName}/${fileName}`);
+      if (content) {
+        await writeTextFile(join(localSkillDir, fileName), content);
+        skillAdded = true;
+      }
+    }
+
+    if (skillAdded) {
+      addedCount++;
+    } else {
+      failedCount++;
+      // Clean up empty directory
+      await rm(localSkillDir, { recursive: true, force: true });
+    }
+  }
+
+  return { added: addedCount, failed: failedCount, listingFailed: false };
+}
+
+/**
  * Handle AGENTS.md: always overwrite (system instruction must be latest).
  * Returns true if updated.
  */
@@ -665,7 +746,7 @@ async function mergeUpdatedConfigs(): Promise<MergeStats> {
 
   info("Merging skills/...");
   stats.fetchAttempted++;
-  const skillMerge = await mergeDirectory(configDir, "skills");
+  const skillMerge = await mergeSkillDirectories(configDir);
   stats.skills = skillMerge.added;
   if (skillMerge.listingFailed) stats.fetchFailed++;
   stats.fetchFailed += skillMerge.failed;

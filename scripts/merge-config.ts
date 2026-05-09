@@ -15,6 +15,7 @@ import {
   mkdirSync,
   readdirSync,
   copyFileSync,
+  cpSync,
   statSync,
   renameSync,
 } from "fs";
@@ -238,7 +239,7 @@ function mergePrompts() {
   console.log(`  [+] Prompts: ${added} added, ${skipped} already exist`);
 }
 
-// --- Merge skills directory (only copy missing) ---
+// --- Merge skills directory (only copy missing skill directories) ---
 function mergeSkills() {
   const sourceSkills = join(sourceDir, "skills");
   const targetSkills = join(targetDir, "skills");
@@ -249,17 +250,26 @@ function mergeSkills() {
 
   let added = 0;
   let skipped = 0;
-  for (const file of readdirSync(sourceSkills)) {
-    const sourcePath = join(sourceSkills, file);
-    // Skip directories
-    if (statSync(sourcePath).isDirectory()) continue;
+  for (const entry of readdirSync(sourceSkills)) {
+    const sourcePath = join(sourceSkills, entry);
+    const targetPath = join(targetSkills, entry);
 
-    const target = join(targetSkills, file);
-    if (!existsSync(target)) {
-      copyFileSync(sourcePath, target);
-      added++;
-    } else {
-      skipped++;
+    if (statSync(sourcePath).isDirectory()) {
+      // New structure: skill directories with SKILL.md
+      if (!existsSync(targetPath)) {
+        cpSync(sourcePath, targetPath, { recursive: true });
+        added++;
+      } else {
+        skipped++;
+      }
+    } else if (entry.endsWith(".md")) {
+      // Legacy structure: flat .md files (backward compat)
+      if (!existsSync(targetPath)) {
+        copyFileSync(sourcePath, targetPath);
+        added++;
+      } else {
+        skipped++;
+      }
     }
   }
   console.log(`  [+] Skills: ${added} added, ${skipped} already exist`);

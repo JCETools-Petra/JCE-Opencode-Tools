@@ -623,14 +623,14 @@ function Deploy-ConfigSafe($sourceDir, $targetDir) {
     $skillsDst = Join-Path $targetDir "skills"
     if (Test-Path $skillsSrc) {
         if (-not (Test-Path $skillsDst)) { New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null }
-        foreach ($f in Get-ChildItem $skillsSrc -Filter "*.md") {
-            $dst = Join-Path $skillsDst $f.Name
+        foreach ($d in Get-ChildItem $skillsSrc -Directory) {
+            $dst = Join-Path $skillsDst $d.Name
             if (-not (Test-Path $dst)) {
-                Copy-Item $f.FullName $dst
+                Copy-Item $d.FullName $dst -Recurse
             }
         }
-        $count = (Get-ChildItem $skillsDst -Filter "*.md").Count
-        Write-Ok "  Skills deployed ($count files)"
+        $count = (Get-ChildItem $skillsDst -Directory).Count
+        Write-Ok "  Skills deployed ($count skills)"
     }
 }
 

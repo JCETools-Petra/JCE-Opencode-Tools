@@ -288,16 +288,24 @@ describe("config/skills/", () => {
     expect(existsSync(skillsDir)).toBe(true);
   });
 
-  test("has exactly 50 .md files", () => {
-    const mdFiles = readdirSync(skillsDir).filter((f) => f.endsWith(".md"));
-    expect(mdFiles).toHaveLength(50);
+  test("has exactly 50 skill directories with SKILL.md", () => {
+    const skillDirs = readdirSync(skillsDir).filter((f) => {
+      const fullPath = join(skillsDir, f);
+      return statSync(fullPath).isDirectory() && existsSync(join(fullPath, "SKILL.md"));
+    });
+    expect(skillDirs).toHaveLength(50);
   });
 
-  test("all skill files are non-empty", () => {
-    const mdFiles = readdirSync(skillsDir).filter((f) => f.endsWith(".md"));
-    for (const file of mdFiles) {
-      const content = readFileSync(join(skillsDir, file), "utf-8");
+  test("all SKILL.md files are non-empty and have frontmatter", () => {
+    const skillDirs = readdirSync(skillsDir).filter((f) => statSync(join(skillsDir, f)).isDirectory());
+    for (const dir of skillDirs) {
+      const skillFile = join(skillsDir, dir, "SKILL.md");
+      if (!existsSync(skillFile)) continue;
+      const content = readFileSync(skillFile, "utf-8");
       expect(content.trim().length).toBeGreaterThan(0);
+      expect(content.startsWith("---\n")).toBe(true);
+      expect(content).toContain("name:");
+      expect(content).toContain("description:");
     }
   });
 });

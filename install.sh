@@ -318,11 +318,11 @@ deploy_config() {
         # Copy skills that don't exist (fallback)
         if [ -d "$TEMP_DIR/config/skills" ]; then
             mkdir -p "$CONFIG_DIR/skills"
-            for f in "$TEMP_DIR/config/skills"/*.md; do
-                [ -f "$f" ] || continue
-                fname=$(basename "$f")
-                if [ ! -f "$CONFIG_DIR/skills/$fname" ]; then
-                    cp "$f" "$CONFIG_DIR/skills/$fname"
+            for d in "$TEMP_DIR/config/skills"/*/; do
+                [ -d "$d" ] || continue
+                dname=$(basename "$d")
+                if [ ! -d "$CONFIG_DIR/skills/$dname" ]; then
+                    cp -r "$d" "$CONFIG_DIR/skills/$dname"
                 fi
             done
             success "  Skills deployed"
@@ -342,14 +342,16 @@ deploy_config() {
     SKILLS_DST="$CONFIG_DIR/skills"
     if [ -d "$SKILLS_SRC" ]; then
         mkdir -p "$SKILLS_DST"
-        for f in "$SKILLS_SRC"/*.md; do
-            [ -f "$f" ] || continue
-            fname=$(basename "$f")
-            if [ ! -f "$SKILLS_DST/$fname" ]; then
-                cp "$f" "$SKILLS_DST/$fname"
+        for d in "$SKILLS_SRC"/*/; do
+            [ -d "$d" ] || continue
+            dname=$(basename "$d")
+            if [ ! -d "$SKILLS_DST/$dname" ]; then
+                cp -r "$d" "$SKILLS_DST/$dname"
             fi
         done
-        success "Skills deployed ($(ls "$SKILLS_DST"/*.md 2>/dev/null | wc -l | tr -d ' ') files)"
+        local skill_count
+        skill_count=$(find "$SKILLS_DST" -name "SKILL.md" 2>/dev/null | wc -l | tr -d ' ')
+        success "Skills deployed ($skill_count skills)"
     fi
 
     success "Configuration deployed to: ${CONFIG_DIR}"

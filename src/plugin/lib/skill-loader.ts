@@ -143,6 +143,7 @@ function detectContextSkills(text: string): string[] {
 
 /**
  * Read a skill file from the skills directory.
+ * Supports both new structure (skills/name/SKILL.md) and legacy (skills/name.md).
  * Returns null if the file doesn't exist.
  */
 async function readSkillFile(skillName: string): Promise<string | null> {
@@ -150,9 +151,15 @@ async function readSkillFile(skillName: string): Promise<string | null> {
   if (!fileName) return null;
 
   const configDir = getConfigDir();
-  const skillPath = join(configDir, "skills", fileName);
+  const dirName = fileName.replace(".md", "");
 
-  if (!existsSync(skillPath)) return null;
+  // New structure: skills/name/SKILL.md
+  const newPath = join(configDir, "skills", dirName, "SKILL.md");
+  // Legacy structure: skills/name.md
+  const legacyPath = join(configDir, "skills", fileName);
+
+  const skillPath = existsSync(newPath) ? newPath : existsSync(legacyPath) ? legacyPath : null;
+  if (!skillPath) return null;
 
   try {
     const content = await readFile(skillPath, "utf-8");
