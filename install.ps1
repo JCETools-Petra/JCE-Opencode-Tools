@@ -720,7 +720,15 @@ function Register-TuiPlugin {
     Write-Info "Registering Token Savings TUI plugin in tui.json..."
 
     $tuiJson = Join-Path $ConfigDir "tui.json"
+    $tuiPluginFile = Join-Path $ConfigDir "cli\src\plugin\tui.tsx"
     $tuiPlugin = "file://$($ConfigDir -replace '\\','/')/cli/src/plugin/tui.tsx"
+
+    # Validate TUI plugin file exists
+    if (-not (Test-Path $tuiPluginFile)) {
+        Write-Warn "TUI plugin file not found: $tuiPluginFile"
+        Write-Info "Token Savings TUI will not be registered. Run 'opencode-jce update' after install."
+        return
+    }
 
     try {
         if (Test-Path $tuiJson) {
@@ -758,6 +766,7 @@ function Register-TuiPlugin {
     } catch {
         Write-Warn "Failed to register Token Savings TUI plugin: $($_.Exception.Message)"
         Write-Info "Add manually to tui.json plugin: $tuiPlugin"
+        Write-Info "Run 'opencode-jce update' after install to retry."
     }
 }
 

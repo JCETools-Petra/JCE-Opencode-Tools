@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-09T00:06:23.348Z",
+  "activeTasks": [],
+  "completedSummaries": [],
+  "blockers": [
+    {
+      "id": "bg-1778197778156-4rgyn3",
+      "description": "Map plugin runtime surfaces",
+      "failureReason": "Failed to create child session"
+    },
+    {
+      "id": "bg-1778197778248-giznmt",
+      "description": "Deep risk audit",
+      "failureReason": "Failed to create child session"
+    }
+  ],
+  "verificationEvidence": [],
+  "retryHistory": [],
+  "traceEvents": [
+    {
+      "type": "task.created",
+      "taskId": "bg-1778197778156-4rgyn3",
+      "message": "Created task: Map plugin runtime surfaces",
+      "at": "2026-05-07T23:49:38.156Z"
+    },
+    {
+      "type": "task.created",
+      "taskId": "bg-1778197778248-giznmt",
+      "message": "Created task: Deep risk audit",
+      "at": "2026-05-07T23:49:38.248Z"
+    },
+    {
+      "type": "task.failed",
+      "taskId": "bg-1778197778156-4rgyn3",
+      "message": "Failed to create child session",
+      "at": "2026-05-07T23:49:38.266Z"
+    },
+    {
+      "type": "task.failed",
+      "taskId": "bg-1778197778248-giznmt",
+      "message": "Failed to create child session",
+      "at": "2026-05-07T23:49:38.270Z"
+    }
+  ],
+  "workflowRuns": [],
+  "activeWorkflow": {
+    "id": "workflow-1778224168305",
+    "goal": "C:\\Users\\Joshhh\\source\\repos\\plugin\\.opencode-jce\\jce-worker-execution.json\nC:\\Users\\Joshhh\\source\\repos\\plugin\\tests\\unit\\plugin-workflow-assistant.test.ts\nC:\\Users\\Joshhh\\source\\repos\\plugin\\tests\\unit\\plugin-workflow-tool.test.ts\nC:\\User",
+    "status": "planning",
+    "createdAt": "2026-05-08T07:09:28.305Z",
+    "updatedAt": "2026-05-09T00:06:20.006Z",
+    "steps": [],
+    "acceptanceCriteria": [],
+    "evidence": [],
+    "retryPolicy": {
+      "maxRetries": 1
+    },
+    "completionGate": {
+      "status": "pending",
+      "reasons": []
+    },
+    "route": {
+      "intent": "branch_completion",
+      "skills": [
+        "finishing-a-development-branch"
+      ],
+      "reason": "Branch wrap-up should use the development-branch completion workflow.",
+      "source": "message"
+    }
+  }
+}

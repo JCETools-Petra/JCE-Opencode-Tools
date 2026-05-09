@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { existsSync, readdirSync } from "fs";
 import { dirname, join, sep } from "path";
-import { cp, mkdir, writeFile, readFile, chmod, rename } from "fs/promises";
+import { cp, mkdir, writeFile, readFile, chmod, rename, rm } from "fs/promises";
 import { platform } from "os";
 import chalk from "chalk";
 import { getConfigDir } from "../lib/config.js";
@@ -574,14 +574,26 @@ async function ensureTuiJson(configDir: string): Promise<boolean> {
 
 async function backupConfigForUpdate(configDir: string): Promise<void> {
   if (!existsSync(configDir)) return;
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const backupDir = `${configDir}.update-backup.${timestamp}`;
-  info(`Backing up current config to: ${backupDir}`);
-  await cp(configDir, backupDir, {
-    recursive: true,
-    filter: (src) => !src.includes(`${sep}cli${sep}`) && !src.endsWith(`${sep}cli`),
-  });
-  success("Backup created.");
+  const backupDir = join(configDir, ".backup-update");
+  
+  // Clean old backup if exists
+  if (existsSync(backupDir)) {
+    await rm(backupDir, { recursive: true, force: true });
+  }
+  
+  await mkdir(backupDir, { recursive: true });
+  
+  // Backup only critical config files
+  const filesToBackup = ["opencode.json", "tui.json"];
+  for (const file of filesToBackup) {
+    const src = join(configDir, file);
+    const dst = join(backupDir, file);
+    if (existsSync(src)) {
+      await cp(src, dst, { force: true });
+    }
+  }
+  
+  info(`Backed up config to: ${backupDir}`);
 }
 
 // ─── Main Merge Orchestrator ─────────────────────────────────
@@ -831,7 +843,30 @@ export const updateCommand = new Command("update")
     if (stats.fetchFailed > 0) {
       warn(`${stats.fetchFailed}/${stats.fetchAttempted} fetch(es) failed. Update may have failed.`);
       warn("Check your internet connection or try again later.");
-      logCommandError("update", `${stats.fetchFailed} fetches failed during merge`);
+      warn("Attempting to restore configuration from backup...");
+      
+      // Rollback config on fetch failure
+      const configDir = getConfigDir();
+      const backupDir = join(configDir, ".backup-update");
+      if (existsSync(backupDir)) {
+        try {
+          const opencodeJsonBackup = join(backupDir, "opencode.json");
+          const tuiJsonBackup = join(backupDir, "tui.json");
+          
+          if (existsSync(opencodeJsonBackup)) {
+            await cp(opencodeJsonBackup, join(configDir, "opencode.json"), { force: true });
+            success("Restored opencode.json from backup.");
+          }
+          if (existsSync(tuiJsonBackup)) {
+            await cp(tuiJsonBackup, join(configDir, "tui.json"), { force: true });
+            success("Restored tui.json from backup.");
+          }
+        } catch (rollbackErr) {
+          warn(`Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`);
+        }
+      }
+      
+      logCommandError("update", `${stats.fetchFailed} fetches failed during merge; config rolled back`);
       process.exit(EXIT_ERROR);
     }
 

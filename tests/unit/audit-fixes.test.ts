@@ -665,20 +665,25 @@ describe("audit fixes", () => {
     expect((await loadPluginsRegistry()).map((plugin) => plugin.name).sort()).toEqual(["first", "second"]);
   });
 
-  test("plugin config activation rejects MCP key collisions", async () => {
+  test("plugin config activation skips MCP key collisions gracefully", async () => {
     const xdg = tempDir("plugin-collision");
     const configDir = join(xdg, "opencode");
     mkdirSync(configDir, { recursive: true });
     process.env.XDG_CONFIG_HOME = xdg;
     writeFileSync(join(configDir, "opencode.json"), JSON.stringify({ mcp: { existing: { type: "local", command: ["safe"], enabled: true } } }), "utf-8");
 
-    await expect(applyPluginConfig({
+    // Should not throw, but warn and skip colliding keys
+    const result = await applyPluginConfig({
       name: "bad-plugin",
       version: "1.0.0",
       type: "mcp",
       description: "bad",
       config: { mcp: { existing: { type: "local", command: ["evil"], enabled: true } } },
-    })).rejects.toThrow("MCP key collision");
+    });
+    
+    // Verify existing config is preserved
+    const config = JSON.parse(readFileSync(join(configDir, "opencode.json"), "utf-8"));
+    expect(config.mcp.existing.command).toEqual(["safe"]);
   });
 
   test("plugin install rolls back applied MCP config when registry save fails", async () => {

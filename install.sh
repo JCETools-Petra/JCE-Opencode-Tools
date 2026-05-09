@@ -468,7 +468,23 @@ register_tui_plugin() {
 
     local tui_json="${CONFIG_DIR}/tui.json"
     local cli_dir="${CONFIG_DIR}/cli"
+    local tui_plugin_file="${cli_dir}/src/plugin/tui.tsx"
 
+    # Validate TUI plugin file exists
+    if [ ! -f "$tui_plugin_file" ]; then
+        warn "TUI plugin file not found: $tui_plugin_file"
+        warn "Token Savings TUI will not be registered. Run 'opencode-jce update' after install."
+        return
+    fi
+
+    # Validate Bun is available
+    if ! command -v bun &>/dev/null; then
+        warn "Bun not found. Cannot register TUI plugin."
+        warn "Run 'opencode-jce update' after install to retry."
+        return
+    fi
+
+    local error_log="/tmp/tui-register-$$.log"
     TUI_JSON="$tui_json" CLI_DIR="$cli_dir" bun -e '
 import fs from "fs";
 import path from "path";
@@ -479,9 +495,10 @@ let config = { "$schema": "https://opencode.ai/tui.json", plugin: [], plugin_ena
 if (fs.existsSync(tuiJson)) {
   try {
     config = JSON.parse(fs.readFileSync(tuiJson, "utf8"));
-  } catch {
+  } catch (e) {
     const backup = `${tuiJson}.invalid-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
     fs.renameSync(tuiJson, backup);
+    console.error(`Malformed tui.json backed up to ${backup}`);
   }
 }
 if (!config || typeof config !== "object" || Array.isArray(config)) config = {};
@@ -491,8 +508,20 @@ if (!config.plugin.includes(pluginPath)) config.plugin.push(pluginPath);
 if (!config.plugin_enabled || typeof config.plugin_enabled !== "object" || Array.isArray(config.plugin_enabled)) config.plugin_enabled = {};
 if (!("opencode-jce-token-savings" in config.plugin_enabled)) config.plugin_enabled["opencode-jce-token-savings"] = true;
 fs.writeFileSync(tuiJson, JSON.stringify(config, null, 2) + "\n");
-' 2>/dev/null && success "tui.json Token Savings plugin registered" \
-    || warn "Failed to register Token Savings TUI plugin. Run 'opencode-jce update' after install."
+' 2>"$error_log"
+    
+    if [ $? -eq 0 ]; then
+        success "tui.json Token Savings plugin registered"
+        rm -f "$error_log"
+    else
+        warn "Failed to register Token Savings TUI plugin."
+        if [ -s "$error_log" ]; then
+            warn "Error details:"
+            sed 's/^/  /' "$error_log" | head -10
+        fi
+        warn "Run 'opencode-jce update' after install to retry."
+        rm -f "$error_log"
+    fi
 }
 
 # API keys are managed by OpenCode CLI directly - no setup needed here

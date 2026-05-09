@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { buildDefaultOpenCodeJson, buildDefaultTuiJson } from "./opencode-json-template.js";
 import { cleanupLegacyMcpEntries } from "./version.js";
@@ -29,6 +29,37 @@ function writeJsonAtomic(filePath: string, data: unknown): void {
   const tmp = `${filePath}.tmp`;
   writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n", "utf8");
   renameSync(tmp, filePath);
+}
+
+/**
+ * Clean up old malformed JSON backups, keeping only the latest 3.
+ */
+function cleanupOldBackups(configDir: string, patternStr: string): void {
+  try {
+    const pattern = new RegExp(patternStr);
+    const files = readdirSync(configDir)
+      .filter((f: string) => pattern.test(f))
+      .sort()
+      .reverse();
+    
+    // Keep latest 3, delete older ones
+    for (const file of files.slice(3)) {
+      try {
+        const fullPath = join(configDir, file);
+        if (existsSync(fullPath)) {
+          renameSync(fullPath, `${fullPath}.deleted`);
+          // Attempt async delete
+          setTimeout(() => {
+            try {
+              if (existsSync(`${fullPath}.deleted`)) {
+                renameSync(`${fullPath}.deleted`, fullPath);
+              }
+            } catch {}
+          }, 100);
+        }
+      } catch {}
+    }
+  } catch {}
 }
 
 export function writeOpenCodeJsonAtomic(configDir: string, data: unknown): void {
@@ -72,6 +103,7 @@ export function readOrRepairOpenCodeJson(configDir: string): ReadOpenCodeJsonRes
 
   const backupPath = `${configPath}.invalid-${timestamp()}`;
   renameSync(configPath, backupPath);
+  cleanupOldBackups(configDir, "^opencode\\.json\\.invalid-");
   return { config: {}, repaired: true, backupPath };
 }
 
@@ -92,6 +124,7 @@ export function readOrRepairTuiJson(configDir: string): ReadOpenCodeJsonResult {
 
   const backupPath = `${configPath}.invalid-${timestamp()}`;
   renameSync(configPath, backupPath);
+  cleanupOldBackups(configDir, "^tui\\.json\\.invalid-");
   return { config: {}, repaired: true, backupPath };
 }
 
@@ -173,7 +206,26 @@ export function mergePluginMcpIntoOpenCodeJson(configDir: string, pluginMcp: Rec
 
   const collisions = Object.keys(pluginMcp).filter((key) => key in currentMcp);
   if (collisions.length > 0) {
-    throw new Error(`MCP key collision: ${collisions.join(", ")}`);
+    // Instead of throwing, warn and skip colliding keys
+    console.warn(`⚠️  MCP key collision(s) detected: ${collisions.join(", ")}`);
+    console.warn("   Skipping colliding keys to preserve existing configuration.");
+    
+    // Filter out colliding keys
+    const safePluginMcp = Object.fromEntries(
+      Object.entries(pluginMcp).filter(([key]) => !collisions.includes(key))
+    );
+    
+    if (Object.keys(safePluginMcp).length === 0) {
+      console.warn("   No new MCP entries to merge.");
+      return { changed: false, repaired: base.repaired || repaired, backupPath: backupPath ?? base.backupPath };
+    }
+
+    const next = {
+      ...config,
+      mcp: { ...currentMcp, ...safePluginMcp },
+    };
+    writeOpenCodeJsonAtomic(configDir, next);
+    return { changed: true, repaired: base.repaired || repaired, backupPath: backupPath ?? base.backupPath };
   }
 
   const next = {

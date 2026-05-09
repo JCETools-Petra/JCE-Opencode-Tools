@@ -74,7 +74,7 @@ describe("plugin config hardening", () => {
     expect(updated.mcp.demo.command).toEqual(["npx", "demo-mcp"]);
   });
 
-  test("plugin config apply still rejects MCP collisions without corrupting config", async () => {
+  test("plugin config apply skips MCP collisions without corrupting config", async () => {
     const xdg = tempDir();
     const configDir = join(xdg, "opencode");
     mkdirSync(configDir, { recursive: true });
@@ -82,13 +82,14 @@ describe("plugin config hardening", () => {
     const original = { mcp: { existing: { type: "local", command: ["safe"], enabled: true } } };
     writeFileSync(join(configDir, "opencode.json"), JSON.stringify(original, null, 2), "utf8");
 
-    await expect(applyPluginConfig({
+    // Should not throw, but warn and skip colliding keys
+    await applyPluginConfig({
       name: "bad-plugin",
       version: "1.0.0",
       type: "mcp",
       description: "bad",
       config: { mcp: { existing: { type: "local", command: ["evil"], enabled: true } } },
-    })).rejects.toThrow("MCP key collision");
+    });
 
     const updated = JSON.parse(readFileSync(join(configDir, "opencode.json"), "utf8"));
     expect(updated.mcp.existing).toEqual(original.mcp.existing);
