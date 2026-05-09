@@ -238,6 +238,9 @@ async function updateLocalCliFolder(latestVersion: string): Promise<void> {
     if (existsSync(join(tempDir, "scripts"))) {
       await cp(join(tempDir, "scripts"), join(stagingDir, "scripts"), { recursive: true });
     }
+    if (existsSync(join(tempDir, "config"))) {
+      await cp(join(tempDir, "config"), join(stagingDir, "config"), { recursive: true });
+    }
 
     for (const file of ["package.json", "tsconfig.json", "bun.lock"]) {
       const src = join(tempDir, file);
@@ -535,10 +538,46 @@ async function mergeDirectory(configDir: string, dirName: string): Promise<Direc
 
 /**
  * Merge skill directories: each skill is a subdirectory containing SKILL.md.
- * Only adds new skill directories, skips existing ones.
+ * Uses the locally cloned CLI source (already downloaded in Step 1) to avoid
+ * GitHub API rate limits. Falls back to API if local source unavailable.
  */
 async function mergeSkillDirectories(configDir: string): Promise<DirectoryMergeResult> {
   const localDir = join(configDir, "skills");
+  const cliSkillsDir = join(configDir, "cli", "config", "skills");
+
+  // Try local source first (from the CLI clone in Step 1)
+  if (existsSync(cliSkillsDir)) {
+    return mergeSkillsFromLocal(localDir, cliSkillsDir);
+  }
+
+  // Fallback: fetch from GitHub API (may hit rate limits for 50+ skills)
+  return mergeSkillsFromApi(localDir);
+}
+
+async function mergeSkillsFromLocal(localDir: string, sourceDir: string): Promise<DirectoryMergeResult> {
+  if (!existsSync(localDir)) {
+    await mkdir(localDir, { recursive: true });
+  }
+
+  let addedCount = 0;
+  const entries = readdirSync(sourceDir);
+
+  for (const entry of entries) {
+    const sourcePath = join(sourceDir, entry);
+    const destPath = join(localDir, entry);
+
+    // Only process directories that contain SKILL.md
+    if (!existsSync(join(sourcePath, "SKILL.md"))) continue;
+    if (existsSync(destPath)) continue;
+
+    await cp(sourcePath, destPath, { recursive: true });
+    addedCount++;
+  }
+
+  return { added: addedCount, failed: 0, listingFailed: false };
+}
+
+async function mergeSkillsFromApi(localDir: string): Promise<DirectoryMergeResult> {
   const remoteSkills = await fetchSubdirectoryListing("skills");
   if (remoteSkills.length === 0) {
     if (!existsSync(localDir) || readdirSync(localDir).length === 0) {
@@ -557,10 +596,9 @@ async function mergeSkillDirectories(configDir: string): Promise<DirectoryMergeR
   for (const skillName of remoteSkills) {
     const localSkillDir = join(localDir, skillName);
     if (existsSync(localSkillDir)) {
-      continue; // Skip existing skill directories
+      continue;
     }
 
-    // Fetch files inside the skill directory
     const skillFiles = await fetchDirectoryListing(`skills/${skillName}`);
     if (skillFiles.length === 0) {
       failedCount++;
@@ -582,7 +620,6 @@ async function mergeSkillDirectories(configDir: string): Promise<DirectoryMergeR
       addedCount++;
     } else {
       failedCount++;
-      // Clean up empty directory
       await rm(localSkillDir, { recursive: true, force: true });
     }
   }
