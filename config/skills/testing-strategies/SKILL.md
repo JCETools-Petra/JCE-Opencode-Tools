@@ -4,14 +4,13 @@ description: Property-based, mutation, contract, visual regression, load testing
 ---
 
 # Skill: Testing Strategies
-# Loaded on-demand when task involves property-based testing, mutation testing, contract testing, visual regression, or load testing
+# Loaded on-demand when task involves advanced testing patterns beyond basic unit/integration tests
 
 ## Auto-Detect
 
 Trigger this skill when:
-- Task mentions: property-based testing, mutation testing, contract testing, visual regression, load testing
+- Task mentions: property-based, mutation testing, contract testing, visual regression, load testing
 - Files: `*.test.ts`, `*.spec.ts`, `*.pact.ts`, `k6/`, `*.stories.tsx`
-- Patterns: test architecture, fixtures, factories, test doubles
 - `package.json` contains: `fast-check`, `@pact-foundation/pact`, `stryker-mutator`, `@chromatic-com/storybook`
 
 ---
@@ -21,181 +20,159 @@ Trigger this skill when:
 ```
 What are you testing?
 +-- Pure business logic (no I/O)?
-|   +-- Unit tests + property-based tests
+|   +-- Unit tests + property-based tests (fast-check)
 +-- API endpoints?
-|   +-- Integration tests (real DB, test containers)
+|   +-- Integration tests (real DB via testcontainers)
 |   +-- Contract tests (if consumed by other services)
 +-- UI components?
 |   +-- Component tests (Testing Library)
-|   +-- Visual regression (Chromatic/Percy)
+|   +-- Visual regression (Chromatic/Playwright screenshots)
 |   +-- Interaction tests (Storybook play functions)
 +-- Service-to-service communication?
 |   +-- Contract tests (Pact)
 +-- Performance requirements?
-|   +-- Load tests (k6/Gatling)
-|   +-- Benchmark tests (in CI, fail on regression)
+|   +-- Load tests (k6) in CI, fail on regression
 +-- Confidence in test suite quality?
-    +-- Mutation testing (Stryker)
+|   +-- Mutation testing (Stryker) on critical paths
++-- AI-generated code?
+    +-- Property-based tests (verify invariants AI might miss)
+    +-- Mutation testing (verify tests actually catch bugs)
 ```
 
-## Testing Pyramid (Practical)
+## Testing Pyramid (Practical 2026)
 
 ```
-        /  E2E  \          Few (5-10): Critical user journeys
-       /  Visual  \        Per component: Catch CSS regressions
-      / Integration \      Per feature: Real DB, real HTTP
-     /   Component   \     Per component: Render + interact
-    /  Unit + Property  \  Many: Pure logic, edge cases
+        /   E2E    \         Few (5-10): Critical user journeys
+       /  Visual    \        Per component: Catch CSS regressions
+      / Integration  \       Per feature: Real DB, real HTTP
+     /  Component     \      Per component: Render + interact
+    / Unit + Property   \    Many: Pure logic, edge cases, invariants
    /____________________\
 
-Rule of thumb:
-- 70% unit/property tests (fast, cheap, many)
-- 20% integration tests (slower, fewer)
-- 10% E2E tests (slowest, critical paths only)
+Budget: 70% unit/property | 20% integration | 10% E2E
+Speed:  < 1s per unit | < 5s per integration | < 30s per E2E
 ```
 
 ---
 
-## Property-Based Testing
+## AI-Assisted Testing
+
+```typescript
+// Use property-based tests to verify AI-generated code
+// AI often misses edge cases — properties catch them systematically
+
+import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
+
+// AI generated a sorting function — verify its PROPERTIES
+describe('AI-generated sort', () => {
+  it('output is same length as input', () => {
+    fc.assert(fc.property(fc.array(fc.integer()), (arr) => {
+      expect(sort(arr)).toHaveLength(arr.length);
+    }));
+  });
+
+  it('output is ordered', () => {
+    fc.assert(fc.property(fc.array(fc.integer()), (arr) => {
+      const sorted = sort(arr);
+      for (let i = 1; i < sorted.length; i++) {
+        expect(sorted[i]).toBeGreaterThanOrEqual(sorted[i - 1]);
+      }
+    }));
+  });
+
+  it('output contains same elements as input', () => {
+    fc.assert(fc.property(fc.array(fc.integer()), (arr) => {
+      expect([...sort(arr)].sort()).toEqual([...arr].sort());
+    }));
+  });
+});
+
+// AI-assisted test generation workflow:
+// 1. Write the function (or have AI write it)
+// 2. Identify invariants (properties that must ALWAYS hold)
+// 3. Write property-based tests for those invariants
+// 4. Run mutation testing to verify test quality
+// 5. Add specific edge case tests for known tricky inputs
+```
+
+---
+
+## Property-Based Testing (fast-check)
 
 ```typescript
 import fc from 'fast-check';
 
-// Instead of testing specific examples, test PROPERTIES that must always hold
-
-// Property 1: Encode then decode is identity
-describe('URL encoding', () => {
-  it('roundtrips any string', () => {
-    fc.assert(
-      fc.property(fc.string(), (input) => {
-        expect(decodeURIComponent(encodeURIComponent(input))).toBe(input);
-      })
-    );
-  });
-});
-
-// Property 2: Sort is idempotent
-describe('sorting', () => {
-  it('sorting twice gives same result as sorting once', () => {
-    fc.assert(
-      fc.property(fc.array(fc.integer()), (arr) => {
-        const sortedOnce = [...arr].sort((a, b) => a - b);
-        const sortedTwice = [...sortedOnce].sort((a, b) => a - b);
-        expect(sortedTwice).toEqual(sortedOnce);
-      })
-    );
-  });
-
-  it('preserves all elements', () => {
-    fc.assert(
-      fc.property(fc.array(fc.integer()), (arr) => {
-        const sorted = [...arr].sort((a, b) => a - b);
-        expect(sorted.length).toBe(arr.length);
-        expect(sorted.sort()).toEqual([...arr].sort());
-      })
-    );
-  });
-});
-
-// Property 3: Business rule invariants
-describe('pricing', () => {
+// Business rule invariants
+describe('pricing engine', () => {
   it('discount never exceeds original price', () => {
-    fc.assert(
-      fc.property(
-        fc.float({ min: 0.01, max: 10000, noNaN: true }),
-        fc.float({ min: 0, max: 100, noNaN: true }),
-        (price, discountPercent) => {
-          const discounted = applyDiscount(price, discountPercent);
-          expect(discounted).toBeGreaterThanOrEqual(0);
-          expect(discounted).toBeLessThanOrEqual(price);
-        }
-      )
-    );
+    fc.assert(fc.property(
+      fc.float({ min: 0.01, max: 10000, noNaN: true }),
+      fc.float({ min: 0, max: 100, noNaN: true }),
+      (price, discountPercent) => {
+        const result = applyDiscount(price, discountPercent);
+        expect(result).toBeGreaterThanOrEqual(0);
+        expect(result).toBeLessThanOrEqual(price);
+      }
+    ));
   });
 
   it('total equals sum of line items', () => {
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.record({
-            price: fc.float({ min: 0.01, max: 1000, noNaN: true }),
-            quantity: fc.integer({ min: 1, max: 100 }),
-          }),
-          { minLength: 1, maxLength: 50 }
-        ),
-        (items) => {
-          const order = createOrder(items);
-          const expectedTotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-          expect(order.total).toBeCloseTo(expectedTotal, 2);
-        }
-      )
-    );
+    fc.assert(fc.property(
+      fc.array(fc.record({
+        price: fc.float({ min: 0.01, max: 1000, noNaN: true }),
+        quantity: fc.integer({ min: 1, max: 100 }),
+      }), { minLength: 1, maxLength: 50 }),
+      (items) => {
+        const order = createOrder(items);
+        const expected = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        expect(order.total).toBeCloseTo(expected, 2);
+      }
+    ));
   });
 });
 
-// Custom arbitraries for domain objects
-const emailArbitrary = fc.tuple(
-  fc.stringOf(fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz0123456789'.split('')), { minLength: 1, maxLength: 20 }),
-  fc.constantFrom('gmail.com', 'example.com', 'test.org')
-).map(([local, domain]) => `${local}@${domain}`);
-
-const userArbitrary = fc.record({
-  name: fc.string({ minLength: 1, maxLength: 100 }),
-  email: emailArbitrary,
-  age: fc.integer({ min: 0, max: 150 }),
+// Roundtrip properties (encode/decode, serialize/deserialize)
+it('JSON roundtrip preserves data', () => {
+  fc.assert(fc.property(fc.anything(), (value) => {
+    // Only test JSON-safe values
+    const json = JSON.stringify(value);
+    if (json !== undefined) {
+      expect(JSON.parse(json)).toEqual(value);
+    }
+  }));
 });
 ```
 
 ---
 
-## Mutation Testing
+## Snapshot Testing Best Practices
 
 ```typescript
-// Mutation testing: verify your tests actually catch bugs
-// Stryker modifies your code and checks if tests fail
+// DO: Snapshot serializable output formats
+it('generates correct API response shape', () => {
+  const response = formatUserResponse(mockUser);
+  expect(response).toMatchInlineSnapshot(`
+    {
+      "id": "user-123",
+      "name": "Alice",
+      "email": "alice@example.com",
+      "role": "admin",
+    }
+  `);
+});
 
-// stryker.config.mjs
-export default {
-  mutator: {
-    plugins: ['@stryker-mutator/typescript-checker'],
-    excludedMutations: [
-      'StringLiteral', // Skip string mutations (noisy)
-    ],
-  },
-  packageManager: 'pnpm',
-  reporters: ['html', 'clear-text', 'progress'],
-  testRunner: 'vitest',
-  vitest: {
-    configFile: 'vitest.config.ts',
-  },
-  coverageAnalysis: 'perTest',
-  thresholds: {
-    high: 80,
-    low: 60,
-    break: 50, // Fail CI if mutation score < 50%
-  },
-  // Only mutate source files, not tests
-  mutate: ['src/**/*.ts', '!src/**/*.test.ts', '!src/**/*.spec.ts'],
-};
+// DO: Snapshot error messages for consistency
+it('produces helpful validation errors', () => {
+  const result = validateInput({ email: 'invalid' });
+  expect(result.errors).toMatchSnapshot();
+});
 
-// What Stryker does:
-// 1. Parses your code
-// 2. Creates "mutants" (small changes):
-//    - a > b  ->  a >= b  (boundary mutation)
-//    - a + b  ->  a - b   (arithmetic mutation)
-//    - if (x)  ->  if (!x) (conditional mutation)
-//    - return x  ->  return undefined (return mutation)
-// 3. Runs your tests against each mutant
-// 4. Reports:
-//    - Killed: test caught the mutation (good!)
-//    - Survived: no test caught it (your tests are weak here)
-//    - Timeout: mutation caused infinite loop
-//    - No coverage: no test covers this code
+// DON'T: Snapshot entire component trees (too brittle)
+// DON'T: Snapshot timestamps, random IDs, or non-deterministic output
+// DON'T: Auto-update snapshots without reviewing the diff
 
-// Interpreting results:
-// Mutation Score = killed / (killed + survived)
-// Target: > 80% for critical business logic
-// Focus on survived mutants in critical paths
+// RULE: If you can't explain WHY a snapshot changed, don't update it
 ```
 
 ---
@@ -203,150 +180,172 @@ export default {
 ## Contract Testing (Pact)
 
 ```typescript
-// Consumer-driven contract testing
-// Consumer defines expectations, provider verifies
-
-// CONSUMER SIDE (frontend or calling service)
+// CONSUMER SIDE — defines expectations
 import { PactV3, MatchersV3 } from '@pact-foundation/pact';
+const { like, eachLike, string, datetime } = MatchersV3;
 
-const { like, eachLike, string, integer, datetime } = MatchersV3;
-
-const provider = new PactV3({
-  consumer: 'OrderWebApp',
-  provider: 'OrderAPI',
-  dir: './pacts',
-});
+const provider = new PactV3({ consumer: 'WebApp', provider: 'OrderAPI' });
 
 describe('Order API Contract', () => {
-  it('returns a list of orders', async () => {
-    // Define expected interaction
+  it('returns user orders', async () => {
     await provider
       .given('user has orders')
       .uponReceiving('a request for user orders')
-      .withRequest({
-        method: 'GET',
-        path: '/api/orders',
-        headers: { Authorization: string('Bearer token123') },
-        query: { status: 'active' },
-      })
+      .withRequest({ method: 'GET', path: '/api/orders', headers: { Authorization: string() } })
       .willRespondWith({
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
         body: {
           data: eachLike({
             id: string('ord-123'),
             status: string('active'),
             total: like(99.99),
             createdAt: datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
-            items: eachLike({
-              productId: string('prod-1'),
-              quantity: integer(2),
-              price: like(49.99),
-            }),
           }),
-          pagination: {
-            cursor: string('eyJpZCI6MTIzfQ'),
-            hasMore: like(true),
-          },
+          pagination: { cursor: string(), hasMore: like(true) },
         },
       });
 
-    // Execute test against mock provider
     await provider.executeTest(async (mockServer) => {
       const client = new OrderClient(mockServer.url);
-      const result = await client.getOrders({ status: 'active' });
-
+      const result = await client.getOrders();
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toHaveProperty('id');
-      expect(result.data[0]).toHaveProperty('status', 'active');
     });
   });
 });
 
-// PROVIDER SIDE (API service)
+// PROVIDER SIDE — verifies contract
 import { Verifier } from '@pact-foundation/pact';
 
-describe('Pact Verification', () => {
-  it('validates the OrderWebApp contract', async () => {
-    const verifier = new Verifier({
-      providerBaseUrl: 'http://localhost:3000',
-      pactUrls: ['./pacts/OrderWebApp-OrderAPI.json'],
-      // Or from Pact Broker:
-      // pactBrokerUrl: 'https://pact-broker.example.com',
-      // providerVersion: process.env.GIT_SHA,
-      stateHandlers: {
-        'user has orders': async () => {
-          // Set up test data
-          await db.orders.create({
-            data: { userId: 'test-user', status: 'active', total: 99.99 },
-          });
-        },
-      },
-    });
-
-    await verifier.verifyProvider();
-  });
+it('satisfies WebApp contract', async () => {
+  await new Verifier({
+    providerBaseUrl: 'http://localhost:3000',
+    pactBrokerUrl: process.env.PACT_BROKER_URL,
+    providerVersion: process.env.GIT_SHA,
+    publishVerificationResult: true,
+    stateHandlers: {
+      'user has orders': async () => { await seedTestOrders(); },
+    },
+  }).verifyProvider();
 });
 ```
 
 ---
 
-## Visual Regression Testing
+## Visual Regression (Chromatic + Playwright)
 
 ```typescript
-// With Chromatic (Storybook-based)
-// 1. Write stories (already done for design system)
-// 2. Chromatic captures screenshots
-// 3. Compares against baseline
-// 4. Flags visual changes for review
+// Chromatic (Storybook-based) — component-level visual testing
+// CI: npx chromatic --project-token=$CHROMATIC_TOKEN --exit-zero-on-changes
 
-// CI integration
-// npx chromatic --project-token=$CHROMATIC_TOKEN
-
-// With Playwright (for full pages)
+// Playwright — full page visual regression
 import { test, expect } from '@playwright/test';
 
-test('homepage visual regression', async ({ page }) => {
-  await page.goto('/');
+test('dashboard visual regression', async ({ page }) => {
+  await page.goto('/dashboard');
   await page.waitForLoadState('networkidle');
-
-  // Full page screenshot comparison
-  await expect(page).toHaveScreenshot('homepage.png', {
-    maxDiffPixelRatio: 0.01, // Allow 1% pixel difference
-    animations: 'disabled',   // Freeze animations
+  await expect(page).toHaveScreenshot('dashboard.png', {
+    maxDiffPixelRatio: 0.01,
+    animations: 'disabled',
   });
 });
 
-test('responsive visual regression', async ({ page }) => {
-  // Test multiple viewports
-  const viewports = [
+// Responsive visual testing
+test('responsive layouts', async ({ page }) => {
+  for (const vp of [
     { width: 375, height: 667, name: 'mobile' },
     { width: 768, height: 1024, name: 'tablet' },
     { width: 1440, height: 900, name: 'desktop' },
-  ];
-
-  for (const vp of viewports) {
-    await page.setViewportSize({ width: vp.width, height: vp.height });
-    await page.goto('/dashboard');
-    await expect(page).toHaveScreenshot(`dashboard-${vp.name}.png`);
+  ]) {
+    await page.setViewportSize(vp);
+    await page.goto('/');
+    await expect(page).toHaveScreenshot(`home-${vp.name}.png`);
   }
 });
 
-// Component-level visual testing
-test('button variants', async ({ page }) => {
-  await page.goto('/storybook/iframe.html?id=components-button--all-variants');
-  await expect(page.locator('.story-container')).toHaveScreenshot('button-variants.png');
-});
+// Best practices:
+// - Freeze animations and transitions
+// - Mock dynamic data (dates, avatars) for determinism
+// - Use threshold (1% pixel diff) to avoid false positives
+// - Review visual diffs in PR, don't auto-approve
 ```
 
 ---
 
-## Test Architecture
+## Load Testing (k6)
+
+```javascript
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+// Soak test: sustained load (find memory leaks, connection exhaustion)
+export const options = {
+  stages: [
+    { duration: '5m', target: 50 },
+    { duration: '4h', target: 50 },
+    { duration: '5m', target: 0 },
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500', 'p(99)<1000'],
+    http_req_failed: ['rate<0.01'],
+  },
+};
+
+export default function () {
+  const res = http.get('https://api.example.com/products');
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+  });
+  sleep(1);
+}
+
+// Spike test: sudden traffic surge
+export const spikeOptions = {
+  stages: [
+    { duration: '1m', target: 50 },
+    { duration: '10s', target: 1000 },  // Spike!
+    { duration: '3m', target: 1000 },
+    { duration: '10s', target: 50 },    // Recovery
+    { duration: '3m', target: 50 },
+  ],
+};
+
+// CI integration: run on every deploy, fail if thresholds breached
+// k6 run --out json=results.json load-test.js
+```
+
+---
+
+## Mutation Testing (Stryker)
+
+```javascript
+// stryker.config.mjs
+export default {
+  testRunner: 'vitest',
+  mutate: ['src/**/*.ts', '!src/**/*.test.ts'],
+  reporters: ['html', 'clear-text', 'progress'],
+  thresholds: { high: 80, low: 60, break: 50 },
+  coverageAnalysis: 'perTest',
+  // Focus on critical business logic, not utilities
+  mutate: ['src/domain/**/*.ts', 'src/services/**/*.ts'],
+};
+
+// What Stryker does:
+// 1. Creates mutants: a > b -> a >= b, + -> -, if(x) -> if(!x)
+// 2. Runs tests against each mutant
+// 3. Reports: Killed (good), Survived (weak test), No Coverage
+//
+// Mutation Score = killed / (killed + survived)
+// Target: > 80% for critical business logic
+// Focus effort on survived mutants in payment, auth, data integrity code
+```
+
+---
+
+## Test Architecture: Factories & Fixtures
 
 ```typescript
-// Test fixtures and factories
-
-// Factory pattern (better than fixtures for complex objects)
 import { faker } from '@faker-js/faker';
 
 class UserFactory {
@@ -361,133 +360,16 @@ class UserFactory {
     };
   }
 
-  static buildList(count: number, overrides: Partial<User> = {}): User[] {
-    return Array.from({ length: count }, () => this.build(overrides));
-  }
-
-  // For database tests (actually persists)
   static async create(overrides: Partial<User> = {}): Promise<User> {
-    const user = this.build(overrides);
-    return db.users.create({ data: user });
+    return db.users.create({ data: this.build(overrides) });
   }
 }
 
-class OrderFactory {
-  static build(overrides: Partial<Order> = {}): Order {
-    return {
-      id: faker.string.uuid(),
-      userId: faker.string.uuid(),
-      status: 'pending',
-      total: parseFloat(faker.commerce.price()),
-      items: [OrderItemFactory.build()],
-      createdAt: faker.date.recent(),
-      ...overrides,
-    };
-  }
-}
-
-// Usage in tests
-describe('OrderService', () => {
-  it('calculates total correctly', () => {
-    const order = OrderFactory.build({
-      items: [
-        OrderItemFactory.build({ price: 10, quantity: 2 }),
-        OrderItemFactory.build({ price: 5, quantity: 3 }),
-      ],
-    });
-
-    expect(calculateTotal(order)).toBe(35);
-  });
-});
-```
-
-### Test Doubles Guide
-
-```typescript
-// When to use which test double:
-
-// STUB: Returns canned data (no verification)
-const paymentGateway = {
-  charge: vi.fn().mockResolvedValue({ success: true, transactionId: 'tx-123' }),
-};
-
-// MOCK: Verifies interactions (use sparingly)
-const emailService = {
-  send: vi.fn(),
-};
-// Later: expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'user@test.com' }));
-
-// SPY: Wraps real implementation, records calls
-const spy = vi.spyOn(logger, 'error');
-// Real logger.error still runs, but calls are recorded
-
-// FAKE: Working implementation (simplified)
-class FakeUserRepository implements UserRepository {
-  private users: Map<string, User> = new Map();
-
-  async findById(id: string): Promise<User | null> {
-    return this.users.get(id) ?? null;
-  }
-
-  async save(user: User): Promise<void> {
-    this.users.set(user.id, user);
-  }
-}
-
-// Decision:
-// Need to control return values? -> Stub
-// Need to verify something was called? -> Mock (but prefer testing outcomes)
-// Need real behavior + recording? -> Spy
-// Need a working in-memory implementation? -> Fake
-```
-
----
-
-## Load Testing with k6
-
-```javascript
-// Soak test: sustained load over time (find memory leaks, connection exhaustion)
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-
-export const options = {
-  stages: [
-    { duration: '5m', target: 50 },    // Ramp up
-    { duration: '4h', target: 50 },    // Sustained load
-    { duration: '5m', target: 0 },     // Ramp down
-  ],
-  thresholds: {
-    http_req_duration: ['p(99)<1000'],
-    http_req_failed: ['rate<0.01'],
-  },
-};
-
-// Stress test: find breaking point
-export const stressOptions = {
-  stages: [
-    { duration: '2m', target: 100 },
-    { duration: '5m', target: 100 },
-    { duration: '2m', target: 200 },
-    { duration: '5m', target: 200 },
-    { duration: '2m', target: 400 },
-    { duration: '5m', target: 400 },
-    { duration: '2m', target: 800 },   // Where does it break?
-    { duration: '5m', target: 800 },
-    { duration: '10m', target: 0 },    // Recovery
-  ],
-};
-
-// Spike test: sudden traffic surge
-export const spikeOptions = {
-  stages: [
-    { duration: '1m', target: 50 },    // Normal
-    { duration: '10s', target: 1000 }, // Spike!
-    { duration: '3m', target: 1000 },  // Sustained spike
-    { duration: '10s', target: 50 },   // Back to normal
-    { duration: '3m', target: 50 },    // Recovery
-    { duration: '1m', target: 0 },
-  ],
-};
+// Test doubles decision:
+// Stub: returns canned data (no verification)
+// Mock: verifies interactions (use sparingly)
+// Spy: wraps real implementation, records calls
+// Fake: working in-memory implementation (best for repositories)
 ```
 
 ---
@@ -496,11 +378,12 @@ export const spikeOptions = {
 
 | Anti-Pattern | Problem | Solution |
 |---|---|---|
-| Testing implementation details | Tests break on refactor | Test behavior/outcomes, not internals |
-| Excessive mocking | Tests pass but code is broken | Integration tests with real dependencies |
-| No test isolation | Tests depend on execution order | Each test sets up and tears down its own state |
-| Snapshot testing everything | Snapshots approved without review | Snapshots only for serializable output, review diffs |
-| Flaky tests ignored | Erode trust in test suite | Fix or quarantine immediately |
-| 100% coverage target | Tests for getters/setters, no real logic tested | Focus on mutation score for critical paths |
-| No contract tests | Services break each other silently | Pact for service boundaries |
-| Load testing only before launch | Performance degrades over time | Load tests in CI, fail on regression |
+| Testing implementation details | Tests break on refactor | Test behavior/outcomes |
+| Excessive mocking | Tests pass but code is broken | Integration tests with real deps |
+| No test isolation | Tests depend on order | Each test owns its setup/teardown |
+| Snapshot everything | Approved without review | Snapshots only for serializable output |
+| Flaky tests ignored | Erode trust in suite | Fix or quarantine immediately |
+| 100% coverage target | Tests for trivial code | Focus on mutation score for critical paths |
+| No contract tests | Services break each other | Pact for service boundaries |
+| Load testing only pre-launch | Performance degrades over time | Load tests in CI |
+| AI-generated tests without review | Tests that don't test anything | Verify with mutation testing |

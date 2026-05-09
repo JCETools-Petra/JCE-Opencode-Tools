@@ -44,12 +44,73 @@ Function can fail?
 └── Library boundary? → Wrap in try/catch, convert to your error types
 ```
 
+## Decision Tree: Runtime
+
+```
+Which runtime?
+├── Server-side web app / API?
+│   ├── Need npm ecosystem compatibility? → Node.js 22+
+│   ├── Want fastest startup + built-in tools? → Bun 1.3
+│   └── Edge/serverless? → Bun or Node with edge adapters
+├── CLI tool?
+│   ├── Fast startup critical? → Bun (no compile step needed)
+│   └── Wide distribution? → Node + tsx or compiled with esbuild
+├── Library?
+│   └── Target both Node + Bun → use standard APIs, test on both
+└── Monorepo tooling?
+    └── Bun workspaces (faster installs, native TS execution)
+```
+
+---
+
+## TypeScript 5.7 Features
+
+```typescript
+// Const type parameters — preserve literal types through generics
+function routes<const T extends readonly string[]>(paths: T): T {
+  return paths;
+}
+const r = routes(["/home", "/about"]); // readonly ["/home", "/about"], not string[]
+
+// satisfies — validate type without widening
+const config = {
+  port: 3000,
+  host: "localhost",
+  debug: true,
+} satisfies Record<string, string | number | boolean>;
+// config.port is `number` (not `string | number | boolean`)
+
+// Using declarations (TS 5.2+ with Symbol.dispose)
+async function processFile(path: string) {
+  using file = await openFile(path); // auto-disposed at end of scope
+  const content = await file.read();
+  return parse(content);
+} // file[Symbol.asyncDispose]() called automatically
+
+// Decorator metadata (stage 3)
+function validate(schema: ZodSchema) {
+  return function <T extends { new (...args: any[]): {} }>(target: T, context: ClassDecoratorContext) {
+    context.metadata.schema = schema;
+    return target;
+  };
+}
+
+// NoInfer utility type — prevent inference from specific positions
+function createFSM<S extends string>(config: {
+  initial: NoInfer<S>;
+  states: S[];
+}) { /* ... */ }
+
+createFSM({ initial: "idle", states: ["idle", "loading", "done"] });
+// Without NoInfer, `initial` would widen the inference
+```
+
 ---
 
 ## Strict Mode Patterns
 
 ```typescript
-// tsconfig.json — non-negotiable settings
+// tsconfig.json — non-negotiable settings for 2026
 {
   "compilerOptions": {
     "strict": true,
@@ -59,7 +120,12 @@ Function can fail?
     "exactOptionalPropertyTypes": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,        // TS 5.7: no enums/namespaces
+    "isolatedDeclarations": true,       // TS 5.5: faster parallel builds
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ES2024"
   }
 }
 ```
@@ -71,15 +137,15 @@ Function can fail?
 ```typescript
 // Discriminated unions — the most powerful pattern
 type ApiResponse<T> =
-  | { status: 'success'; data: T; timestamp: number }
-  | { status: 'error'; error: { code: string; message: string } }
-  | { status: 'loading' };
+  | { status: "success"; data: T; timestamp: number }
+  | { status: "error"; error: { code: string; message: string } }
+  | { status: "loading" };
 
 function handle<T>(response: ApiResponse<T>) {
   switch (response.status) {
-    case 'success': return response.data; // TS knows data exists
-    case 'error': throw new AppError(response.error.code);
-    case 'loading': return null;
+    case "success": return response.data;
+    case "error": throw new AppError(response.error.code);
+    case "loading": return null;
   }
 }
 
@@ -87,18 +153,11 @@ function handle<T>(response: ApiResponse<T>) {
 function isNonNull<T>(value: T | null | undefined): value is T {
   return value != null;
 }
-const results = items.map(transform).filter(isNonNull); // T[], not (T | null)[]
+const results = items.map(transform).filter(isNonNull); // T[]
 
-// Assertion functions — narrow and throw
+// Assertion functions
 function assertDefined<T>(value: T | undefined, msg: string): asserts value is T {
   if (value === undefined) throw new Error(msg);
-}
-
-// in operator narrowing
-type Admin = { role: 'admin'; permissions: string[] };
-type User = { role: 'user'; email: string };
-function getAccess(person: Admin | User) {
-  if ('permissions' in person) return person.permissions; // Admin
 }
 ```
 
@@ -107,75 +166,84 @@ function getAccess(person: Admin | User) {
 ## Generics Patterns
 
 ```typescript
-// Constrained generics
-function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
-  return obj[key];
-}
-
-// Generic with default
+// Constrained generics with defaults
 type Pagination<T, Meta = { total: number; page: number }> = {
   items: T[];
   meta: Meta;
 };
 
-// Infer in conditional types
-type UnwrapPromise<T> = T extends Promise<infer U> ? U : T;
-type Awaited = UnwrapPromise<Promise<string>>; // string
-
-// Generic factory pattern
-function createRepository<T extends { id: string }>(tableName: string) {
-  return {
-    findById: async (id: string): Promise<T | null> => { /* ... */ },
-    create: async (data: Omit<T, 'id'>): Promise<T> => { /* ... */ },
-    update: async (id: string, data: Partial<T>): Promise<T> => { /* ... */ },
-    delete: async (id: string): Promise<void> => { /* ... */ },
-  };
+// Generic factory with const type parameter
+function createEnum<const T extends Record<string, string>>(values: T): T {
+  return Object.freeze(values);
 }
+const Status = createEnum({ Active: "active", Inactive: "inactive" });
+// typeof Status = { readonly Active: "active"; readonly Inactive: "inactive" }
 
 // Builder pattern with generics
-class QueryBuilder<T> {
-  where<K extends keyof T>(field: K, value: T[K]): this { /* ... */ return this; }
-  orderBy<K extends keyof T>(field: K, dir: 'asc' | 'desc'): this { /* ... */ return this; }
-  limit(n: number): this { /* ... */ return this; }
-  execute(): Promise<T[]> { /* ... */ }
+class QueryBuilder<T, Selected extends keyof T = keyof T> {
+  select<K extends keyof T>(...fields: K[]): QueryBuilder<T, K> { return this as any; }
+  where<K extends Selected>(field: K, value: T[K]): this { return this; }
+  execute(): Promise<Pick<T, Selected>[]> { /* ... */ }
 }
+
+// Infer in conditional types
+type UnwrapPromise<T> = T extends Promise<infer U> ? UnwrapPromise<U> : T;
+type EventPayload<T> = T extends { payload: infer P } ? P : never;
 ```
 
 ---
 
-## Utility Types & Patterns
+## Bun 1.3 APIs
 
 ```typescript
-// Built-in utilities you should know
-type Partial<T>       // All properties optional
-type Required<T>      // All properties required
-type Readonly<T>      // All properties readonly
-type Pick<T, K>       // Subset of properties
-type Omit<T, K>       // All except specified properties
-type Record<K, V>     // Object with keys K and values V
-type Extract<T, U>    // Members of T assignable to U
-type Exclude<T, U>    // Members of T not assignable to U
-type NonNullable<T>   // Exclude null and undefined
-type ReturnType<T>    // Return type of function
-type Parameters<T>    // Parameter types as tuple
+// Bun.serve — high-performance HTTP server
+const server = Bun.serve({
+  port: 3000,
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === "/api/users" && req.method === "GET") {
+      const users = await db.query("SELECT * FROM users");
+      return Response.json(users);
+    }
+    return new Response("Not Found", { status: 404 });
+  },
+  websocket: {
+    open(ws) { ws.subscribe("chat"); },
+    message(ws, msg) { ws.publish("chat", msg); },
+  },
+});
 
-// Custom utility: DeepPartial
-type DeepPartial<T> = T extends object
-  ? { [P in keyof T]?: DeepPartial<T[P]> }
-  : T;
+// Bun.file — zero-copy file I/O
+const file = Bun.file("./data.json");
+const data = await file.json(); // Typed, fast
 
-// Custom utility: Branded types (nominal typing)
-type Brand<T, B> = T & { __brand: B };
-type UserId = Brand<string, 'UserId'>;
-type OrderId = Brand<string, 'OrderId'>;
-const createUserId = (id: string): UserId => id as UserId;
+// Bun.spawn — subprocess management
+const proc = Bun.spawn(["esbuild", "--bundle", "src/index.ts"], {
+  stdout: "pipe",
+  stderr: "pipe",
+});
+const output = await new Response(proc.stdout).text();
 
-// Custom utility: Strict omit (errors on invalid keys)
-type StrictOmit<T, K extends keyof T> = Omit<T, K>;
+// Bun test runner (built-in, Jest-compatible)
+import { test, expect, describe, mock } from "bun:test";
 
-// Template literal types
-type EventName = `on${Capitalize<'click' | 'focus' | 'blur'>}`;
-// "onClick" | "onFocus" | "onBlur"
+describe("UserService", () => {
+  test("creates user with hashed password", async () => {
+    const service = new UserService(mockRepo);
+    const user = await service.create({ email: "a@b.com", password: "secret" });
+    expect(user.passwordHash).not.toBe("secret");
+    expect(user.email).toBe("a@b.com");
+  });
+});
+
+// Bun.build — bundler API
+await Bun.build({
+  entrypoints: ["./src/index.ts"],
+  outdir: "./dist",
+  target: "node",
+  splitting: true,
+  minify: true,
+});
 ```
 
 ---
@@ -188,31 +256,23 @@ type Result<T, E = Error> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
-// Helper constructors
 const Ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
 const Err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 
-// Usage
-async function parseConfig(path: string): Result<Config, 'NOT_FOUND' | 'INVALID_JSON'> {
-  const content = await readFile(path).catch(() => null);
-  if (!content) return Err('NOT_FOUND');
-  try {
-    return Ok(JSON.parse(content));
-  } catch {
-    return Err('INVALID_JSON');
-  }
-}
+// Usage with discriminated union errors
+type ParseError = "NOT_FOUND" | "INVALID_JSON" | "SCHEMA_MISMATCH";
 
-// Consuming Result
-const result = await parseConfig('./config.json');
-if (!result.ok) {
-  switch (result.error) {
-    case 'NOT_FOUND': console.error('Config file missing'); break;
-    case 'INVALID_JSON': console.error('Config is malformed'); break;
+async function parseConfig(path: string): Promise<Result<Config, ParseError>> {
+  const content = await readFile(path).catch(() => null);
+  if (!content) return Err("NOT_FOUND");
+  try {
+    const raw = JSON.parse(content);
+    const parsed = ConfigSchema.safeParse(raw);
+    return parsed.success ? Ok(parsed.data) : Err("SCHEMA_MISMATCH");
+  } catch {
+    return Err("INVALID_JSON");
   }
-  process.exit(1);
 }
-// result.value is Config here — fully narrowed
 ```
 
 ---
@@ -220,77 +280,75 @@ if (!result.ok) {
 ## Zod Validation
 
 ```typescript
-import { z } from 'zod';
+import { z } from "zod";
 
-// Schema = runtime validation + static type inference
 const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
   name: z.string().min(1).max(100),
-  role: z.enum(['admin', 'user', 'moderator']),
+  role: z.enum(["admin", "user", "moderator"]),
   createdAt: z.coerce.date(),
-  metadata: z.record(z.unknown()).optional(),
 });
 
-type User = z.infer<typeof UserSchema>; // Static type derived from schema
+type User = z.infer<typeof UserSchema>;
 
-// Validate at boundaries (API handlers, env vars, config files)
+// Environment validation (fail fast at startup)
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  NODE_ENV: z.enum(['development', 'production', 'test']),
+  NODE_ENV: z.enum(["development", "production", "test"]),
   API_KEY: z.string().min(32),
 });
 export const env = EnvSchema.parse(process.env);
+```
 
-// Transform + validate
-const CreateUserInput = UserSchema.omit({ id: true, createdAt: true }).extend({
-  password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
-});
+---
+
+## Utility Types & Branded Types
+
+```typescript
+// Branded types — nominal typing in a structural type system
+type Brand<T, B extends string> = T & { readonly __brand: B };
+type UserId = Brand<string, "UserId">;
+type OrderId = Brand<string, "OrderId">;
+
+function createUserId(id: string): UserId { return id as UserId; }
+// createUserId("abc") cannot be passed where OrderId is expected
+
+// DeepPartial for nested config overrides
+type DeepPartial<T> = T extends object
+  ? { [P in keyof T]?: DeepPartial<T[P]> }
+  : T;
+
+// Template literal types
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+type ApiRoute = `/${string}`;
+type RouteHandler = `${Lowercase<HttpMethod>} ${ApiRoute}`;
+
+// Exhaustive switch helper
+function assertNever(x: never): never {
+  throw new Error(`Unexpected value: ${JSON.stringify(x)}`);
+}
 ```
 
 ---
 
 ## Anti-Patterns
 
-| ❌ Don't | ✅ Do Instead |
-|----------|---------------|
+| Don't | Do Instead |
+|-------|------------|
 | `any` | `unknown` + type narrowing |
-| `@ts-ignore` / `@ts-expect-error` without comment | Fix the type or add explanation |
+| `@ts-ignore` without comment | Fix the type or use `@ts-expect-error` with explanation |
 | `as` type assertions | Type guards or discriminated unions |
-| `enum` (runtime overhead, quirks) | `as const` objects or union types |
+| `enum` (runtime overhead) | `as const` objects or union types |
 | `!` non-null assertion | Proper null checks or `assertDefined` |
-| Barrel files (`index.ts` re-exports) at scale | Direct imports (better tree-shaking) |
+| Barrel files at scale | Direct imports (better tree-shaking) |
 | `Function` type | Specific signature: `(args: T) => R` |
 | `Object` / `{}` type | `Record<string, unknown>` or specific shape |
 | Mutable global state | Dependency injection or module-scoped |
 | `eval()` or `new Function()` | Never. No exceptions. |
-
----
-
-## Code Templates
-
-### API Route Handler (type-safe)
-```typescript
-import { z } from 'zod';
-
-const ParamsSchema = z.object({ id: z.string().uuid() });
-const BodySchema = z.object({ name: z.string().min(1) });
-
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  const { id } = ParamsSchema.parse(params);
-  const body = BodySchema.parse(await req.json());
-  const updated = await db.user.update({ where: { id }, data: body });
-  return Response.json(updated);
-}
-```
-
-### Exhaustive Switch
-```typescript
-function assertNever(x: never): never {
-  throw new Error(`Unexpected value: ${x}`);
-}
-```
+| `namespace` | ES modules |
+| Default exports | Named exports (better refactoring, auto-import) |
 
 ---
 
@@ -298,23 +356,12 @@ function assertNever(x: never): never {
 
 Before considering TypeScript work done:
 - [ ] `strict: true` in tsconfig — no exceptions
-- [ ] Zero `any` types (search codebase: `grep -r ": any"`)
+- [ ] Zero `any` types (search: `grep -r ": any"`)
 - [ ] All external data validated at boundaries (Zod or equivalent)
 - [ ] Error cases handled explicitly (Result type or try/catch)
 - [ ] No type assertions (`as`) without justification comment
 - [ ] Generics used where code is duplicated across types
 - [ ] Discriminated unions for state machines / API responses
 - [ ] `noUncheckedIndexedAccess` enabled for array/object safety
-- [ ] Exported types have JSDoc comments
 - [ ] `tsc --noEmit` passes with zero errors
-
----
-
-## MCP Integration
-
-| Tool | Use For |
-|------|---------|
-| `context7` | Look up TypeScript compiler options, Zod API, utility types |
-| `sequential-thinking` | Design complex type hierarchies and generics |
-| `grep` | Find `any` types, `@ts-ignore`, type assertion patterns |
-| `bash` | Run `tsc --noEmit` to verify type safety |
+- [ ] `isolatedDeclarations` enabled for library code

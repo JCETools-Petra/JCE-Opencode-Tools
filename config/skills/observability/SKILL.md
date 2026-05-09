@@ -4,7 +4,6 @@ description: OpenTelemetry, Prometheus, Grafana, tracing, SLO/SLI, alerting
 ---
 
 # Skill: Observability
-# Loaded on-demand when task involves monitoring, logging, tracing, metrics, alerting, or SLO/SLI
 
 ## Auto-Detect
 
@@ -16,51 +15,77 @@ Trigger this skill when:
 
 ---
 
-## Three Pillars Decision Tree
+## Decision Tree: Observability Signal
 
 ```
 What do you need to understand?
 ├── What happened? (discrete events)
-│   └── LOGS — structured, contextual, searchable
+│   └── LOGS — structured JSON, contextual, searchable
+│       └── Tool: Pino/Winston → Loki/Elasticsearch
 ├── How much / how fast? (aggregated measurements)
 │   └── METRICS — counters, gauges, histograms
+│       └── Tool: prom-client / OTel Metrics → Prometheus → Grafana
 ├── Where did time go? (request flow across services)
 │   └── TRACES — spans with parent-child relationships
-└── All three together?
-    └── OpenTelemetry (unified SDK, correlate via trace_id)
+│       └── Tool: OTel SDK → Jaeger/Tempo
+└── Correlate all three?
+    └── OpenTelemetry (unified SDK, trace_id links everything)
+```
+
+## Decision Tree: Alerting Strategy
+
+```
+Should this alert page someone?
+├── Does it require immediate human action? → Yes, page
+├── Can it wait until business hours? → Ticket (not page)
+├── Is it informational only? → Dashboard/log (no alert)
+├── Is it based on symptoms (user impact)? → Good alert
+├── Is it based on causes (CPU high)? → Usually bad alert
+└── Does it have a runbook? → Required for any page-level alert
 ```
 
 ---
 
-## OpenTelemetry Setup (TypeScript)
+## OpenTelemetry SDK Setup
 
 ```typescript
+// instrumentation.ts — load BEFORE any other imports
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { Resource } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
+const resource = new Resource({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME ?? 'unknown',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION ?? '0.0.0',
+  'deployment.environment': process.env.NODE_ENV ?? 'development',
+});
+
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [ATTR_SERVICE_NAME]: 'order-service',
-    [ATTR_SERVICE_VERSION]: '1.4.2',
-    'deployment.environment': process.env.NODE_ENV,
-  }),
+  resource,
   traceExporter: new OTLPTraceExporter({
-    url: 'http://otel-collector:4318/v1/traces',
+    url: `${process.env.OTEL_ENDPOINT}/v1/traces`,
   }),
   metricReader: new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
-      url: 'http://otel-collector:4318/v1/metrics',
+      url: `${process.env.OTEL_ENDPOINT}/v1/metrics`,
     }),
-    exportIntervalMillis: 15000,
+    exportIntervalMillis: 15_000,
   }),
+  logRecordProcessor: new BatchLogRecordProcessor(
+    new OTLPLogExporter({ url: `${process.env.OTEL_ENDPOINT}/v1/logs` })
+  ),
   instrumentations: [
     getNodeAutoInstrumentations({
-      '@opentelemetry/instrumentation-fs': { enabled: false }, // Too noisy
+      '@opentelemetry/instrumentation-fs': { enabled: false },
+      '@opentelemetry/instrumentation-http': {
+        ignoreIncomingPaths: ['/healthz', '/readyz', '/metrics'],
+      },
     }),
   ],
 });
@@ -71,203 +96,142 @@ process.on('SIGTERM', () => sdk.shutdown());
 
 ---
 
-## Structured Logging
+## Distributed Tracing: Custom Spans
+
+```typescript
+import { trace, SpanKind, SpanStatusCode, context, propagation } from '@opentelemetry/api';
+
+const tracer = trace.getTracer('order-service', '1.0.0');
+
+async function processOrder(order: Order): Promise<void> {
+  return tracer.startActiveSpan('processOrder', {
+    kind: SpanKind.INTERNAL,
+    attributes: {
+      'order.id': order.id,
+      'order.item_count': order.items.length,
+      'order.total_cents': Math.round(order.total * 100),
+    },
+  }, async (span) => {
+    try {
+      // Child span for external call
+      const result = await tracer.startActiveSpan('payment.charge', {
+        kind: SpanKind.CLIENT,
+        attributes: { 'payment.method': order.paymentMethod },
+      }, async (paymentSpan) => {
+        const res = await paymentService.charge(order);
+        paymentSpan.setAttribute('payment.transaction_id', res.txId);
+        paymentSpan.setStatus({ code: SpanStatusCode.OK });
+        paymentSpan.end();
+        return res;
+      });
+
+      span.addEvent('payment_completed', { 'transaction.id': result.txId });
+      span.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      span.recordException(error);
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+// Propagate context to async workers (e.g., queue messages)
+function injectTraceContext(): Record<string, string> {
+  const carrier: Record<string, string> = {};
+  propagation.inject(context.active(), carrier);
+  return carrier; // Add as message headers
+}
+```
+
+---
+
+## Log Correlation
 
 ```typescript
 import pino from 'pino';
+import { trace, context } from '@opentelemetry/api';
 
-// Base logger with service context
 const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL ?? 'info',
   formatters: {
-    level: (label) => ({ level: label }), // Use string labels, not numbers
+    level: (label) => ({ level: label }),
   },
-  base: {
-    service: 'order-service',
-    version: '1.4.2',
-    environment: process.env.NODE_ENV,
+  mixin() {
+    // Auto-inject trace context into every log line
+    const span = trace.getSpan(context.active());
+    if (span) {
+      const ctx = span.spanContext();
+      return { traceId: ctx.traceId, spanId: ctx.spanId };
+    }
+    return {};
   },
   redact: ['req.headers.authorization', 'body.password', 'body.creditCard'],
   timestamp: pino.stdTimeFunctions.isoTime,
 });
 
-// Request-scoped logger with trace context
-function createRequestLogger(req: Request): pino.Logger {
-  return logger.child({
-    requestId: req.headers['x-request-id'],
-    traceId: req.headers['traceparent']?.split('-')[1],
-    userId: req.user?.id,
-    method: req.method,
-    path: req.url,
-  });
-}
+// Usage — structured fields, not string interpolation
+logger.info({ orderId, itemCount: items.length, total }, 'Order created');
+logger.error({ err, orderId, retryCount }, 'Payment processing failed');
 
-// Usage — structured, not string interpolation
-log.info({ orderId, itemCount: items.length, total }, 'Order created');
-log.error({ err, orderId, retryCount }, 'Payment processing failed');
-
-// NEVER do this:
-// log.info(`Order ${orderId} created with ${items.length} items`); // Unsearchable
+// NEVER: logger.info(`Order ${orderId} created`) — unsearchable, no correlation
 ```
-
-### Log Levels Guide
-
-| Level | Use For | Example |
-|-------|---------|---------|
-| `fatal` | App cannot continue | Database connection pool exhausted |
-| `error` | Operation failed, needs attention | Payment gateway timeout after retries |
-| `warn` | Degraded but functional | Cache miss rate > 50%, using fallback |
-| `info` | Business events, state changes | Order created, user signed up |
-| `debug` | Diagnostic detail | SQL query executed, cache hit/miss |
-| `trace` | Very verbose, development only | Function entry/exit, variable values |
 
 ---
 
-## Metrics with Prometheus
+## Custom Metrics
 
 ```typescript
-import { Counter, Histogram, Gauge, Registry } from 'prom-client';
+import { metrics } from '@opentelemetry/api';
 
-const registry = new Registry();
+const meter = metrics.getMeter('order-service', '1.0.0');
 
-// RED metrics (Rate, Errors, Duration) — for every service
-const httpRequestsTotal = new Counter({
-  name: 'http_requests_total',
-  help: 'Total HTTP requests',
-  labelNames: ['method', 'path', 'status_code'] as const,
-  registers: [registry],
+// Counter — monotonically increasing (requests, errors, events)
+const ordersCreated = meter.createCounter('orders.created', {
+  description: 'Total orders created',
+  unit: '1',
 });
 
-const httpRequestDuration = new Histogram({
-  name: 'http_request_duration_seconds',
-  help: 'HTTP request duration in seconds',
-  labelNames: ['method', 'path', 'status_code'] as const,
-  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-  registers: [registry],
+// Histogram — distribution of values (latency, sizes)
+const orderProcessingDuration = meter.createHistogram('orders.processing_duration', {
+  description: 'Time to process an order',
+  unit: 'ms',
+  advice: { explicitBucketBoundaries: [10, 50, 100, 250, 500, 1000, 2500, 5000] },
 });
 
-// USE metrics (Utilization, Saturation, Errors) — for resources
-const dbPoolUtilization = new Gauge({
-  name: 'db_pool_utilization_ratio',
-  help: 'Database connection pool utilization (0-1)',
-  registers: [registry],
+// Gauge — point-in-time value (queue depth, connections, temperature)
+const queueDepth = meter.createObservableGauge('queue.depth', {
+  description: 'Current messages in queue',
+});
+queueDepth.addCallback((result) => {
+  result.observe(getQueueDepth(), { queue: 'orders' });
 });
 
-const queueDepth = new Gauge({
-  name: 'queue_depth',
-  help: 'Number of messages waiting in queue',
-  labelNames: ['queue_name'] as const,
-  registers: [registry],
-});
-
-// Business metrics
-const ordersCreated = new Counter({
-  name: 'orders_created_total',
-  help: 'Total orders created',
-  labelNames: ['payment_method', 'region'] as const,
-  registers: [registry],
-});
-
-// Middleware to record metrics
-function metricsMiddleware(req: Request, res: Response, next: NextFunction) {
-  const end = httpRequestDuration.startTimer();
-  res.on('finish', () => {
-    const labels = { method: req.method, path: req.route?.path || 'unknown', status_code: res.statusCode };
-    httpRequestsTotal.inc(labels);
-    end(labels);
-  });
-  next();
+// Usage in business logic
+async function createOrder(input: OrderInput): Promise<Order> {
+  const start = performance.now();
+  try {
+    const order = await db.orders.create({ data: input });
+    ordersCreated.add(1, { payment_method: input.paymentMethod, region: input.region });
+    return order;
+  } finally {
+    orderProcessingDuration.record(performance.now() - start, { status: 'success' });
+  }
 }
 ```
 
 ---
 
-## SLO/SLI/SLA Framework
-
-```
-SLA (Agreement) → What you promise to customers (contractual)
-SLO (Objective) → Internal target, stricter than SLA (operational)
-SLI (Indicator) → The actual measurement (technical)
-
-Example:
-  SLA: 99.9% availability (contractual, with penalties)
-  SLO: 99.95% availability (internal target, gives buffer)
-  SLI: (successful requests / total requests) over 30-day window
-```
-
-### Defining SLOs
+## Alerting: Multi-Window Burn Rate
 
 ```yaml
-# slo.yaml — machine-readable SLO definitions
-slos:
-  - name: order-api-availability
-    description: "Order API returns successful responses"
-    sli:
-      type: availability
-      good_events: "http_requests_total{status_code!~'5..'}"
-      total_events: "http_requests_total"
-    objective: 99.95
-    window: 30d
-    error_budget: 0.05  # 21.6 minutes/month
-
-  - name: order-api-latency
-    description: "Order API responds within acceptable time"
-    sli:
-      type: latency
-      threshold: 500ms
-      good_events: "http_request_duration_seconds_bucket{le='0.5'}"
-      total_events: "http_requests_total"
-    objective: 99.0
-    window: 30d
-
-  - name: payment-processing
-    description: "Payments complete successfully"
-    sli:
-      type: quality
-      good_events: "payments_total{status='success'}"
-      total_events: "payments_total"
-    objective: 99.9
-    window: 7d
-```
-
-### Error Budget Calculation
-
-```typescript
-interface ErrorBudget {
-  sloTarget: number;          // e.g., 99.95
-  windowDays: number;         // e.g., 30
-  totalRequests: number;      // in window
-  failedRequests: number;     // in window
-  budgetTotal: number;        // allowed failures
-  budgetRemaining: number;    // failures left before breach
-  budgetConsumedPercent: number;
-  burnRate: number;           // current consumption rate
-}
-
-function calculateErrorBudget(slo: SLO, metrics: WindowMetrics): ErrorBudget {
-  const budgetTotal = metrics.totalRequests * (1 - slo.objective / 100);
-  const budgetRemaining = budgetTotal - metrics.failedRequests;
-  const budgetConsumedPercent = (metrics.failedRequests / budgetTotal) * 100;
-  const elapsedRatio = metrics.elapsedDays / slo.windowDays;
-  const burnRate = budgetConsumedPercent / (elapsedRatio * 100);
-
-  return { ...slo, ...metrics, budgetTotal, budgetRemaining, budgetConsumedPercent, burnRate };
-}
-```
-
----
-
-## Alerting Strategy
-
-### Multi-Window Burn Rate Alerts (Google SRE approach)
-
-```yaml
-# Prometheus alerting rules
+# Prometheus alerting rules — Google SRE burn rate approach
 groups:
   - name: slo-burn-rate
     rules:
-      # Page: 2% budget consumed in 1 hour (14.4x burn rate)
-      - alert: HighErrorBurnRate_Page
+      # PAGE: 2% budget consumed in 1 hour (14.4x burn rate)
+      - alert: HighBurnRate_Page
         expr: |
           (
             sum(rate(http_requests_total{status_code=~"5.."}[1h]))
@@ -282,10 +246,11 @@ groups:
         labels:
           severity: page
         annotations:
-          summary: "High error burn rate — will exhaust budget in 2.5 days"
+          summary: "High error burn rate — budget exhausts in ~2.5 days"
+          runbook: "https://wiki.internal/runbooks/high-error-rate"
 
-      # Ticket: 5% budget consumed in 6 hours (2x burn rate)
-      - alert: HighErrorBurnRate_Ticket
+      # TICKET: 5% budget consumed in 6 hours (2x burn rate)
+      - alert: HighBurnRate_Ticket
         expr: |
           (
             sum(rate(http_requests_total{status_code=~"5.."}[6h]))
@@ -298,58 +263,27 @@ groups:
           summary: "Elevated error rate — investigate within business hours"
 ```
 
-### Alert Quality Checklist
-
-- [ ] Does this alert require human action? (If not, don't alert)
-- [ ] Is the alert actionable? (Runbook linked?)
-- [ ] Does it fire before customers notice? (Leading indicator)
-- [ ] Is it based on symptoms, not causes? (Alert on error rate, not CPU)
-- [ ] Does it have appropriate severity? (Page vs ticket vs log)
-- [ ] Is there a clear owner? (Routing to correct team)
-
 ---
 
-## Distributed Tracing Best Practices
+## Dashboard Design Principles
 
-```typescript
-import { trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+```
+RED method (for services):
+  - Rate: requests per second
+  - Errors: error rate (5xx / total)
+  - Duration: latency percentiles (p50, p95, p99)
 
-const tracer = trace.getTracer('order-service');
+USE method (for resources):
+  - Utilization: % of capacity used (CPU, memory, disk)
+  - Saturation: queue depth, thread pool exhaustion
+  - Errors: hardware/resource errors
 
-async function processOrder(order: Order): Promise<void> {
-  // Create a span for the operation
-  return tracer.startActiveSpan('processOrder', {
-    kind: SpanKind.INTERNAL,
-    attributes: {
-      'order.id': order.id,
-      'order.item_count': order.items.length,
-      'order.total': order.total,
-    },
-  }, async (span) => {
-    try {
-      // Child span for payment
-      await tracer.startActiveSpan('chargePayment', {
-        kind: SpanKind.CLIENT,
-        attributes: { 'payment.method': order.paymentMethod },
-      }, async (paymentSpan) => {
-        await paymentService.charge(order);
-        paymentSpan.setStatus({ code: SpanStatusCode.OK });
-        paymentSpan.end();
-      });
-
-      // Add event (point-in-time annotation)
-      span.addEvent('payment_completed', { 'payment.transaction_id': txId });
-
-      span.setStatus({ code: SpanStatusCode.OK });
-    } catch (error) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
-      span.recordException(error);
-      throw error;
-    } finally {
-      span.end();
-    }
-  });
-}
+Dashboard layout (top to bottom):
+  1. SLO status (budget remaining, burn rate) — the "so what"
+  2. RED metrics — service health at a glance
+  3. USE metrics — resource health
+  4. Deployment markers — correlate changes with impact
+  5. Dependency health — downstream service status
 ```
 
 ---
@@ -358,41 +292,26 @@ async function processOrder(order: Order): Promise<void> {
 
 | Anti-Pattern | Problem | Solution |
 |---|---|---|
-| Logging PII/secrets | Compliance violation, security risk | Redact at logger level, use allowlists |
-| High-cardinality labels | Prometheus OOM, slow queries | Never use userId/requestId as metric label |
+| High-cardinality metric labels | Prometheus OOM, slow queries | Never use userId/requestId as label; use traces |
 | Alert on every error | Alert fatigue, ignored pages | Alert on SLO burn rate, not individual errors |
-| No correlation between pillars | Can't connect log → trace → metric | Use trace_id in logs, exemplars in metrics |
-| Sampling at 100% in production | Storage costs explode | Head-based sampling 1-10%, tail-based for errors |
-| Dashboard without runbook | Alert fires, nobody knows what to do | Every alert links to a runbook |
-| Monitoring only happy path | Blind to degradation | Monitor error paths, timeouts, retries |
+| No trace-log correlation | Can't connect log entry to request flow | Inject traceId into every log line via mixin |
+| 100% trace sampling in prod | Storage costs explode | Head-based 1-10%, tail-based for errors/slow |
+| Dashboard without runbook | Alert fires, nobody knows what to do | Every page-level alert links to a runbook |
 | String-based log parsing | Fragile, slow, breaks on format change | Structured JSON logging from day one |
+| Monitoring only happy path | Blind to degradation | Monitor error paths, timeouts, retries, DLQ |
+| Logging PII/secrets | Compliance violation, breach risk | Redact at logger level with allowlists |
 
 ---
 
-## Runbook Template
+## Verification Checklist
 
-```markdown
-## Alert: [Alert Name]
-
-### What it means
-[One sentence explaining the symptom]
-
-### Impact
-[What users experience when this fires]
-
-### Investigation Steps
-1. Check [dashboard link] for the affected service
-2. Look at recent deployments: `kubectl rollout history deployment/X`
-3. Check dependent services: [list]
-4. Review logs: `query: {service="X", level="error"} | json`
-
-### Mitigation
-- [ ] If caused by deployment → rollback: `kubectl rollout undo deployment/X`
-- [ ] If caused by traffic spike → scale: `kubectl scale deployment/X --replicas=N`
-- [ ] If caused by dependency → enable circuit breaker / failover
-
-### Escalation
-- Primary: @team-channel
-- Secondary (after 15min): @oncall-lead
-- P1 (data loss risk): @engineering-director
-```
+- [ ] OTel SDK initialized before all other imports
+- [ ] All services emit traces, metrics, and structured logs
+- [ ] Trace context propagated across HTTP, gRPC, and message queues
+- [ ] Log lines include traceId and spanId for correlation
+- [ ] RED metrics (rate, errors, duration) exposed for every service
+- [ ] SLO burn-rate alerts configured (page + ticket severity)
+- [ ] Every page-level alert has a linked runbook
+- [ ] No high-cardinality labels in metrics (userId, requestId, etc.)
+- [ ] PII redacted from logs (authorization headers, passwords, PII fields)
+- [ ] Dashboards follow RED/USE layout with deployment markers

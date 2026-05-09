@@ -6,41 +6,94 @@ description: Angular, signals, RxJS, standalone components
 # Skill: Angular
 # Loaded on-demand when working with Angular, .component.ts files
 
-## Standalone Components (Default since Angular 17)
+## Auto-Detect
+
+Trigger this skill when:
+- File extensions: `.component.ts`, `.service.ts`, `.module.ts`, `.directive.ts`
+- `package.json` contains: `@angular/core`, `@angular/cli`
+- Imports from: `@angular/core`, `@angular/common`, `@angular/router`
+- Directory patterns: `src/app/`, `angular.json`
+
+---
+
+## Decision Tree: State Management
+
+```
+Need to store data?
+├── Component-local UI state? → signal()
+├── Derived from other signals? → computed()
+├── Side effect on signal change? → effect()
+├── Shared across components (same module)? → Service with signals
+├── App-wide state (auth, theme)? → Injectable service (providedIn: 'root')
+├── Complex state with actions/selectors? → NgRx SignalStore
+├── Server data (API responses)? → HttpClient + signal or NgRx ComponentStore
+├── Form state? → Reactive Forms (FormBuilder)
+└── URL-driven state? → Router params/query + toSignal()
+```
+
+## Decision Tree: Component Communication
+
+```
+How do components communicate?
+├── Parent → Child? → input() signal
+├── Child → Parent? → output() signal
+├── Two-way binding? → model() signal
+├── Deeply nested (avoid prop drilling)? → Service with inject()
+├── Sibling components? → Shared service or parent mediator
+├── Cross-feature modules? → Root-level service or NgRx store
+└── Template reference? → viewChild() / viewChildren() signals
+```
+
+---
+
+## Angular 19 — Standalone & Zoneless
 
 ```typescript
-// No NgModule needed — components are self-contained
+// Standalone components are the DEFAULT — no NgModule needed
 @Component({
   selector: 'app-user-card',
-  standalone: true,
-  imports: [CommonModule, RouterLink, UserAvatarComponent],
+  standalone: true, // implicit in Angular 19, can omit
+  imports: [RouterLink, DatePipe, UserAvatarComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="card">
       <app-user-avatar [src]="user().avatar" />
       <h3>{{ user().name }}</h3>
+      <time>{{ user().createdAt | date:'mediumDate' }}</time>
       <a [routerLink]="['/users', user().id]">View Profile</a>
     </div>
   `,
 })
 export class UserCardComponent {
-  user = input.required<User>(); // signal-based input (Angular 17+)
+  user = input.required<User>();
 }
 
-// Bootstrap without NgModule
+// Bootstrap without NgModule — Angular 19
 // main.ts
+import { bootstrapApplication } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideExperimentalZonelessChangeDetection } from '@angular/core';
+
 bootstrapApplication(AppComponent, {
   providers: [
     provideRouter(routes),
     provideHttpClient(withInterceptors([authInterceptor])),
-    provideAnimations(),
+    provideExperimentalZonelessChangeDetection(), // Zoneless mode!
+    provideAnimationsAsync(),
   ],
 });
+
+// With zoneless: no zone.js import needed, smaller bundle,
+// change detection driven entirely by signals and markForCheck
 ```
 
-## Signals (Angular 16+)
+---
+
+## Signals (Angular 19)
 
 ```typescript
-import { signal, computed, effect, untracked } from '@angular/core';
+import { signal, computed, effect, untracked, linkedSignal } from '@angular/core';
 
 @Component({ /* ... */ })
 export class DashboardComponent {
@@ -52,35 +105,55 @@ export class DashboardComponent {
   total = computed(() => this.items().reduce((sum, i) => sum + i.price, 0));
   isEmpty = computed(() => this.items().length === 0);
 
-  // Signal-based inputs (Angular 17.1+)
+  // Signal-based inputs
   name = input<string>('default');          // optional with default
   id = input.required<string>();            // required
   label = input<string, number>(0, {        // with transform
     transform: (v: number) => `Item #${v}`,
   });
 
-  // Signal-based outputs (Angular 17.1+)
+  // Signal-based outputs
   saved = output<User>();
   deleted = output<string>();
 
-  // model() — two-way binding signal (replaces @Input + @Output pattern)
+  // model() — two-way binding signal
   value = model<string>('');  // parent uses [(value)]="something"
+
+  // viewChild / viewChildren — signal-based queries
+  chart = viewChild<ElementRef>('chart');
+  items = viewChildren(ItemComponent);
+
+  // linkedSignal — derived writable signal (Angular 19)
+  selectedIndex = linkedSignal(() => {
+    // Resets to 0 whenever items change
+    this.items();
+    return 0;
+  });
 
   // Effect — runs when tracked signals change
   constructor() {
     effect(() => {
-      console.log(`Count changed to: ${this.count()}`);
-      // Use untracked() to read signals without tracking
+      console.log(`Count: ${this.count()}`);
+      // untracked: read without tracking
       const items = untracked(() => this.items());
+    });
+
+    // effect with cleanup
+    effect((onCleanup) => {
+      const sub = this.someObservable$.subscribe();
+      onCleanup(() => sub.unsubscribe());
     });
   }
 
   increment() {
     this.count.update(c => c + 1);
-    // .set() for direct assignment, .update() for functional
+    // .set() for direct assignment
+    // .update() for functional update
   }
 }
 ```
+
+---
 
 ## Angular 17+ Control Flow
 
@@ -112,19 +185,29 @@ export class DashboardComponent {
 @defer (on viewport) {
   <app-heavy-chart [data]="chartData()" />
 } @placeholder {
-  <div class="chart-placeholder">Chart loads when scrolled into view</div>
+  <div class="chart-placeholder">Chart loads when visible</div>
 } @loading (minimum 500ms) {
   <app-spinner />
 } @error {
   <p>Failed to load chart</p>
 }
-<!-- Triggers: on viewport, on idle, on interaction, on hover, on timer(5s), when condition -->
+
+<!-- @defer triggers:
+  on viewport    — element enters viewport
+  on idle        — browser is idle
+  on interaction — user interacts with placeholder
+  on hover       — user hovers over placeholder
+  on timer(5s)   — after delay
+  when condition — boolean expression becomes true
+  Prefetch: @defer (on interaction; prefetch on idle) -->
 ```
+
+---
 
 ## Dependency Injection
 
 ```typescript
-// Service with providedIn (tree-shakable)
+// Service with providedIn (tree-shakable singleton)
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private http = inject(HttpClient);
@@ -132,73 +215,90 @@ export class AuthService {
 
   currentUser = signal<User | null>(null);
   isAuthenticated = computed(() => this.currentUser() !== null);
+  token = signal<string | null>(null);
 
-  login(credentials: Credentials) {
-    return this.http.post<AuthResponse>('/api/login', credentials).pipe(
-      tap(res => this.currentUser.set(res.user)),
+  async login(credentials: Credentials) {
+    const res = await firstValueFrom(
+      this.http.post<AuthResponse>('/api/login', credentials)
     );
+    this.currentUser.set(res.user);
+    this.token.set(res.token);
+  }
+
+  logout() {
+    this.currentUser.set(null);
+    this.token.set(null);
+    this.router.navigate(['/login']);
   }
 }
 
-// inject() function (preferred over constructor injection)
+// inject() function — preferred over constructor injection
 @Component({ /* ... */ })
 export class ProfileComponent {
   private auth = inject(AuthService);
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
 }
 
 // InjectionToken for non-class dependencies
-export const API_URL = new InjectionToken<string>('API_URL');
-// Provide: { provide: API_URL, useValue: 'https://api.example.com' }
-// Inject: private apiUrl = inject(API_URL);
+export const API_BASE_URL = new InjectionToken<string>('API_BASE_URL');
+// Provide: { provide: API_BASE_URL, useValue: environment.apiUrl }
+// Inject: private apiUrl = inject(API_BASE_URL);
+
+// Factory provider
+export const LOGGER = new InjectionToken<Logger>('Logger', {
+  providedIn: 'root',
+  factory: () => inject(EnvironmentService).isProd
+    ? new ProductionLogger()
+    : new ConsoleLogger(),
+});
 ```
 
-## RxJS Patterns
+---
+
+## RxJS + Signals Interop
 
 ```typescript
-import { switchMap, combineLatest, catchError, retry, debounceTime, distinctUntilChanged } from 'rxjs';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 
 @Component({ /* ... */ })
 export class SearchComponent {
   private http = inject(HttpClient);
   private destroyRef = inject(DestroyRef);
 
-  searchControl = new FormControl('');
+  query = signal('');
 
-  // Search with debounce — switchMap cancels previous requests
-  results$ = this.searchControl.valueChanges.pipe(
+  // toObservable: convert Signal → Observable (for RxJS pipelines)
+  private query$ = toObservable(this.query);
+
+  // RxJS pipeline for debounced search
+  private results$ = this.query$.pipe(
     debounceTime(300),
     distinctUntilChanged(),
-    switchMap(query => query
-      ? this.http.get<Result[]>(`/api/search?q=${query}`).pipe(
-          retry(2),
-          catchError(() => of([])),
-        )
-      : of([])
+    filter(q => q.length >= 2),
+    switchMap(query =>
+      this.http.get<Result[]>(`/api/search?q=${query}`).pipe(
+        retry(2),
+        catchError(() => of([])),
+      )
     ),
   );
 
-  // Combine multiple streams
-  vm$ = combineLatest({
-    user: this.auth.currentUser$,
-    notifications: this.notifications.unread$,
-    theme: this.settings.theme$,
-  });
-
-  // toSignal: convert Observable to Signal (Angular 16+)
+  // toSignal: convert Observable → Signal (for template)
   results = toSignal(this.results$, { initialValue: [] });
 
-  // toObservable: convert Signal to Observable
-  count$ = toObservable(this.count);
-
-  // Cleanup with takeUntilDestroyed
-  constructor() {
-    this.someObservable$.pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe(value => { /* ... */ });
-  }
+  // Resource API (Angular 19) — signal-based async data
+  private userId = input.required<string>();
+  userResource = resource({
+    request: () => ({ id: this.userId() }),
+    loader: ({ request, abortSignal }) =>
+      fetch(`/api/users/${request.id}`, { signal: abortSignal }).then(r => r.json()),
+  });
+  // userResource.value(), userResource.status(), userResource.reload()
 }
 ```
+
+---
 
 ## Reactive Forms
 
@@ -216,16 +316,11 @@ export class RegistrationComponent {
       city: ['', Validators.required],
       zip: ['', [Validators.required, Validators.pattern(/^\d{5}$/)]],
     }),
-    tags: this.fb.array<FormControl<string>>([]),
   });
-
-  addTag(tag: string) {
-    this.form.controls.tags.push(this.fb.control(tag));
-  }
 
   onSubmit() {
     if (this.form.invalid) {
-      this.form.markAllAsTouched(); // show all validation errors
+      this.form.markAllAsTouched();
       return;
     }
     const value = this.form.getRawValue(); // fully typed
@@ -240,17 +335,16 @@ export class RegistrationComponent {
   @if (form.controls.name.errors?.['required'] && form.controls.name.touched) {
     <span class="error">Name is required</span>
   }
-
   <div formGroupName="address">
     <input formControlName="city" />
-    <input formControlName="zip" />
   </div>
-
   <button type="submit" [disabled]="form.invalid">Register</button>
 </form>
 ```
 
-## Routing
+---
+
+## Routing (Standalone)
 
 ```typescript
 export const routes: Routes = [
@@ -276,16 +370,20 @@ export const routes: Routes = [
 ];
 ```
 
-## HttpClient & Interceptors
+---
+
+## HttpClient & Functional Interceptors
 
 ```typescript
 // Functional interceptor (Angular 15+)
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const token = auth.token();
+
   if (token) {
     req = req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
   }
+
   return next(req).pipe(
     catchError(err => {
       if (err.status === 401) auth.logout();
@@ -294,34 +392,33 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   );
 };
 
-// Register: provideHttpClient(withInterceptors([authInterceptor, loggingInterceptor]))
+// Retry interceptor
+export const retryInterceptor: HttpInterceptorFn = (req, next) => {
+  return next(req).pipe(
+    retry({ count: 2, delay: 1000 }),
+  );
+};
+
+// Register: provideHttpClient(withInterceptors([authInterceptor, retryInterceptor]))
 ```
 
-## Change Detection
+---
+
+## NgRx SignalStore
 
 ```typescript
-@Component({
-  changeDetection: ChangeDetectionStrategy.OnPush, // ALWAYS use for performance
-  // With signals, OnPush works automatically — signals notify the framework
-})
-export class OptimizedComponent {
-  // Signals + OnPush = optimal change detection
-  data = signal<Data | null>(null);
+import { signalStore, withState, withComputed, withMethods, patchState } from '@ngrx/signals';
 
-  // For Observable-based code with OnPush, use async pipe
-  // {{ data$ | async }} — auto-subscribes and triggers change detection
-}
-```
+type TodoState = { items: Todo[]; filter: 'all' | 'active' | 'done'; loading: boolean };
 
-## State Management (NgRx SignalStore)
-
-```typescript
 export const TodoStore = signalStore(
+  { providedIn: 'root' },
   withState<TodoState>({ items: [], filter: 'all', loading: false }),
   withComputed(({ items, filter }) => ({
     filteredItems: computed(() => {
       const f = filter();
-      return f === 'all' ? items() : items().filter(i => i.status === f);
+      if (f === 'all') return items();
+      return items().filter(i => i.status === f);
     }),
     count: computed(() => items().length),
   })),
@@ -331,14 +428,24 @@ export const TodoStore = signalStore(
       const items = await firstValueFrom(http.get<Todo[]>('/api/todos'));
       patchState(store, { items, loading: false });
     },
-    setFilter(filter: TodoFilter) {
+    add(todo: Todo) {
+      patchState(store, { items: [...store.items(), todo] });
+    },
+    setFilter(filter: TodoState['filter']) {
       patchState(store, { filter });
     },
   })),
 );
 
-// Usage: inject(TodoStore) in component
+// Usage in component
+@Component({ providers: [TodoStore] }) // or inject from root
+export class TodoListComponent {
+  store = inject(TodoStore);
+  // store.filteredItems(), store.loading(), store.loadAll()
+}
 ```
+
+---
 
 ## Testing
 
@@ -365,26 +472,57 @@ describe('UserService', () => {
   afterEach(() => httpMock.verify());
 });
 
-// Component test
-it('renders user name', async () => {
+// Component test with signal inputs
+it('renders user name', () => {
   const fixture = TestBed.createComponent(UserCardComponent);
-  fixture.componentRef.setInput('user', { name: 'Alice', id: '1' });
+  fixture.componentRef.setInput('user', { name: 'Alice', id: '1', avatar: '' });
   fixture.detectChanges();
   expect(fixture.nativeElement.textContent).toContain('Alice');
 });
+
+// Testing with harnesses (Angular Material)
+it('opens dialog on click', async () => {
+  const loader = TestbedHarnessEnvironment.loader(fixture);
+  const button = await loader.getHarness(MatButtonHarness.with({ text: 'Open' }));
+  await button.click();
+  const dialog = await loader.getHarness(MatDialogHarness);
+  expect(await dialog.getTitleText()).toBe('Confirm');
+});
 ```
+
+---
 
 ## Anti-Patterns
 
-```
-- BAD: using NgModules for new Angular 17+ projects — use standalone components
-- BAD: manual subscribe without cleanup — use takeUntilDestroyed or async pipe
-- BAD: Default change detection everywhere — always use OnPush
-- BAD: fat components with business logic — extract to services
-- BAD: nested subscribes — use switchMap, concatMap, mergeMap
-- BAD: any types in templates — use strict typing with FormBuilder
-- BAD: *ngIf/*ngFor in Angular 17+ — use @if/@for control flow
-- BAD: class-based guards/resolvers — use functional guards with inject()
-- BAD: importing entire RxJS — import operators individually
-- BAD: not using track in @for — causes full DOM re-render
-```
+| Don't | Do Instead |
+|-------|------------|
+| NgModules for new projects | Standalone components (default since 17) |
+| Manual subscribe without cleanup | `takeUntilDestroyed`, `toSignal`, or `async` pipe |
+| Default change detection | Always use `OnPush` (or zoneless) |
+| Fat components with business logic | Extract to injectable services |
+| Nested subscribes | `switchMap`, `concatMap`, `mergeMap` |
+| `any` types in templates | Strict typing with typed forms and signals |
+| `*ngIf` / `*ngFor` (Angular 17+) | `@if` / `@for` control flow |
+| Class-based guards/resolvers | Functional guards with `inject()` |
+| Importing entire RxJS | Import operators individually |
+| Missing `track` in `@for` | Always provide track expression |
+| `zone.js` in new projects | Zoneless with signal-based reactivity |
+| Constructor injection | `inject()` function (more flexible) |
+
+---
+
+## Verification Checklist
+
+Before considering Angular work done:
+- [ ] All components are standalone (no NgModule declarations)
+- [ ] `ChangeDetectionStrategy.OnPush` on every component
+- [ ] Signals used for component state (not plain class properties)
+- [ ] `@if`/`@for`/`@switch` control flow (not structural directives)
+- [ ] `@for` has `track` expression on every usage
+- [ ] `@defer` used for heavy below-fold components
+- [ ] Services use `inject()` function (not constructor injection)
+- [ ] RxJS subscriptions cleaned up (takeUntilDestroyed or toSignal)
+- [ ] Functional interceptors and guards (not class-based)
+- [ ] Forms use `NonNullableFormBuilder` with typed controls
+- [ ] Lazy loading via `loadComponent`/`loadChildren` for routes
+- [ ] Tests use `TestBed.configureTestingModule` with minimal providers

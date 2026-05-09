@@ -4,7 +4,6 @@ description: WebSocket, SSE, CRDT, presence, pub/sub, real-time sync
 ---
 
 # Skill: Real-Time Systems
-# Loaded on-demand when task involves WebSocket, SSE, CRDT, operational transforms, presence, or real-time sync
 
 ## Auto-Detect
 
@@ -16,25 +15,43 @@ Trigger this skill when:
 
 ---
 
-## Decision Tree: Real-Time Transport
+## Decision Tree: SSE vs WebSocket
 
 ```
 What's your communication pattern?
-+-- Server pushes updates to client (one-way)?
-|   +-- Simple text/JSON events? -> Server-Sent Events (SSE)
-|   +-- Binary data or high frequency? -> WebSocket
-|   +-- Need HTTP/2 multiplexing? -> SSE (works great with HTTP/2)
-+-- Bidirectional communication?
-|   +-- Chat, gaming, collaboration? -> WebSocket
-|   +-- Need fallback for corporate proxies? -> Socket.IO (auto-fallback)
-|   +-- gRPC ecosystem? -> gRPC bidirectional streaming
-+-- Collaborative editing?
-|   +-- Text documents? -> CRDT (Yjs) or OT (ShareDB)
-|   +-- Structured data (JSON, trees)? -> CRDT (Automerge)
-|   +-- Need undo/redo per user? -> OT (better history model)
-+-- Presence (who is online/typing)?
-|   +-- Simple presence? -> Heartbeat + pub/sub
-|   +-- Cursor positions, selections? -> CRDT awareness protocol
+├── Server pushes to client only (one-way)?
+│   ├── Text/JSON events, moderate frequency? → SSE
+│   │   ├── Pro: Auto-reconnect, HTTP/2 multiplexing, simple
+│   │   ├── Pro: Works through corporate proxies, no special infra
+│   │   └── Con: No binary, no client-to-server on same connection
+│   └── Binary data or >100 msg/sec? → WebSocket
+├── Bidirectional (client sends AND receives)?
+│   ├── Need fallback for restrictive networks? → Socket.IO
+│   ├── Low-latency gaming/collaboration? → Raw WebSocket
+│   └── gRPC ecosystem? → gRPC bidirectional streaming
+├── Collaborative editing (multi-user same document)?
+│   ├── Text/rich text? → CRDT (Yjs) or OT (ShareDB)
+│   ├── Structured data (JSON, trees)? → CRDT (Automerge)
+│   └── Need server authority (conflict resolution)? → OT
+└── Just need presence (who's online/typing)?
+    └── Heartbeat + Redis pub/sub (lightweight)
+```
+
+## Decision Tree: Scaling WebSockets
+
+```
+How many concurrent connections?
+├── < 10K connections?
+│   └── Single server with Redis pub/sub for multi-instance
+├── 10K - 100K connections?
+│   └── Multiple servers + Redis/NATS for cross-instance messaging
+│   └── Sticky sessions (connection affinity) at load balancer
+├── 100K - 1M connections?
+│   └── Dedicated WebSocket tier (separate from API servers)
+│   └── NATS or Kafka for fan-out, connection sharding
+└── > 1M connections?
+    └── Purpose-built infra (Cloudflare Durable Objects, custom C++ servers)
+    └── Geographic distribution, edge WebSocket termination
 ```
 
 ---
@@ -43,135 +60,89 @@ What's your communication pattern?
 
 ```typescript
 import { WebSocketServer, WebSocket } from 'ws';
-import { createServer } from 'http';
 import { Redis } from 'ioredis';
 
 interface Client {
   ws: WebSocket;
   userId: string;
   rooms: Set<string>;
-  lastPing: number;
   isAlive: boolean;
 }
 
 class RealtimeServer {
   private clients = new Map<string, Client>();
-  private wss: WebSocketServer;
   private pub: Redis;
   private sub: Redis;
 
-  constructor(server: ReturnType<typeof createServer>) {
-    this.wss = new WebSocketServer({ server, path: '/ws' });
+  constructor(private wss: WebSocketServer) {
     this.pub = new Redis(process.env.REDIS_URL!);
     this.sub = new Redis(process.env.REDIS_URL!);
-
-    this.setupSubscription();
+    this.setupCrossInstance();
     this.setupHeartbeat();
     this.wss.on('connection', this.handleConnection.bind(this));
   }
 
   private async handleConnection(ws: WebSocket, req: Request): Promise<void> {
-    // Authenticate on connection
     const token = new URL(req.url!, 'http://localhost').searchParams.get('token');
     const user = await this.authenticate(token);
-    if (!user) {
-      ws.close(4001, 'Unauthorized');
-      return;
-    }
+    if (!user) { ws.close(4001, 'Unauthorized'); return; }
 
-    const client: Client = {
-      ws,
-      userId: user.id,
-      rooms: new Set(),
-      lastPing: Date.now(),
-      isAlive: true,
-    };
-
+    const client: Client = { ws, userId: user.id, rooms: new Set(), isAlive: true };
     this.clients.set(user.id, client);
 
-    // Handle messages
     ws.on('message', (data) => this.handleMessage(client, data));
     ws.on('pong', () => { client.isAlive = true; });
     ws.on('close', () => this.handleDisconnect(client));
-    ws.on('error', (err) => this.handleError(client, err));
 
-    // Send connection acknowledgment
     this.send(ws, { type: 'connected', userId: user.id });
   }
 
   private async handleMessage(client: Client, raw: Buffer): Promise<void> {
-    let message: any;
-    try {
-      message = JSON.parse(raw.toString());
-    } catch {
-      this.send(client.ws, { type: 'error', message: 'Invalid JSON' });
-      return;
-    }
-
-    switch (message.type) {
-      case 'join':
-        await this.joinRoom(client, message.room);
+    const msg = JSON.parse(raw.toString());
+    switch (msg.type) {
+      case 'subscribe':
+        client.rooms.add(msg.room);
+        await this.pub.sadd(`room:${msg.room}:members`, client.userId);
         break;
-      case 'leave':
-        await this.leaveRoom(client, message.room);
+      case 'unsubscribe':
+        client.rooms.delete(msg.room);
+        await this.pub.srem(`room:${msg.room}:members`, client.userId);
         break;
-      case 'broadcast':
-        await this.broadcastToRoom(client, message.room, message.payload);
-        break;
-      case 'ping':
-        this.send(client.ws, { type: 'pong', timestamp: Date.now() });
+      case 'publish':
+        await this.pub.publish(`room:${msg.room}`, JSON.stringify({
+          senderId: client.userId, payload: msg.payload, ts: Date.now(),
+        }));
         break;
     }
   }
 
-  // Horizontal scaling via Redis pub/sub
-  private async broadcastToRoom(sender: Client, room: string, payload: unknown): Promise<void> {
-    const message = {
-      type: 'message',
-      room,
-      senderId: sender.userId,
-      payload,
-      timestamp: Date.now(),
-    };
-
-    // Publish to Redis for other server instances
-    await this.pub.publish(`room:${room}`, JSON.stringify(message));
-  }
-
-  private setupSubscription(): void {
+  // Cross-instance delivery via Redis pub/sub
+  private setupCrossInstance(): void {
     this.sub.psubscribe('room:*');
     this.sub.on('pmessage', (_pattern, channel, data) => {
       const room = channel.replace('room:', '');
       const message = JSON.parse(data);
-
-      // Deliver to local clients in this room
       for (const client of this.clients.values()) {
         if (client.rooms.has(room) && client.userId !== message.senderId) {
-          this.send(client.ws, message);
+          this.send(client.ws, { type: 'message', room, ...message });
         }
       }
     });
   }
 
-  // Heartbeat to detect dead connections
+  // Detect dead connections
   private setupHeartbeat(): void {
     setInterval(() => {
       for (const [userId, client] of this.clients) {
-        if (!client.isAlive) {
-          client.ws.terminate();
-          this.clients.delete(userId);
-          continue;
-        }
+        if (!client.isAlive) { client.ws.terminate(); this.clients.delete(userId); continue; }
         client.isAlive = false;
         client.ws.ping();
       }
-    }, 30000); // Every 30 seconds
+    }, 30_000);
   }
 
   private send(ws: WebSocket, data: unknown): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
-    }
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
   }
 }
 ```
@@ -181,13 +152,11 @@ class RealtimeServer {
 ## Server-Sent Events (SSE)
 
 ```typescript
-// SSE is simpler than WebSocket for server-to-client push
 import { Router } from 'express';
 
 const router = Router();
 
 router.get('/events', authenticate, (req, res) => {
-  // SSE headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -195,114 +164,74 @@ router.get('/events', authenticate, (req, res) => {
     'X-Accel-Buffering': 'no', // Disable nginx buffering
   });
 
-  // Send initial connection event
+  // Initial connection event
   res.write(`event: connected\ndata: ${JSON.stringify({ userId: req.user.id })}\n\n`);
 
-  // Keep-alive every 15 seconds (prevents proxy timeouts)
-  const keepAlive = setInterval(() => {
-    res.write(': keepalive\n\n');
-  }, 15000);
+  // Keep-alive prevents proxy timeouts
+  const keepAlive = setInterval(() => res.write(': keepalive\n\n'), 15_000);
 
   // Subscribe to user-specific events
   const unsubscribe = eventBus.subscribe(req.user.id, (event) => {
     res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
   });
 
-  // Cleanup on disconnect
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    unsubscribe();
-  });
+  req.on('close', () => { clearInterval(keepAlive); unsubscribe(); });
 });
 
-// Client-side with auto-reconnect (built into EventSource)
+// Client: EventSource auto-reconnects with Last-Event-ID header
 // const es = new EventSource('/events');
-// es.addEventListener('order_update', (e) => { ... });
-// EventSource automatically reconnects with Last-Event-ID header
+// es.addEventListener('order_update', (e) => handleUpdate(JSON.parse(e.data)));
 ```
 
 ---
 
-## CRDT (Conflict-Free Replicated Data Types)
+## CRDT Implementation (Yjs)
 
 ```typescript
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 
-// Yjs for collaborative editing
 class CollaborativeDocument {
   private doc: Y.Doc;
   private provider: WebsocketProvider;
+  private undoManager: Y.UndoManager;
 
-  constructor(roomId: string) {
+  constructor(roomId: string, user: { name: string; color: string }) {
     this.doc = new Y.Doc();
+    this.provider = new WebsocketProvider('wss://sync.example.com', roomId, this.doc);
 
-    // Connect to sync server
-    this.provider = new WebsocketProvider(
-      'wss://sync.example.com',
-      roomId,
-      this.doc,
-      { connect: true }
-    );
+    // Awareness protocol — presence, cursors, selections
+    this.provider.awareness.setLocalStateField('user', user);
 
-    // Awareness (presence: cursors, selections, user info)
-    this.provider.awareness.setLocalStateField('user', {
-      name: currentUser.name,
-      color: currentUser.color,
-    });
-  }
-
-  // Shared types — automatically synced across all clients
-  getText(): Y.Text {
-    return this.doc.getText('content');
-  }
-
-  getMap(): Y.Map<unknown> {
-    return this.doc.getMap('metadata');
-  }
-
-  getArray(): Y.Array<unknown> {
-    return this.doc.getArray('items');
-  }
-
-  // Observe changes
-  observeChanges(callback: (events: Y.YEvent<any>[]) => void): void {
-    this.doc.on('update', (update: Uint8Array, origin: any) => {
-      if (origin !== 'local') {
-        // Remote change received
-        callback(Y.decodeUpdate(update));
-      }
-    });
-  }
-
-  // Undo/redo per user
-  createUndoManager(scope: Y.Text | Y.Array<any> | Y.Map<any>): Y.UndoManager {
-    return new Y.UndoManager(scope, {
+    // Per-user undo/redo
+    this.undoManager = new Y.UndoManager(this.doc.getText('content'), {
       trackedOrigins: new Set(['local']),
-      captureTimeout: 500, // Group changes within 500ms
+      captureTimeout: 500,
     });
   }
+
+  // Shared types — automatically synced across all peers
+  getText(): Y.Text { return this.doc.getText('content'); }
+  getMap(): Y.Map<unknown> { return this.doc.getMap('metadata'); }
+
+  // Apply local edit
+  insertText(index: number, text: string): void {
+    this.doc.transact(() => {
+      this.getText().insert(index, text);
+    }, 'local');
+  }
+
+  // Get all connected users
+  getPresence(): { userId: number; user: { name: string; color: string } }[] {
+    const states = this.provider.awareness.getStates();
+    return Array.from(states.entries())
+      .filter(([, state]) => state.user)
+      .map(([clientId, state]) => ({ userId: clientId, user: state.user }));
+  }
+
+  undo(): void { this.undoManager.undo(); }
+  redo(): void { this.undoManager.redo(); }
 }
-
-// Server-side: Yjs sync protocol with persistence
-import { Server } from 'y-websocket/bin/utils';
-
-const yjsServer = new Server({
-  // Persist document state
-  async onUpdate(docName: string, update: Uint8Array): Promise<void> {
-    await db.documents.upsert({
-      where: { name: docName },
-      update: { content: Buffer.from(Y.mergeUpdates([existingUpdate, update])) },
-      create: { name: docName, content: Buffer.from(update) },
-    });
-  },
-
-  // Load persisted state on connect
-  async onLoad(docName: string): Promise<Uint8Array | null> {
-    const doc = await db.documents.findUnique({ where: { name: docName } });
-    return doc?.content ?? null;
-  },
-});
 ```
 
 ---
@@ -310,187 +239,79 @@ const yjsServer = new Server({
 ## Presence System
 
 ```typescript
-// Lightweight presence with Redis
 class PresenceService {
-  private readonly PRESENCE_TTL = 60; // seconds
-  private readonly HEARTBEAT_INTERVAL = 30; // seconds
+  private readonly TTL = 60;
+  private readonly HEARTBEAT = 30;
 
-  constructor(private readonly redis: Redis) {}
+  constructor(private redis: Redis) {}
 
-  // User comes online
-  async setPresence(userId: string, metadata: PresenceMetadata): Promise<void> {
-    const key = `presence:${userId}`;
-    await this.redis.setex(key, this.PRESENCE_TTL, JSON.stringify({
-      ...metadata,
-      lastSeen: Date.now(),
-    }));
-
-    // Notify subscribers
-    await this.redis.publish('presence:updates', JSON.stringify({
-      type: 'online',
-      userId,
-      metadata,
-    }));
+  async join(userId: string, roomId: string, metadata: object): Promise<void> {
+    const key = `presence:${roomId}:${userId}`;
+    await this.redis.setex(key, this.TTL, JSON.stringify({ ...metadata, joinedAt: Date.now() }));
+    await this.redis.sadd(`room:${roomId}:members`, userId);
+    await this.redis.publish(`presence:${roomId}`, JSON.stringify({ type: 'join', userId, metadata }));
   }
 
-  // Heartbeat to maintain presence
-  async heartbeat(userId: string): Promise<void> {
-    const key = `presence:${userId}`;
-    await this.redis.expire(key, this.PRESENCE_TTL);
+  async heartbeat(userId: string, roomId: string): Promise<void> {
+    await this.redis.expire(`presence:${roomId}:${userId}`, this.TTL);
   }
 
-  // Get who is in a room
-  async getRoomPresence(roomId: string): Promise<PresenceInfo[]> {
+  async leave(userId: string, roomId: string): Promise<void> {
+    await this.redis.del(`presence:${roomId}:${userId}`);
+    await this.redis.srem(`room:${roomId}:members`, userId);
+    await this.redis.publish(`presence:${roomId}`, JSON.stringify({ type: 'leave', userId }));
+  }
+
+  async getMembers(roomId: string): Promise<PresenceInfo[]> {
     const members = await this.redis.smembers(`room:${roomId}:members`);
     const pipeline = this.redis.pipeline();
-
-    for (const userId of members) {
-      pipeline.get(`presence:${userId}`);
-    }
-
+    members.forEach((id) => pipeline.get(`presence:${roomId}:${id}`));
     const results = await pipeline.exec();
     return results
       .filter(([err, val]) => !err && val)
       .map(([, val]) => JSON.parse(val as string));
   }
-
-  // Cursor/selection sharing
-  async updateCursor(userId: string, roomId: string, cursor: CursorPosition): Promise<void> {
-    await this.redis.publish(`room:${roomId}:cursors`, JSON.stringify({
-      userId,
-      cursor,
-      timestamp: Date.now(),
-    }));
-  }
-}
-
-interface CursorPosition {
-  line: number;
-  column: number;
-  selection?: { startLine: number; startCol: number; endLine: number; endCol: number };
 }
 ```
 
 ---
 
-## Pub/Sub Architecture
+## Pub/Sub with Backpressure
 
 ```typescript
-// Event-driven pub/sub with fan-out
-interface PubSubMessage {
-  channel: string;
-  event: string;
-  data: unknown;
-  metadata: {
-    publishedAt: number;
-    publisherId: string;
-    messageId: string;
-  };
-}
+class ChannelSubscription {
+  private buffer: unknown[] = [];
+  private readonly MAX_BUFFER = 1000;
 
-class PubSubService {
-  private subscriptions = new Map<string, Set<(msg: PubSubMessage) => void>>();
+  constructor(
+    private ws: WebSocket,
+    private channel: string,
+    private dropPolicy: 'oldest' | 'newest' | 'none' = 'oldest'
+  ) {}
 
-  // Channel patterns for flexible routing
-  // "orders.*" matches "orders.created", "orders.updated"
-  // "user.123.*" matches "user.123.typing", "user.123.online"
-
-  subscribe(pattern: string, handler: (msg: PubSubMessage) => void): () => void {
-    if (!this.subscriptions.has(pattern)) {
-      this.subscriptions.set(pattern, new Set());
-    }
-    this.subscriptions.get(pattern)!.add(handler);
-
-    // Return unsubscribe function
-    return () => {
-      this.subscriptions.get(pattern)?.delete(handler);
-    };
-  }
-
-  async publish(channel: string, event: string, data: unknown): Promise<void> {
-    const message: PubSubMessage = {
-      channel,
-      event,
-      data,
-      metadata: {
-        publishedAt: Date.now(),
-        publisherId: this.instanceId,
-        messageId: crypto.randomUUID(),
-      },
-    };
-
-    // Match against all subscription patterns
-    for (const [pattern, handlers] of this.subscriptions) {
-      if (this.matchPattern(pattern, channel)) {
-        for (const handler of handlers) {
-          try {
-            handler(message);
-          } catch (error) {
-            this.logger.error({ error, pattern, channel }, 'Handler error');
-          }
-        }
+  enqueue(message: unknown): void {
+    if (this.ws.bufferedAmount > 64 * 1024) {
+      // Client is slow — apply backpressure
+      switch (this.dropPolicy) {
+        case 'oldest':
+          if (this.buffer.length >= this.MAX_BUFFER) this.buffer.shift();
+          this.buffer.push(message);
+          break;
+        case 'newest':
+          // Drop incoming message
+          break;
+        case 'none':
+          this.buffer.push(message);
+          break;
       }
+      return;
     }
-  }
 
-  private matchPattern(pattern: string, channel: string): boolean {
-    const regex = new RegExp('^' + pattern.replace(/\*/g, '[^.]+') + '$');
-    return regex.test(channel);
-  }
-}
-```
-
----
-
-## Real-Time Sync Architecture
-
-```
-Client A          Server           Client B
-   |                |                  |
-   |-- mutation --> |                  |
-   |                |-- validate -->   |
-   |                |-- persist -->    |
-   |                |-- broadcast ---> |
-   |<-- ack -----  |                  |
-   |                |                  |
-   
-Optimistic updates:
-1. Client applies change locally (instant UI)
-2. Client sends mutation to server
-3. Server validates, persists, broadcasts
-4. Server ACKs to sender (confirm or reject)
-5. If rejected: client rolls back local change
-6. Other clients receive and apply
-```
-
-```typescript
-// Optimistic update with rollback
-class OptimisticSync<T> {
-  private pendingMutations: Map<string, { original: T; mutation: Mutation }> = new Map();
-
-  async applyOptimistic(mutation: Mutation): Promise<void> {
-    const mutationId = crypto.randomUUID();
-    const original = this.getState(mutation.entityId);
-
-    // Apply locally immediately
-    this.pendingMutations.set(mutationId, { original, mutation });
-    this.applyLocally(mutation);
-
-    try {
-      // Send to server
-      const result = await this.sendToServer({ ...mutation, mutationId });
-      this.pendingMutations.delete(mutationId);
-
-      // Apply server-confirmed state (may differ from optimistic)
-      if (result.state) {
-        this.setState(mutation.entityId, result.state);
-      }
-    } catch (error) {
-      // Rollback on failure
-      this.pendingMutations.delete(mutationId);
-      this.setState(mutation.entityId, original);
-      this.notifyRollback(mutation, error);
+    // Drain buffer first, then send current
+    while (this.buffer.length > 0 && this.ws.bufferedAmount < 32 * 1024) {
+      this.ws.send(JSON.stringify(this.buffer.shift()));
     }
+    this.ws.send(JSON.stringify(message));
   }
 }
 ```
@@ -501,11 +322,26 @@ class OptimisticSync<T> {
 
 | Anti-Pattern | Problem | Solution |
 |---|---|---|
-| WebSocket for everything | Overkill for simple notifications | SSE for server-push, WebSocket only for bidirectional |
-| No reconnection strategy | Users lose connection silently | Exponential backoff + state reconciliation on reconnect |
-| Sending full state on every change | Bandwidth waste, slow | Send deltas/patches, use CRDTs for merging |
-| No heartbeat/ping | Dead connections consume resources | Ping/pong every 30s, terminate unresponsive |
-| Single WebSocket server | Cannot scale horizontally | Redis pub/sub or NATS for cross-instance messaging |
-| No message ordering guarantee | UI shows stale data | Sequence numbers + client-side reordering |
-| Presence without TTL | Ghost users shown as online | TTL-based presence with heartbeat renewal |
-| No backpressure | Slow clients get overwhelmed | Buffer with drop policy or flow control |
+| WebSocket for simple notifications | Overkill, complex infra for one-way push | SSE for server-push (auto-reconnect, simpler) |
+| No reconnection with state sync | Client misses events during disconnect | Sequence IDs + catch-up query on reconnect |
+| Sending full state on every change | Bandwidth waste, slow on large documents | Send deltas/patches, use CRDTs for merging |
+| No heartbeat/ping | Dead connections consume server resources | Ping/pong every 30s, terminate unresponsive |
+| Single WebSocket server instance | Cannot scale horizontally | Redis/NATS pub/sub for cross-instance fan-out |
+| Presence without TTL | Ghost users shown as online forever | TTL-based presence with heartbeat renewal |
+| No backpressure handling | Slow clients overwhelmed, OOM | Buffer with drop policy or flow control |
+| Auth only at connection time | Token expires, connection stays open | Periodic re-auth or short connection lifetime |
+
+---
+
+## Verification Checklist
+
+- [ ] Transport chosen based on communication pattern (SSE vs WebSocket)
+- [ ] Authentication validated on connection (not just first message)
+- [ ] Heartbeat/ping configured (30s interval, terminate after 2 missed)
+- [ ] Reconnection strategy with state reconciliation (sequence IDs)
+- [ ] Horizontal scaling via Redis/NATS pub/sub (not single-server)
+- [ ] Backpressure handling for slow clients (buffer + drop policy)
+- [ ] Presence uses TTL with heartbeat (no ghost users)
+- [ ] Message ordering guaranteed within a channel (sequence numbers)
+- [ ] Load tested for target concurrent connections
+- [ ] Graceful shutdown drains connections before termination

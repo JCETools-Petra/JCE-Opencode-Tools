@@ -10,7 +10,7 @@ description: Auth, input validation, secrets, vulnerabilities, CORS/CSP
 
 Trigger this skill when:
 - Files: `auth.ts`, `middleware.ts`, `*.guard.ts`, `cors.ts`, `helmet.*`
-- `package.json` contains: `bcrypt`, `jsonwebtoken`, `passport`, `helmet`, `cors`, `csurf`, `express-rate-limit`
+- `package.json` contains: `bcrypt`, `jsonwebtoken`, `passport`, `helmet`, `cors`, `express-rate-limit`
 - Code patterns: `jwt.sign`, `jwt.verify`, `hash`, `encrypt`, `sanitize`, `csrf`
 - Task mentions: security audit, penetration test, vulnerability, hardening, OWASP
 
@@ -20,6 +20,9 @@ Trigger this skill when:
 
 ```
 What type of application?
+├── Consumer-facing web app (2026)?
+│   └── Passkeys (WebAuthn) as primary — passwords as fallback
+│       └── Store public key credential, verify assertion server-side
 ├── SPA + API (same domain)?
 │   └── HTTP-only secure cookies with session ID
 │       └── Store session in Redis/DB, not memory
@@ -29,49 +32,148 @@ What type of application?
 ├── Mobile app?
 │   └── OAuth2 + PKCE with secure storage (Keychain/Keystore)
 ├── Server-to-server?
-│   └── mTLS or API keys with rotation
+│   └── mTLS or API keys with automatic rotation
 ├── Third-party integrations?
-│   └── OAuth2 with scoped permissions
+│   └── OAuth2 with scoped permissions + token exchange
 └── Microservices internal?
-    └── JWT (short-lived, signed by auth service) + service mesh mTLS
+    └── Short-lived JWT (< 5 min) + service mesh mTLS
 ```
 
-## Decision Tree: JWT vs Session
+## Decision Tree: Secrets Management
 
 ```
-JWT when:
-├── Stateless required (serverless, edge)
-├── Cross-service auth (microservices)
-├── Short-lived tokens only (< 15 min)
-└── You accept: can't revoke instantly, larger payload
-
-Session when:
-├── Need instant revocation (logout, ban)
-├── Single server or sticky sessions available
-├── Sensitive operations (banking, healthcare)
-└── You accept: server-side storage, scaling complexity
+Where do secrets live?
+├── Local development?
+│   └── .env files (NEVER committed) + .env.example as template
+├── CI/CD pipelines?
+│   └── Platform secrets (GitHub Secrets, GitLab CI vars) — masked in logs
+├── Production (small team)?
+│   └── SOPS (encrypted in git) or Doppler/Infisical (SaaS)
+├── Production (enterprise)?
+│   └── HashiCorp Vault or AWS Secrets Manager
+│       ├── Dynamic secrets (DB creds generated on-demand, auto-expire)
+│       ├── Automatic rotation (90 days max, 30 days preferred)
+│       └── Audit log for every secret access
+└── Kubernetes?
+    └── External Secrets Operator → syncs from Vault/AWS to K8s Secrets
 ```
 
 ---
 
-## OWASP Top 10 Checklist (2021)
+## Passkeys (WebAuthn) — Modern Auth (2026)
 
-| # | Risk | Check | Prevention |
-|---|------|-------|-----------|
-| 1 | **Broken Access Control** | Every endpoint checks authorization? | Deny by default, resource-level checks |
-| 2 | **Cryptographic Failures** | Sensitive data encrypted at rest + transit? | AES-256-GCM, TLS 1.3, no MD5/SHA1 |
-| 3 | **Injection** | All queries parameterized? | ORM/prepared statements, never string concat |
-| 4 | **Insecure Design** | Threat model exists? | Abuse cases in requirements, rate limiting |
-| 5 | **Security Misconfiguration** | Default creds removed? Headers set? | Automated config scanning, minimal permissions |
-| 6 | **Vulnerable Components** | Dependencies audited? | `npm audit`, Snyk/Dependabot in CI |
-| 7 | **Auth Failures** | MFA available? Brute-force protected? | Rate limiting, account lockout, MFA |
-| 8 | **Data Integrity Failures** | CI/CD pipeline secured? | Signed commits, artifact verification |
-| 9 | **Logging Failures** | Auth events logged? Anomalies detected? | Structured logs, SIEM integration |
-| 10 | **SSRF** | User URLs validated? | Allowlist domains, block internal IPs |
+```typescript
+// Registration — server generates challenge, client creates credential
+import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server';
+
+async function startRegistration(user: User) {
+  const options = await generateRegistrationOptions({
+    rpName: 'My App',
+    rpID: 'example.com',
+    userID: user.id,
+    userName: user.email,
+    authenticatorSelection: {
+      residentKey: 'preferred',
+      userVerification: 'preferred',
+    },
+  });
+  await redis.setex(`webauthn:reg:${user.id}`, 300, JSON.stringify(options));
+  return options;
+}
+
+// Authentication — passwordless login
+import { generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
+
+async function startAuthentication() {
+  return generateAuthenticationOptions({
+    rpID: 'example.com',
+    userVerification: 'preferred',
+  });
+}
+```
 
 ---
 
-## Input Validation Patterns
+## Supply Chain Security
+
+```
+Supply chain attack vectors:
+├── Dependency confusion (private package name squatting on public registry)
+│   └── Fix: .npmrc with registry scoping, package-lock.json integrity
+├── Typosquatting (lodas instead of lodash)
+│   └── Fix: lockfile-lint, Socket.dev in CI
+├── Compromised maintainer (event-stream incident)
+│   └── Fix: pin exact versions, audit new deps, use lockfiles
+├── Build pipeline injection (malicious GitHub Action)
+│   └── Fix: pin actions to SHA, not tags. Verify provenance.
+└── Malicious post-install scripts
+    └── Fix: --ignore-scripts for untrusted packages, audit scripts
+```
+
+```jsonc
+// package.json — supply chain hardening
+{
+  "overrides": {}, // force specific versions of transitive deps
+  "scripts": {
+    "preinstall": "npx only-allow pnpm", // enforce package manager
+    "audit": "npm audit --audit-level=moderate && npx socket-security/cli scan"
+  }
+}
+```
+
+### SBOM (Software Bill of Materials)
+
+```bash
+# Generate SBOM in CycloneDX format (required for compliance)
+npx @cyclonedx/cyclonedx-npm --output-file sbom.json --spec-version 1.5
+# Or with Syft (language-agnostic)
+syft . -o cyclonedx-json > sbom.json
+# Scan SBOM for known vulnerabilities
+grype sbom:sbom.json --fail-on high
+```
+
+---
+
+## Container Security
+
+```dockerfile
+# ✅ Secure Dockerfile patterns
+FROM node:22-alpine AS builder
+# ... build steps ...
+
+FROM gcr.io/distroless/nodejs22-debian12 AS runtime
+# Distroless: no shell, no package manager, minimal attack surface
+COPY --from=builder /app/dist /app/dist
+COPY --from=builder /app/node_modules /app/node_modules
+USER nonroot:nonroot
+CMD ["dist/index.js"]
+```
+
+```yaml
+# CI container scanning
+- name: Scan image with Trivy
+  run: |
+    trivy image --severity HIGH,CRITICAL --exit-code 1 \
+      --ignore-unfixed myapp:${{ github.sha }}
+
+# Runtime security policies (Kubernetes)
+apiVersion: v1
+kind: Pod
+spec:
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: app
+      securityContext:
+        capabilities: { drop: [ALL] }
+```
+
+---
+
+## Input Validation & Injection Prevention
 
 ```typescript
 import { z } from 'zod';
@@ -81,77 +183,22 @@ const CreateUserInput = z.object({
   email: z.string().email().max(254).toLowerCase(),
   name: z.string().min(1).max(100).trim(),
   password: z.string().min(12).regex(/[A-Z]/).regex(/[0-9]/).regex(/[^A-Za-z0-9]/),
-  age: z.number().int().min(13).max(150).optional(),
 });
 
-// Sanitize for specific contexts
-function sanitizeHtml(input: string): string {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
-}
+// SQL Injection — ALWAYS parameterize
+// ❌ `SELECT * FROM users WHERE id = '${userId}'`
+// ✅ db.query('SELECT * FROM users WHERE id = $1', [userId])
+// ✅ prisma.user.findUnique({ where: { id: userId } })
 
-// File upload validation
-const FileSchema = z.object({
-  mimetype: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
-  size: z.number().max(10 * 1024 * 1024), // 10MB max
-  originalname: z.string().regex(/^[a-zA-Z0-9._-]+$/), // no path traversal chars
-});
-```
-
----
-
-## SQL Injection Prevention
-
-```typescript
-// ❌ NEVER — string concatenation
-const query = `SELECT * FROM users WHERE id = '${userId}'`;
-
-// ✅ Parameterized queries
-const user = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-
-// ✅ ORM with type safety
-const user = await prisma.user.findUnique({ where: { id: userId } });
-
-// ✅ Query builder
-const user = await knex('users').where('id', userId).first();
-
-// ⚠️ Even with ORMs, watch for raw queries
-// ❌ prisma.$queryRawUnsafe(`SELECT * FROM users WHERE name = '${name}'`)
-// ✅ prisma.$queryRaw`SELECT * FROM users WHERE name = ${name}`
-```
-
----
-
-## XSS Prevention
-
-```typescript
-// Content Security Policy — strongest XSS defense
-const cspHeader = {
-  'Content-Security-Policy': [
-    "default-src 'self'",
-    "script-src 'self' 'nonce-{RANDOM}'", // nonce per request
-    "style-src 'self' 'unsafe-inline'",   // or use nonce for styles too
-    "img-src 'self' data: https:",
-    "font-src 'self'",
-    "connect-src 'self' https://api.example.com",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join('; ')
-};
-
-// React auto-escapes JSX — but watch for:
-// ❌ dangerouslySetInnerHTML={{ __html: userInput }}
-// ❌ href={`javascript:${userInput}`}
-// ❌ eval(userInput)
-
-// ✅ Use DOMPurify for rich text that MUST render HTML
-import DOMPurify from 'dompurify';
-const clean = DOMPurify.sanitize(userHtml, { ALLOWED_TAGS: ['b', 'i', 'a', 'p'] });
+// XSS — Content Security Policy is the strongest defense
+const csp = [
+  "default-src 'self'",
+  "script-src 'self' 'nonce-{RANDOM}'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+].join('; ');
 ```
 
 ---
@@ -159,9 +206,9 @@ const clean = DOMPurify.sanitize(userHtml, { ALLOWED_TAGS: ['b', 'i', 'a', 'p'] 
 ## CORS Configuration
 
 ```typescript
-// ✅ Production CORS — explicit origins
 import cors from 'cors';
 
+// ✅ Production — explicit origins only
 app.use(cors({
   origin: (origin, callback) => {
     const allowed = ['https://app.example.com', 'https://admin.example.com'];
@@ -174,60 +221,46 @@ app.use(cors({
   maxAge: 86400,
 }));
 
-// ❌ NEVER in production
-cors({ origin: '*' })                    // allows any origin
-cors({ origin: true })                   // reflects request origin
-cors({ origin: /.*\.example\.com/ })     // regex can be bypassed (evil-example.com)
+// ❌ NEVER: cors({ origin: '*' }) with credentials
+// ❌ NEVER: cors({ origin: /.*\.example\.com/ }) — regex bypass risk
 ```
 
 ---
 
-## Secrets Management
-
-```typescript
-// ✅ Validate env vars at startup — fail fast
-import { z } from 'zod';
-
-const EnvSchema = z.object({
-  DATABASE_URL: z.string().url().startsWith('postgres'),
-  JWT_SECRET: z.string().min(64),
-  API_KEY: z.string().min(32),
-  ENCRYPTION_KEY: z.string().length(64), // 256-bit hex
-});
-
-const env = EnvSchema.parse(process.env); // Crashes immediately if invalid
-export { env };
-
-// Rules:
-// - Never log secrets (redact in error handlers)
-// - Never commit secrets (.env in .gitignore, use .env.example)
-// - Rotate secrets on schedule (90 days max)
-// - Use secret managers in production (Vault, AWS Secrets Manager, GCP Secret Manager)
-// - Different secrets per environment (dev ≠ staging ≠ prod)
-```
-
----
-
-## Rate Limiting
+## Rate Limiting & API Security
 
 ```typescript
 import rateLimit from 'express-rate-limit';
 
-// Global rate limit
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+// Tiered rate limiting
+app.use(rateLimit({ windowMs: 60_000, max: 100 })); // Global: 100/min
 
-// Strict limit on auth endpoints
 app.use('/api/auth', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { error: 'Too many attempts. Try again in 15 minutes.' },
+  windowMs: 15 * 60_000, max: 5,  // Auth: 5 attempts per 15 min
+  keyGenerator: (req) => `${req.ip}:${req.body?.email}`,
   standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.ip + ':' + req.body?.email, // per IP+email
 }));
 
-// Progressive delays on failed login
-// 1st fail: immediate, 2nd: 1s, 3rd: 2s, 4th: 4s, 5th: lockout 15min
+app.use('/api/ai', rateLimit({
+  windowMs: 60_000, max: 10,  // Expensive endpoints: 10/min
+  keyGenerator: (req) => req.user?.id || req.ip,
+}));
+```
+
+---
+
+## Secrets Management with SOPS
+
+```yaml
+# .sops.yaml — encryption rules
+creation_rules:
+  - path_regex: secrets/.*\.enc\.yaml$
+    age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+    # Or KMS: kms: arn:aws:kms:us-east-1:123:key/abc-123
+
+# Encrypt: sops --encrypt secrets/prod.yaml > secrets/prod.enc.yaml
+# Decrypt at deploy: sops --decrypt secrets/prod.enc.yaml | kubectl apply -f -
+# Edit in-place: sops secrets/prod.enc.yaml
 ```
 
 ---
@@ -238,21 +271,34 @@ app.use('/api/auth', rateLimit({
 import helmet from 'helmet';
 
 app.use(helmet({
-  contentSecurityPolicy: { /* see CSP section */ },
+  contentSecurityPolicy: { directives: { /* see CSP above */ } },
   strictTransportSecurity: { maxAge: 31536000, includeSubDomains: true, preload: true },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   frameguard: { action: 'deny' },
-  noSniff: true,
-  xssFilter: true,
 }));
 
-// Additional headers
 app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
 });
 ```
+
+---
+
+## OWASP Top 10 (2025 Update)
+
+| # | Risk | Prevention |
+|---|------|-----------|
+| 1 | Broken Access Control | Deny by default, resource-level checks, RBAC |
+| 2 | Cryptographic Failures | AES-256-GCM, TLS 1.3, no MD5/SHA1 for security |
+| 3 | Injection | Parameterized queries, ORM, input validation |
+| 4 | Insecure Design | Threat modeling, abuse cases, rate limiting |
+| 5 | Security Misconfiguration | Automated scanning, minimal permissions, no defaults |
+| 6 | Vulnerable Components | SBOM, Snyk/Socket in CI, pin versions |
+| 7 | Auth Failures | Passkeys, MFA, brute-force protection |
+| 8 | Data Integrity Failures | Signed commits, artifact verification, SLSA |
+| 9 | Logging Failures | Structured logs, SIEM, auth event monitoring |
+| 10 | SSRF | Allowlist domains, block RFC1918 IPs, validate URLs |
 
 ---
 
@@ -262,41 +308,28 @@ app.use((req, res, next) => {
 |----------|---------------|
 | Store JWT in localStorage | HTTP-only secure cookie or memory |
 | `cors({ origin: '*' })` with credentials | Explicit origin allowlist |
-| MD5/SHA1 for passwords | bcrypt/scrypt/argon2 with salt |
-| Roll your own crypto | Use established libraries (libsodium, Web Crypto API) |
+| MD5/SHA1 for passwords | argon2id (preferred) or bcrypt (cost ≥ 12) |
+| Roll your own crypto | libsodium, Web Crypto API, established libraries |
 | Trust client-side validation alone | Always validate server-side |
-| Log full request bodies | Redact sensitive fields |
-| Hardcode secrets in code | Environment variables + secret manager |
-| `eval()` or `new Function()` with user input | Never execute user-provided code |
-| Disable HTTPS in production | TLS 1.3 everywhere, HSTS preload |
-| Single shared API key for all clients | Per-client keys with scoped permissions |
+| Hardcode secrets in code | SOPS, Vault, or platform secret manager |
+| `npm install` without lockfile | `npm ci` with integrity checks |
+| Skip container scanning | Trivy/Grype in CI, fail on HIGH+ |
+| Single long-lived API key | Short-lived tokens + automatic rotation |
+| Passwords only (no MFA) | Passkeys primary, TOTP as fallback |
 
 ---
 
 ## Verification Checklist
 
-Before considering security work done:
-- [ ] All inputs validated with schema (Zod/Joi) at API boundary
+- [ ] All inputs validated with schema (Zod) at API boundary
 - [ ] SQL queries parameterized — zero string concatenation
 - [ ] Auth checks on every protected endpoint (middleware)
-- [ ] Passwords hashed with bcrypt/argon2 (cost factor ≥ 12)
+- [ ] Passwords hashed with argon2id or bcrypt (cost ≥ 12)
 - [ ] CORS configured with explicit origins (no wildcards)
-- [ ] Security headers set (CSP, HSTS, X-Frame-Options, etc.)
-- [ ] Secrets in env vars, not in code — `.env` in `.gitignore`
-- [ ] Rate limiting on auth and public endpoints
+- [ ] Security headers set (CSP, HSTS, X-Frame-Options)
+- [ ] Secrets in env vars or secret manager — `.env` in `.gitignore`
+- [ ] Rate limiting on auth and expensive endpoints
+- [ ] Dependencies audited (npm audit + Socket/Snyk in CI)
+- [ ] Container images scanned (Trivy) and run as non-root
+- [ ] SBOM generated for compliance
 - [ ] No sensitive data in JWT payload or logs
-- [ ] Dependencies audited (`npm audit` / Snyk in CI)
-- [ ] File uploads validated (type, size, name sanitized)
-- [ ] Error messages don't leak internal details to clients
-
----
-
-## MCP Integration
-
-| Tool | Use For |
-|------|---------|
-| `context7` | Look up OWASP guidelines, library-specific security docs |
-| `grep` | Search for `eval`, `innerHTML`, string concat in queries, hardcoded secrets |
-| `bash` | Run `npm audit`, security scanners, `git log` for secret exposure |
-| `sequential-thinking` | Threat modeling, attack surface analysis |
-| `playwright` | Test auth flows, CORS behavior, CSP enforcement |

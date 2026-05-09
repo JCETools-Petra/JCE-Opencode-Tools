@@ -6,159 +6,400 @@ description: React Native, Expo, mobile apps
 # Skill: React Native
 # Loaded on-demand when working with React Native, Expo, mobile apps
 
-## Expo vs Bare Workflow
+## Auto-Detect
 
-- **Expo (managed)**: Use for most projects. EAS Build handles native compilation. `npx create-expo-app`.
-- **Bare workflow**: Eject only when you need custom native modules not supported by Expo.
-- **Expo Modules API**: Write custom native modules without leaving managed workflow.
+Trigger this skill when:
+- Files: `app.json` with `"expo"`, `metro.config.js`, `react-native.config.js`
+- Dependencies: `react-native`, `expo`, `@react-navigation/*`
+- File patterns: `*.native.tsx`, `app/(tabs)/`, `expo-router`
+- Tools: EAS CLI, Metro bundler, Expo Dev Client
 
-```tsx
-// app.json — Expo config
-{
-  "expo": {
-    "plugins": ["expo-camera", ["expo-image-picker", { "photosLibraryPermission": "Allow access" }]]
-  }
-}
+---
+
+## Decision Tree: Project Setup
+
+```
+Starting a new mobile app?
++-- Need native modules / custom native code?
+|   +-- Yes, but want Expo DX? -> Expo Dev Client (managed + native)
+|   +-- Full native control? -> Bare React Native (rare)
++-- Standard app (camera, maps, auth)?
+|   +-- Expo managed workflow (default choice)
++-- Need OTA updates?
+|   +-- EAS Update (Expo) or CodePush (bare)
++-- Targeting web too?
+    +-- Expo Router + React Native Web
 ```
 
-## Navigation (React Navigation)
+## Decision Tree: Navigation
+
+```
+Which navigation approach?
++-- File-based routing (like Next.js)? -> Expo Router v4
++-- Imperative, full control? -> React Navigation 7
++-- Deep linking required? -> Expo Router (built-in) or RN linking config
++-- Tab + Stack combo? -> Expo Router with (tabs) directory
+```
+
+## Decision Tree: State & Data
+
+```
+How to manage state?
++-- Server data (API)? -> TanStack Query + fetch/axios
++-- Global UI state? -> Zustand (lightweight, no provider)
++-- Form state? -> React Hook Form
++-- Persistent local data? -> MMKV (sync) or WatermelonDB (relational)
++-- Auth tokens? -> expo-secure-store
+```
+
+---
+
+## React Native 0.76 (New Architecture)
 
 ```tsx
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+// New Architecture is now DEFAULT in RN 0.76+
+// - Fabric: new rendering system (concurrent features)
+// - TurboModules: lazy-loaded native modules
+// - Codegen: type-safe bridge from TypeScript specs
 
-// Type-safe navigation
-type RootStackParamList = {
-  Home: undefined;
-  Profile: { userId: string };
-};
+// Fabric-compatible component
+import { View, Text, StyleSheet } from 'react-native';
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator();
+interface CardProps {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}
 
-function App() {
+export function Card({ title, subtitle, children }: CardProps) {
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <View style={styles.card}>
+      <Text style={styles.title}>{title}</Text>
+      {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      {children}
+    </View>
   );
 }
 
-// Deep linking config
-const linking = {
-  prefixes: ['myapp://', 'https://myapp.com'],
-  config: { screens: { Home: '', Profile: 'user/:userId' } },
-};
-```
-
-## Styling & Responsive Design
-
-```tsx
-import { StyleSheet, Platform, Dimensions } from 'react-native';
-
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: Platform.OS === 'ios' ? 44 : 0,
-    flexDirection: isTablet ? 'row' : 'column',
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3, // Android shadow
   },
+  title: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  subtitle: { fontSize: 14, color: '#666', marginBottom: 12 },
 });
-
-// Platform-specific files: Button.ios.tsx / Button.android.tsx
-// RN auto-resolves the correct file per platform.
 ```
 
-## Performance: FlatList & Memoization
+---
+
+## Expo Router v4
 
 ```tsx
-import { FlatList, memo } from 'react';
+// app/_layout.tsx — root layout
+import { Stack } from 'expo-router';
+import { ThemeProvider } from '@/providers/theme';
 
-const Item = memo(({ title }: { title: string }) => <Text>{title}</Text>);
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
+    </ThemeProvider>
+  );
+}
 
-<FlatList
-  data={items}
-  keyExtractor={(item) => item.id}
-  renderItem={({ item }) => <Item title={item.title} />}
-  getItemLayout={(_, index) => ({ length: 60, offset: 60 * index, index })}
-  windowSize={5}
-  maxToRenderPerBatch={10}
-  removeClippedSubviews={true}
-/>
+// app/(tabs)/_layout.tsx — tab navigation
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+
+export default function TabLayout() {
+  return (
+    <Tabs screenOptions={{ tabBarActiveTintColor: '#007AFF' }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+    </Tabs>
+  );
+}
+
+// app/(tabs)/index.tsx — screen component
+import { Link } from 'expo-router';
+
+export default function HomeScreen() {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.heading}>Welcome</Text>
+      <Link href="/product/123" asChild>
+        <Pressable style={styles.button}>
+          <Text>View Product</Text>
+        </Pressable>
+      </Link>
+    </View>
+  );
+}
+
+// app/product/[id].tsx — dynamic route
+import { useLocalSearchParams } from 'expo-router';
+
+export default function ProductScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  // fetch product by id...
+}
+
+// Type-safe navigation
+import { router } from 'expo-router';
+router.push('/product/123');
+router.replace('/(auth)/login');
+router.back();
 ```
 
-## Animations (Reanimated + Gesture Handler)
+---
+
+## Reanimated 3 (Animations)
 
 ```tsx
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolation,
+  runOnJS,
+} from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
-function SwipeCard() {
+// Swipeable card with spring physics
+function SwipeableCard({ onDismiss }: { onDismiss: () => void }) {
   const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
+
   const gesture = Gesture.Pan()
-    .onUpdate((e) => { translateX.value = e.translationX; })
-    .onEnd(() => { translateX.value = withSpring(0); });
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd((e) => {
+      if (Math.abs(e.translationX) > 150) {
+        translateX.value = withTiming(e.translationX > 0 ? 500 : -500, {}, () => {
+          runOnJS(onDismiss)();
+        });
+        opacity.value = withTiming(0);
+      } else {
+        translateX.value = withSpring(0);
+      }
+    });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [
+      { translateX: translateX.value },
+      { rotate: `${interpolate(translateX.value, [-200, 200], [-15, 15], Extrapolation.CLAMP)}deg` },
+    ],
+    opacity: opacity.value,
   }));
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={animatedStyle}><Text>Swipe me</Text></Animated.View>
+      <Animated.View style={[styles.card, animatedStyle]}>
+        <Text>Swipe to dismiss</Text>
+      </Animated.View>
     </GestureDetector>
   );
 }
+
+// Shared element transitions (Expo Router)
+import { SharedTransition } from 'react-native-reanimated';
+
+// In list screen
+<Animated.Image
+  sharedTransitionTag={`product-${item.id}`}
+  source={{ uri: item.image }}
+/>
+
+// In detail screen — same tag, automatic transition
+<Animated.Image
+  sharedTransitionTag={`product-${id}`}
+  source={{ uri: product.image }}
+/>
 ```
 
-## Storage & Push Notifications
+---
+
+## Performance Patterns
 
 ```tsx
-// MMKV — fast synchronous storage (prefer over AsyncStorage)
-import { MMKV } from 'react-native-mmkv';
-const storage = new MMKV();
-storage.set('user.token', 'abc123');
-const token = storage.getString('user.token');
+import { FlashList } from '@shopify/flash-list';
+import { useCallback, useMemo } from 'react';
 
-// Push notifications (Expo)
-import * as Notifications from 'expo-notifications';
-const { status } = await Notifications.requestPermissionsAsync();
-const pushToken = (await Notifications.getExpoPushTokenAsync()).data;
+// FlashList — 5x faster than FlatList for large lists
+function ProductList({ products }: { products: Product[] }) {
+  const renderItem = useCallback(({ item }: { item: Product }) => (
+    <ProductCard product={item} />
+  ), []);
+
+  return (
+    <FlashList
+      data={products}
+      renderItem={renderItem}
+      estimatedItemSize={120}
+      keyExtractor={(item) => item.id}
+    />
+  );
+}
+
+// Image optimization with expo-image
+import { Image } from 'expo-image';
+
+<Image
+  source={{ uri: imageUrl }}
+  style={styles.image}
+  contentFit="cover"
+  placeholder={blurhash}        // Blurhash placeholder
+  transition={200}              // Fade-in animation
+  cachePolicy="memory-disk"     // Aggressive caching
+/>
+
+// Avoid re-renders — stable references
+function ParentComponent() {
+  // Memoize callbacks passed to children
+  const handlePress = useCallback((id: string) => {
+    router.push(`/product/${id}`);
+  }, []);
+
+  // Memoize expensive computations
+  const sortedProducts = useMemo(
+    () => products.sort((a, b) => b.rating - a.rating),
+    [products]
+  );
+
+  return <ProductList products={sortedProducts} onPress={handlePress} />;
+}
 ```
+
+---
+
+## EAS Build & Updates
+
+```json
+// eas.json — build profiles
+{
+  "cli": { "version": ">= 12.0.0" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": { "simulator": true }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview"
+    },
+    "production": {
+      "channel": "production",
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": { "appleId": "team@example.com", "ascAppId": "123456789" },
+      "android": { "serviceAccountKeyPath": "./google-sa.json", "track": "internal" }
+    }
+  }
+}
+```
+
+```bash
+# Development build (includes dev client)
+eas build --platform ios --profile development
+
+# Production build
+eas build --platform all --profile production
+
+# OTA update (no store review needed for JS changes)
+eas update --branch production --message "Fix checkout crash"
+
+# Submit to stores
+eas submit --platform all --profile production
+```
+
+---
 
 ## Testing
 
 ```tsx
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { renderRouter } from 'expo-router/testing-library';
 
-test('button triggers action', () => {
-  const onPress = jest.fn();
-  const { getByText } = render(<Button title="Submit" onPress={onPress} />);
-  fireEvent.press(getByText('Submit'));
-  expect(onPress).toHaveBeenCalledTimes(1);
+// Component test
+test('displays product details', () => {
+  render(<ProductCard product={mockProduct} />);
+  expect(screen.getByText('Widget')).toBeTruthy();
+  expect(screen.getByText('$29.99')).toBeTruthy();
+});
+
+// Interaction test
+test('add to cart button calls handler', () => {
+  const onAdd = jest.fn();
+  render(<ProductCard product={mockProduct} onAddToCart={onAdd} />);
+  fireEvent.press(screen.getByRole('button', { name: /add to cart/i }));
+  expect(onAdd).toHaveBeenCalledWith(mockProduct.id);
+});
+
+// Navigation test with Expo Router
+test('navigates to product detail', async () => {
+  const { getByText } = renderRouter(
+    { index: () => <ProductList />, 'product/[id]': () => <ProductDetail /> },
+    { initialUrl: '/' }
+  );
+  fireEvent.press(getByText('Widget'));
+  await waitFor(() => expect(getByText('Product Details')).toBeTruthy());
 });
 ```
 
-## EAS Build & OTA Updates
+---
 
-```bash
-# Build for production
-eas build --platform all --profile production
-# Submit to stores
-eas submit --platform ios
-# OTA update (no store review)
-eas update --branch production --message "Fix crash on login"
-```
+## Anti-Patterns
 
-## Best Practices
+| Anti-Pattern | Problem | Solution |
+|---|---|---|
+| Inline styles in lists | New object every render, no caching | `StyleSheet.create` outside component |
+| `FlatList` for 1000+ items | Slow, high memory | `FlashList` with `estimatedItemSize` |
+| Animations on JS thread | Janky 30fps animations | Reanimated worklets (UI thread) |
+| `AsyncStorage` for large data | Slow, blocks JS thread | MMKV (sync) or SQLite |
+| No error boundaries | White screen on crash | Wrap screens with error boundaries |
+| Fetching in `useEffect` without cleanup | Memory leaks, race conditions | TanStack Query or AbortController |
+| Platform-specific code in one file | Unreadable conditionals | `.ios.tsx` / `.android.tsx` files |
+| No Hermes engine | Slower startup, higher memory | Hermes is default — don't disable it |
 
-- Enable **Hermes** engine (default in Expo SDK 49+) for faster startup and lower memory.
-- Use `React.memo`, `useMemo`, `useCallback` to prevent unnecessary re-renders.
-- Avoid inline styles in lists — use `StyleSheet.create` for caching.
-- Test on real devices — simulators hide performance issues.
-- Use `expo-updates` for OTA; gate breaking changes behind feature flags.
+---
+
+## Verification Checklist
+
+Before considering React Native work done:
+- [ ] Runs on both iOS and Android (test both)
+- [ ] Expo prebuild succeeds: `npx expo prebuild --clean`
+- [ ] No yellow box warnings in development
+- [ ] FlashList used for lists > 50 items
+- [ ] Animations run on UI thread (Reanimated worklets)
+- [ ] Images use `expo-image` with caching and placeholders
+- [ ] Deep links work: `npx uri-scheme open myapp://path`
+- [ ] EAS build succeeds for all profiles
+- [ ] Tests pass: `jest --passWithNoTests`
+- [ ] Accessibility: labels on all interactive elements
+- [ ] Performance: no JS thread drops below 50fps in profiler

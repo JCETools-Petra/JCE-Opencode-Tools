@@ -48,6 +48,7 @@ const SKILL_NAME_TO_FILE: Record<string, string> = {
   "svelte": "svelte.md",
   "nextjs": "nextjs.md",
   "angular": "angular.md",
+  "astro-remix": "astro-remix.md",
 
   // Backend Frameworks
   "laravel": "laravel.md",
@@ -55,6 +56,10 @@ const SKILL_NAME_TO_FILE: Record<string, string> = {
   "express-nestjs": "express-nestjs.md",
   "spring-boot": "spring-boot.md",
   "rails": "rails.md",
+
+  // Desktop & Native
+  "tauri": "tauri.md",
+  "wasm": "wasm.md",
 
   // Mobile
   "react-native": "react-native.md",
@@ -88,6 +93,7 @@ const SKILL_NAME_TO_FILE: Record<string, string> = {
 
 /**
  * Detect language/framework from file extensions and keywords in the message.
+ * Improved routing: more precise patterns, reduced false positives, new skills.
  */
 function detectContextSkills(text: string): string[] {
   const skills: string[] = [];
@@ -99,44 +105,55 @@ function detectContextSkills(text: string): string[] {
   else if (/\.rs\b/.test(text)) skills.push("rust");
   else if (/\.go\b/.test(text)) skills.push("go");
   else if (/\.cs\b/.test(text)) skills.push("csharp");
-  else if (/\.(java|kt)\b/.test(text)) skills.push("java-kotlin");
+  else if (/\.(java|kt|kts)\b/.test(text)) skills.push("java-kotlin");
   else if (/\.php\b/.test(text)) skills.push("php");
   else if (/\.rb\b/.test(text)) skills.push("ruby");
-  else if (/\.(c|cpp|h|hpp)\b/.test(text)) skills.push("cpp");
-  else if (/\.(sh|bash)\b/.test(text)) skills.push("shell-bash");
-  else if (/\.(ex|exs)\b/.test(text)) skills.push("elixir");
-  else if (/\.scala\b/.test(text)) skills.push("scala");
+  else if (/\.(c|cpp|cc|cxx|h|hpp)\b/.test(text)) skills.push("cpp");
+  else if (/\.(sh|bash|zsh)\b/.test(text)) skills.push("shell-bash");
+  else if (/\.(ex|exs|heex)\b/.test(text)) skills.push("elixir");
+  else if (/\.(scala|sbt)\b/.test(text)) skills.push("scala");
   else if (/\.dart\b/.test(text)) skills.push("flutter-dart");
   else if (/\.swift\b/.test(text)) skills.push("swift-ios");
+  else if (/\.(wasm|wat)\b/.test(text)) skills.push("wasm");
+  else if (/\.astro\b/.test(text)) skills.push("astro-remix");
 
-  // Framework detection from keywords
-  if (/\b(react|jsx|tsx|hooks?|usestate|useeffect)\b/i.test(lower)) skills.push("react");
-  else if (/\b(vue|nuxt|pinia|composition api)\b/i.test(lower)) skills.push("vue");
-  else if (/\b(svelte|sveltekit|runes)\b/i.test(lower)) skills.push("svelte");
-  else if (/\b(next\.?js|app router|server actions|server components)\b/i.test(lower)) skills.push("nextjs");
-  else if (/\b(angular|rxjs|signals)\b/i.test(lower)) skills.push("angular");
-  else if (/\b(laravel|eloquent|blade|artisan)\b/i.test(lower)) skills.push("laravel");
-  else if (/\b(django|fastapi|pydantic|drf)\b/i.test(lower)) skills.push("django-fastapi");
-  else if (/\b(express|nestjs|nest\.js)\b/i.test(lower)) skills.push("express-nestjs");
-  else if (/\b(spring boot|spring security|jpa)\b/i.test(lower)) skills.push("spring-boot");
-  else if (/\b(rails|activerecord|hotwire)\b/i.test(lower)) skills.push("rails");
-  else if (/\b(react native|expo)\b/i.test(lower)) skills.push("react-native");
-  else if (/\b(flutter|riverpod|widget)\b/i.test(lower)) skills.push("flutter-dart");
+  // Framework detection from keywords (mutually exclusive — pick best match)
+  if (/\b(react[\s-]native|expo\s+(router|sdk|go))\b/i.test(lower)) skills.push("react-native");
+  else if (/\b(next\.?js|app\s*router|server\s*actions|server\s*components|getServerSideProps|getStaticProps)\b/i.test(lower)) skills.push("nextjs");
+  else if (/\b(react|jsx|tsx|hooks?|useState|useEffect|useRef|useMemo|useCallback|useReducer|useContext)\b/i.test(lower)) skills.push("react");
+  else if (/\b(vue|nuxt|pinia|composition\s*api|defineComponent|defineModel|v-model|v-if)\b/i.test(lower)) skills.push("vue");
+  else if (/\b(svelte|sveltekit|runes|\$state|\$derived|\$effect)\b/i.test(lower)) skills.push("svelte");
+  else if (/\b(astro|astro\.config|islands?\s*architecture|content\s*collections?)\b/i.test(lower)) skills.push("astro-remix");
+  else if (/\b(remix|loader|action|useFetcher|useLoaderData|useActionData)\b/i.test(lower)) skills.push("astro-remix");
+  else if (/\b(angular|@Component|@Injectable|rxjs|NgModule|standalone\s*component)\b/i.test(lower)) skills.push("angular");
+  else if (/\b(laravel|eloquent|blade|artisan|livewire|pennant)\b/i.test(lower)) skills.push("laravel");
+  else if (/\b(django|fastapi|pydantic|drf|uvicorn|asgi)\b/i.test(lower)) skills.push("django-fastapi");
+  else if (/\b(express|nestjs|nest\.js|fastify|@Controller|@Module)\b/i.test(lower)) skills.push("express-nestjs");
+  else if (/\b(spring\s*boot|spring\s*security|jpa|@RestController|@Service)\b/i.test(lower)) skills.push("spring-boot");
+  else if (/\b(rails|activerecord|hotwire|turbo|stimulus|kamal)\b/i.test(lower)) skills.push("rails");
+  else if (/\b(flutter|riverpod|widget|MaterialApp|StatefulWidget)\b/i.test(lower)) skills.push("flutter-dart");
+  else if (/\b(tauri|tauri\.conf|invoke|#\[tauri::command\]|wry|tao)\b/i.test(lower)) skills.push("tauri");
 
-  // Domain detection
-  if (/\b(docker|ci\/cd|deploy|kubernetes|helm|terraform)\b/i.test(lower)) skills.push("devops");
-  if (/\b(sql|query|migration|schema|database|postgres|mysql)\b/i.test(lower)) skills.push("sql-database");
-  if (/\b(security|auth|vulnerability|cors|csrf|xss)\b/i.test(lower)) skills.push("security");
-  if (/\b(tailwind|utility.?first)\b/i.test(lower)) skills.push("tailwind");
-  if (/\b(api|endpoint|rest|graphql|grpc|openapi)\b/i.test(lower)) skills.push("api-design-patterns");
-  if (/\b(websocket|realtime|sse|crdt)\b/i.test(lower)) skills.push("realtime-systems");
-  if (/\b(microservice|event.?driven|saga|cqrs|kafka)\b/i.test(lower)) skills.push("distributed-systems");
-  if (/\b(oauth|oidc|jwt|rbac|mfa|zero.?trust)\b/i.test(lower)) skills.push("auth-identity");
-  if (/\b(gdpr|soc2|compliance|pii|audit)\b/i.test(lower)) skills.push("compliance-governance");
-  if (/\b(llm|rag|embedding|vector|prompt engineering)\b/i.test(lower)) skills.push("ai-llm-engineering");
-  if (/\b(solidity|web3|smart contract|blockchain)\b/i.test(lower)) skills.push("blockchain-web3");
-  if (/\b(monorepo|turborepo|nx|workspace)\b/i.test(lower)) skills.push("monorepo-management");
-  if (/\b(observability|prometheus|grafana|tracing|slo)\b/i.test(lower)) skills.push("observability");
+  // Domain detection (non-exclusive — multiple can match)
+  if (/\b(docker|ci\/cd|deploy|kubernetes|helm|terraform|pulumi|github\s*actions?|gitlab\s*ci)\b/i.test(lower)) skills.push("devops");
+  if (/\b(sql|query|migration|schema|database|postgres|mysql|sqlite|prisma|drizzle|knex)\b/i.test(lower)) skills.push("sql-database");
+  if (/\b(security|vulnerability|cors|csrf|xss|injection|sanitiz|escape)\b/i.test(lower) && !/\b(oauth|jwt|rbac)\b/i.test(lower)) skills.push("security");
+  if (/\b(tailwind|@apply|utility.?first|tw-)\b/i.test(lower)) skills.push("tailwind");
+  if (/\b(rest\s*api|graphql|grpc|openapi|swagger|endpoint|route\s*handler)\b/i.test(lower)) skills.push("api-design-patterns");
+  if (/\b(websocket|realtime|real.?time|sse|server.?sent|crdt|socket\.io|pusher)\b/i.test(lower)) skills.push("realtime-systems");
+  if (/\b(microservice|event.?driven|saga|cqrs|kafka|rabbitmq|nats|outbox)\b/i.test(lower)) skills.push("distributed-systems");
+  if (/\b(oauth|oidc|jwt|rbac|abac|mfa|passkey|webauthn|zero.?trust|session)\b/i.test(lower)) skills.push("auth-identity");
+  if (/\b(gdpr|soc2|compliance|pii|audit\s*log|data\s*retention|consent)\b/i.test(lower)) skills.push("compliance-governance");
+  if (/\b(llm|rag|embedding|vector\s*(db|database|store)|prompt\s*engineering|langchain|openai\s*api|anthropic\s*api)\b/i.test(lower)) skills.push("ai-llm-engineering");
+  if (/\b(solidity|web3|smart\s*contract|blockchain|erc-?\d+|foundry|hardhat|ethers)\b/i.test(lower)) skills.push("blockchain-web3");
+  if (/\b(monorepo|turborepo|nx\s|pnpm\s*workspace|lerna|changesets?)\b/i.test(lower)) skills.push("monorepo-management");
+  if (/\b(observability|prometheus|grafana|tracing|opentelemetry|otel|slo|sli|datadog)\b/i.test(lower)) skills.push("observability");
+  if (/\b(wasm|webassembly|wasi|wasm-bindgen|wasm-pack|emscripten|wat)\b/i.test(lower)) skills.push("wasm");
+  if (/\b(tauri|desktop\s*app|system\s*tray|native\s*window)\b/i.test(lower) && !/\b(electron)\b/i.test(lower)) skills.push("tauri");
+  if (/\b(game\s*(dev|engine|loop)|ecs|entity.?component|physics|rendering|godot|unity|bevy)\b/i.test(lower)) skills.push("game-development");
+  if (/\b(design\s*system|storybook|design\s*tokens?|component\s*library|chromatic)\b/i.test(lower)) skills.push("design-systems");
+  if (/\b(chaos\s*engineering|error\s*budget|incident|postmortem|sre|load\s*test|k6|gatling)\b/i.test(lower)) skills.push("reliability-engineering");
+  if (/\b(backstage|crossplane|argocd|flux|gitops|internal\s*developer\s*platform)\b/i.test(lower)) skills.push("platform-engineering");
 
   return [...new Set(skills)];
 }

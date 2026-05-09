@@ -16,159 +16,173 @@ Trigger this skill when:
 
 ---
 
-## Decision Tree: API Style
+## Decision Tree: Event-Driven Architecture
 
 ```
-What are you building?
-├── Internal tool / full-stack app (same team owns client + server)?
-│   └── tRPC — end-to-end type safety, zero codegen, fastest DX
-├── Public API consumed by third parties?
-│   └── REST + OpenAPI spec — universal, cacheable, well-understood
-├── Complex data with nested relationships (social, e-commerce)?
-│   ├── Clients need flexible queries? → GraphQL
-│   └── Server controls all queries? → REST with includes/sparse fieldsets
-├── High-performance internal service-to-service?
-│   └── gRPC — binary protocol, streaming, code generation
-├── Real-time bidirectional?
-│   └── WebSocket (or Socket.IO for fallback)
-└── One-way server push (notifications, feeds)?
-    └── Server-Sent Events (SSE) — simpler than WebSocket
+Should you use event-driven architecture?
+├── Need to decouple services (producer doesn't care who consumes)?
+│   └── YES — publish events, consumers subscribe independently
+├── Need async processing (email, PDF generation, analytics)?
+│   └── YES — command queue (BullMQ, SQS) for task processing
+├── Need audit trail / event sourcing?
+│   └── YES — append-only event log (Kafka, EventStoreDB)
+├── Need real-time reactions across services?
+│   └── YES — event bus (NATS, RabbitMQ, Kafka)
+├── Simple CRUD with < 3 services?
+│   └── NO — direct API calls are simpler, event-driven adds complexity
+└── Need exactly-once processing?
+    └── CAREFUL — use idempotency keys + at-least-once delivery
+
+Event patterns:
+├── Event Notification — "something happened" (minimal payload)
+│   └── { type: "order.created", orderId: "abc-123" }
+├── Event-Carried State Transfer — full entity in event
+│   └── { type: "order.created", order: { id, items, total, ... } }
+├── Event Sourcing — events ARE the source of truth
+│   └── Rebuild state by replaying events. Complex but powerful.
+└── CQRS — separate write model (commands) from read model (queries)
+    └── Write: normalized, consistent. Read: denormalized, fast.
 ```
 
-## Decision Tree: Database Selection
+---
+
+## Database Selection Matrix
 
 ```
 What's your data shape?
-├── Structured, relational, needs ACID transactions?
+├── Structured, relational, needs ACID?
 │   ├── General purpose → PostgreSQL (always the safe default)
-│   ├── Simple/embedded → SQLite (single-server, edge, mobile)
+│   ├── Embedded/edge/mobile → SQLite (libSQL/Turso for distributed)
 │   └── MySQL ecosystem required → MySQL 8+ / PlanetScale
 ├── Document-oriented, flexible schema?
-│   └── MongoDB (but consider: do you REALLY need schemaless?)
+│   └── MongoDB (but ask: do you REALLY need schemaless?)
 ├── Key-value, high throughput, caching?
-│   └── Redis / Valkey / DragonflyDB
-├── Time-series data (metrics, IoT, logs)?
-│   └── TimescaleDB (Postgres extension) or ClickHouse
+│   └── Redis 7+ / Valkey / DragonflyDB
+├── Time-series (metrics, IoT, logs)?
+│   └── TimescaleDB (Postgres extension) or ClickHouse (analytics)
 ├── Full-text search?
-│   └── PostgreSQL full-text (simple) or Elasticsearch/Meilisearch (complex)
-├── Graph relationships (social networks, recommendations)?
-│   └── Neo4j or PostgreSQL with recursive CTEs
-└── Vector embeddings (AI/ML, semantic search)?
-    └── pgvector (Postgres) or Pinecone/Qdrant
+│   └── PostgreSQL FTS (simple) or Meilisearch/Typesense (complex)
+├── Graph relationships (social, recommendations)?
+│   └── Neo4j or PostgreSQL recursive CTEs (if relationships are secondary)
+├── Vector embeddings (AI/ML, semantic search)?
+│   └── pgvector (Postgres) or dedicated: Qdrant, Pinecone, Weaviate
+└── Wide-column, massive scale (> 1TB, > 100K writes/s)?
+    └── ScyllaDB, DynamoDB, or Cassandra
 ```
 
-## Decision Tree: Scaling
-
-```
-Performance problem identified?
-├── Reads are slow?
-│   ├── Add indexes (EXPLAIN ANALYZE first) → 90% of cases
-│   ├── Add caching layer (Redis) → frequently accessed, rarely changed
-│   ├── Read replicas → read-heavy workload
-│   └── CDN → static/semi-static content
-├── Writes are slow?
-│   ├── Batch writes → bulk inserts
-│   ├── Async processing (queue) → non-critical writes
-│   ├── Connection pooling → pool exhaustion
-│   └── Vertical scaling → bigger machine (cheapest solution)
-├── Single service overloaded?
-│   ├── Horizontal scaling (stateless) → add more instances
-│   ├── Extract hot path to separate service → targeted scaling
-│   └── Rate limiting → protect from abuse
-└── Database is the bottleneck?
-    ├── Query optimization → always first
-    ├── CQRS → separate read/write models
-    ├── Sharding → last resort, massive complexity
-    └── Polyglot persistence → right DB for each use case
-```
+| Requirement | Best Choice | Why |
+|-------------|-------------|-----|
+| Default for any project | PostgreSQL | ACID, JSON, FTS, vectors, extensions |
+| Caching + pub/sub | Redis/Valkey | Sub-ms latency, data structures |
+| Analytics/OLAP | ClickHouse | Column-oriented, 100x faster aggregations |
+| Search | Meilisearch | Typo-tolerant, instant, easy to deploy |
+| AI embeddings | pgvector | Stays in Postgres, good enough for < 10M vectors |
 
 ---
 
-## API Design Patterns
+## Caching Strategies
 
-### REST Best Practices
-```yaml
-# Resource naming
-GET    /api/v1/users          # List (paginated)
-POST   /api/v1/users          # Create
-GET    /api/v1/users/:id      # Read
-PUT    /api/v1/users/:id      # Replace
-PATCH  /api/v1/users/:id      # Partial update
-DELETE /api/v1/users/:id      # Delete
-
-# Relationships
-GET    /api/v1/users/:id/orders        # User's orders
-POST   /api/v1/users/:id/orders        # Create order for user
-
-# Filtering, sorting, pagination
-GET    /api/v1/orders?status=pending&sort=-createdAt&page=2&limit=20
-
-# Status codes
-200 OK, 201 Created, 204 No Content
-400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found
-409 Conflict, 422 Unprocessable Entity, 429 Too Many Requests
-500 Internal Server Error, 503 Service Unavailable
-```
-
-### tRPC Pattern
-```typescript
-import { initTRPC } from '@trpc/server';
-import { z } from 'zod';
-
-const t = initTRPC.context<Context>().create();
-
-export const appRouter = t.router({
-  user: t.router({
-    getById: t.procedure
-      .input(z.object({ id: z.string().uuid() }))
-      .query(async ({ input, ctx }) => {
-        return ctx.db.user.findUniqueOrThrow({ where: { id: input.id } });
-      }),
-    create: t.procedure
-      .input(z.object({ email: z.string().email(), name: z.string() }))
-      .mutation(async ({ input, ctx }) => {
-        return ctx.db.user.create({ data: input });
-      }),
-  }),
-});
-```
-
----
-
-## Caching Strategy
+### Decision Tree
 
 ```
-Cache Decision:
+Should you cache this?
 ├── Data changes rarely, read often? → Cache with long TTL (1h+)
-├── Data changes often but stale is OK for seconds? → Cache with short TTL (30s-5min)
+├── Data changes often but stale OK for seconds? → Short TTL (30s-5min)
 ├── Data MUST be fresh? → No cache, or cache-aside with event invalidation
 ├── Expensive computation? → Cache result with TTL
-└── Per-user data? → Cache with user-scoped key
-
-Cache Layers:
-1. Browser cache (Cache-Control headers) — static assets
-2. CDN (Cloudflare, Vercel Edge) — public pages, API responses
-3. Application cache (Redis) — computed data, sessions, rate limits
-4. Database query cache — query results (use cautiously)
+├── Per-user data? → Cache with user-scoped key
+└── Static assets? → CDN with immutable hashes in filenames
 ```
 
+### Redis Patterns
+
 ```typescript
-// Cache-aside pattern
+// Cache-aside (most common)
 async function getUser(id: string): Promise<User> {
   const cached = await redis.get(`user:${id}`);
   if (cached) return JSON.parse(cached);
-
   const user = await db.user.findUnique({ where: { id } });
-  if (user) await redis.setex(`user:${id}`, 300, JSON.stringify(user)); // 5min TTL
+  if (user) await redis.setex(`user:${id}`, 300, JSON.stringify(user));
   return user;
 }
 
-// Invalidation on write
+// Write-through (cache always consistent)
 async function updateUser(id: string, data: Partial<User>) {
   const user = await db.user.update({ where: { id }, data });
-  await redis.del(`user:${id}`); // Invalidate cache
+  await redis.setex(`user:${id}`, 300, JSON.stringify(user)); // Update cache
   return user;
 }
+
+// Cache stampede prevention (singleflight pattern)
+async function getExpensiveData(key: string): Promise<Data> {
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached);
+
+  // Use Redis lock to prevent thundering herd
+  const lockKey = `lock:${key}`;
+  const acquired = await redis.set(lockKey, '1', 'EX', 10, 'NX');
+  if (!acquired) {
+    await sleep(100); // Wait for other process to populate
+    return getExpensiveData(key); // Retry
+  }
+  const data = await computeExpensiveData();
+  await redis.setex(key, 600, JSON.stringify(data));
+  await redis.del(lockKey);
+  return data;
+}
+```
+
+### CDN Strategy
+
+```
+CDN caching layers:
+├── Immutable assets (JS, CSS with hash) → Cache-Control: public, max-age=31536000, immutable
+├── HTML pages → Cache-Control: public, s-maxage=60, stale-while-revalidate=300
+├── API responses (public) → Cache-Control: public, s-maxage=10, stale-while-revalidate=30
+├── API responses (private) → Cache-Control: private, no-store
+└── Images → CDN with automatic format conversion (WebP/AVIF) + resize
+```
+
+---
+
+## API Gateway Patterns
+
+```
+When do you need an API gateway?
+├── Multiple backend services exposed to clients?
+│   └── Gateway aggregates, routes, and simplifies client interface
+├── Cross-cutting concerns (auth, rate limiting, logging)?
+│   └── Gateway handles once, backends stay focused on business logic
+├── Need request/response transformation?
+│   └── Gateway adapts between client format and service format
+└── BFF (Backend for Frontend) pattern?
+    └── Separate gateway per client type (web, mobile, third-party)
+
+Gateway options (2026):
+├── Cloud-native: AWS API Gateway, GCP Apigee, Azure APIM
+├── Self-hosted: Kong, Traefik, Envoy (via Istio)
+├── Code-based: tRPC (type-safe), GraphQL gateway (Apollo Federation)
+└── Edge: Cloudflare Workers, Vercel Edge Middleware
+```
+
+---
+
+## Service Mesh
+
+```
+Do you need a service mesh?
+├── > 10 microservices with complex networking? → Probably yes
+├── Need mTLS between all services? → Service mesh or simpler cert management
+├── Need traffic splitting (canary, A/B)? → Service mesh or ingress controller
+├── < 5 services? → Overkill. Use direct service discovery.
+└── Running on Kubernetes? → Istio (full-featured) or Linkerd (lightweight)
+
+Service mesh provides:
+├── mTLS (automatic encryption between services)
+├── Traffic management (retries, timeouts, circuit breaking)
+├── Observability (distributed tracing without code changes)
+├── Traffic splitting (canary deployments at network level)
+└── Access policies (service A can call B but not C)
 ```
 
 ---
@@ -187,12 +201,8 @@ class AppError extends Error {
     super(message);
     this.name = 'AppError';
   }
-
   static notFound(resource: string, id: string) {
     return new AppError('NOT_FOUND', 404, `${resource} ${id} not found`);
-  }
-  static unauthorized(reason: string) {
-    return new AppError('UNAUTHORIZED', 401, reason);
   }
   static conflict(message: string) {
     return new AppError('CONFLICT', 409, message);
@@ -202,37 +212,44 @@ class AppError extends Error {
   }
 }
 
-// Global error handler (Express)
+// Global error handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       error: { code: err.code, message: err.message, details: err.details }
     });
   }
-  // Unknown error — log full details, return generic message
-  logger.error('Unhandled error', { err, path: req.path });
+  logger.error('Unhandled error', { err, path: req.path, traceId: req.id });
   res.status(500).json({ error: { code: 'INTERNAL', message: 'Something went wrong' } });
 });
 ```
 
 ---
 
-## 12-Factor App Checklist
+## Scaling Decision Tree
 
-| Factor | Requirement | Check |
-|--------|-------------|-------|
-| 1. Codebase | One repo per app, many deploys | Single source of truth |
-| 2. Dependencies | Explicitly declared (package.json/go.mod) | No implicit system deps |
-| 3. Config | Env vars, not hardcoded | `process.env`, validated at startup |
-| 4. Backing Services | Treat as attached resources | Connection strings in env |
-| 5. Build/Release/Run | Strict separation | CI builds, CD deploys |
-| 6. Processes | Stateless, share-nothing | No local file storage for state |
-| 7. Port Binding | Self-contained, export via port | `app.listen(PORT)` |
-| 8. Concurrency | Scale via process model | Horizontal scaling, no shared memory |
-| 9. Disposability | Fast startup, graceful shutdown | Handle SIGTERM, drain connections |
-| 10. Dev/Prod Parity | Keep environments similar | Same DB, same services |
-| 11. Logs | Treat as event streams | stdout/stderr, collected externally |
-| 12. Admin Processes | Run as one-off tasks | Migrations, scripts via CLI |
+```
+Performance problem identified?
+├── Reads are slow?
+│   ├── Add indexes (EXPLAIN ANALYZE first) → solves 90% of cases
+│   ├── Add caching layer (Redis) → frequently accessed, rarely changed
+│   ├── Read replicas → read-heavy workload
+│   └── CDN → static/semi-static content
+├── Writes are slow?
+│   ├── Batch writes → bulk inserts
+│   ├── Async processing (queue) → non-critical writes
+│   ├── Connection pooling → pool exhaustion
+│   └── Vertical scaling → bigger machine (cheapest fix)
+├── Single service overloaded?
+│   ├── Horizontal scaling (stateless) → add instances
+│   ├── Extract hot path to separate service → targeted scaling
+│   └── Rate limiting → protect from abuse
+└── Database is the bottleneck?
+    ├── Query optimization → always first
+    ├── CQRS → separate read/write models
+    ├── Sharding → last resort (massive complexity)
+    └── Polyglot persistence → right DB for each use case
+```
 
 ---
 
@@ -241,21 +258,20 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 | ❌ Don't | ✅ Do Instead |
 |----------|---------------|
 | Microservices from day one | Monolith → modular monolith → extract when needed |
-| Shared database between services | Each service owns its data, communicate via APIs/events |
+| Shared database between services | Each service owns its data, communicate via events |
 | N+1 queries in loops | Batch loading, DataLoader, eager loading |
 | Caching without invalidation strategy | Define TTL + invalidation triggers before caching |
 | Synchronous calls for non-critical paths | Queue/event for emails, notifications, analytics |
-| Generic error messages ("Something went wrong") | Typed errors with codes, actionable messages |
 | Premature optimization | Measure first (EXPLAIN, profiler), optimize bottlenecks |
-| God services (one service does everything) | Single responsibility, bounded contexts |
+| God services (does everything) | Single responsibility, bounded contexts |
 | Distributed transactions across services | Saga pattern with compensating actions |
 | Ignoring backpressure | Rate limiting, circuit breakers, queue depth limits |
+| Event sourcing for simple CRUD | Only when audit trail or temporal queries are required |
 
 ---
 
 ## Verification Checklist
 
-Before considering architecture work done:
 - [ ] API endpoints follow consistent naming and HTTP method conventions
 - [ ] All endpoints have input validation (schema-based)
 - [ ] Error responses are structured and typed (code + message + details)
@@ -266,17 +282,5 @@ Before considering architecture work done:
 - [ ] Graceful shutdown handles in-flight requests
 - [ ] Idempotency keys for non-idempotent operations
 - [ ] Pagination on all list endpoints (cursor-based preferred)
-- [ ] API versioning strategy defined
-- [ ] Logging is structured (JSON) with correlation IDs
-
----
-
-## MCP Integration
-
-| Tool | Use For |
-|------|---------|
-| `context7` | Look up framework-specific patterns (tRPC, Prisma, etc.) |
-| `sequential-thinking` | System design decisions, trade-off analysis |
-| `grep` | Find N+1 queries, missing error handling, raw SQL |
-| `bash` | Run database migrations, test API endpoints with curl |
-| `playwright` | Integration testing of API flows |
+- [ ] Logging is structured (JSON) with correlation/trace IDs
+- [ ] Circuit breakers on external service calls

@@ -6,54 +6,149 @@ description: Swift, SwiftUI, iOS development
 # Skill: Swift & iOS
 # Loaded on-demand when working with .swift files, SwiftUI, UIKit
 
-## SwiftUI View & State
+## Auto-Detect
+
+Trigger this skill when:
+- File extensions: `.swift`, `Package.swift`, `.xcodeproj`, `.xcworkspace`
+- Frameworks: SwiftUI, UIKit, Combine, SwiftData, visionOS
+- Tools: Xcode, Swift Package Manager, xcrun, xcodebuild
+- Patterns: `import SwiftUI`, `@Observable`, `actor`, `async/await`
+
+---
+
+## Decision Tree: UI Framework
+
+```
+Which UI framework?
++-- New app, iOS 17+? -> SwiftUI (default choice)
++-- Need UIKit interop? -> SwiftUI + UIViewRepresentable
++-- Complex custom layouts? -> SwiftUI with Layout protocol
++-- visionOS / spatial computing? -> SwiftUI + RealityKit
++-- Legacy app, incremental migration? -> UIKit + SwiftUI hosting
++-- watchOS / widgets? -> SwiftUI only
+```
+
+## Decision Tree: Data Persistence
+
+```
+How to persist data?
++-- Simple key-value? -> UserDefaults / @AppStorage
++-- Structured local data (iOS 17+)? -> SwiftData
++-- Complex queries, relationships? -> SwiftData with custom FetchDescriptor
++-- Need Core Data compatibility? -> Core Data (legacy)
++-- Sync across devices? -> CloudKit + SwiftData
++-- Secure credentials? -> Keychain (via KeychainAccess)
+```
+
+## Decision Tree: Architecture
+
+```
+Which architecture?
++-- Simple app (< 10 views)? -> @Observable + SwiftUI
++-- Medium app? -> MVVM with @Observable ViewModels
++-- Large app, many teams? -> TCA (The Composable Architecture)
++-- Need testability + DI? -> Protocol-based DI + @Observable
+```
+
+---
+
+## Swift 6 Strict Concurrency
 
 ```swift
-import SwiftUI
+// Swift 6 enforces complete concurrency safety at compile time
+// All data shared across concurrency domains must be Sendable
 
-struct ProfileView: View {
-    @State private var isEditing = false          // Local state
-    @Binding var username: String                  // Two-way binding from parent
-    @ObservedObject var viewModel: ProfileVM       // External observable (not owned)
-    @StateObject var localVM = ProfileVM()         // Owned observable (created here)
-    @EnvironmentObject var auth: AuthService       // Injected via environment
+// Sendable — safe to pass across actor boundaries
+struct UserDTO: Sendable {  // Value types are implicitly Sendable
+    let id: String
+    let name: String
+    let email: String
+}
 
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Hello, \(username)")
-                .font(.title)
-            Toggle("Edit Mode", isOn: $isEditing)
-            if isEditing {
-                TextField("Username", text: $username)
-                    .textFieldStyle(.roundedBorder)
-            }
-        }
-        .padding()
+// Non-Sendable types cannot cross actor boundaries
+// Use @unchecked Sendable only when you've manually verified safety
+
+// Actor — thread-safe mutable state (replaces locks/queues)
+actor SessionManager {
+    private var sessions: [String: Session] = [:]
+
+    func getSession(id: String) -> Session? {
+        sessions[id]
+    }
+
+    func createSession(for user: UserDTO) -> Session {
+        let session = Session(userId: user.id, token: UUID().uuidString)
+        sessions[session.token] = session
+        return session
+    }
+
+    func invalidate(token: String) {
+        sessions.removeValue(forKey: token)
     }
 }
 
-// Inject environment object at root
-@main
-struct MyApp: App {
-    @StateObject private var auth = AuthService()
+// Global actor — isolate to specific execution context
+@globalActor
+actor DatabaseActor {
+    static let shared = DatabaseActor()
+}
 
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environmentObject(auth)
+@DatabaseActor
+class DatabaseService {
+    func query(_ sql: String) async throws -> [Row] {
+        // Guaranteed single-threaded access
+    }
+}
+
+// Structured concurrency — parent-child task relationships
+func fetchDashboard(userId: String) async throws -> Dashboard {
+    // Parallel execution with automatic cancellation propagation
+    async let profile = api.fetchProfile(userId)
+    async let orders = api.fetchOrders(userId)
+    async let notifications = api.fetchNotifications(userId)
+
+    return Dashboard(
+        profile: try await profile,
+        orders: try await orders,
+        notifications: try await notifications
+    )
+}
+
+// TaskGroup — dynamic number of concurrent tasks
+func fetchAllProducts(ids: [String]) async throws -> [Product] {
+    try await withThrowingTaskGroup(of: Product.self) { group in
+        for id in ids {
+            group.addTask { try await api.fetchProduct(id) }
         }
+        return try await group.reduce(into: []) { $0.append($1) }
+    }
+}
+
+// AsyncStream — bridge callback-based APIs to async/await
+func locationUpdates() -> AsyncStream<CLLocation> {
+    AsyncStream { continuation in
+        let delegate = LocationDelegate(onUpdate: { location in
+            continuation.yield(location)
+        })
+        continuation.onTermination = { _ in delegate.stop() }
+        delegate.start()
     }
 }
 ```
 
-## MVVM Architecture
+---
+
+## SwiftUI 6 (iOS 18+)
 
 ```swift
-@MainActor
-class ProfileVM: ObservableObject {
-    @Published var user: User?
-    @Published var isLoading = false
-    @Published var error: String?
+import SwiftUI
+
+// @Observable macro (iOS 17+) — replaces ObservableObject
+@Observable
+class ProfileViewModel {
+    var user: User?
+    var isLoading = false
+    var error: String?
 
     private let repository: UserRepository
 
@@ -65,173 +160,279 @@ class ProfileVM: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            user = try await repository.fetchUser(id: id)
+            user = try await repository.fetch(id: id)
         } catch {
             self.error = error.localizedDescription
         }
     }
 }
-```
 
-## Async/Await & Actors
+// View with @Observable — no @ObservedObject/@StateObject needed
+struct ProfileView: View {
+    @State private var viewModel = ProfileViewModel()
+    let userId: String
 
-```swift
-// Structured concurrency
-func fetchDashboard() async throws -> Dashboard {
-    async let profile = api.fetchProfile()
-    async let posts = api.fetchPosts()
-    async let notifications = api.fetchNotifications()
-    return Dashboard(
-        profile: try await profile,
-        posts: try await posts,
-        notifications: try await notifications
-    )
-}
-
-// Actor — thread-safe mutable state
-actor ImageCache {
-    private var cache: [URL: UIImage] = [:]
-
-    func image(for url: URL) -> UIImage? { cache[url] }
-    func store(_ image: UIImage, for url: URL) { cache[url] = image }
-}
-
-// AsyncSequence
-for await event in eventStream {
-    handleEvent(event)
-}
-```
-
-## Networking with URLSession + Codable
-
-```swift
-struct User: Codable, Identifiable {
-    let id: String
-    let name: String
-    let email: String
-}
-
-func fetchUser(id: String) async throws -> User {
-    let url = URL(string: "https://api.example.com/users/\(id)")!
-    let (data, response) = try await URLSession.shared.data(from: url)
-
-    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-        throw APIError.invalidResponse
-    }
-
-    return try JSONDecoder().decode(User.self, from: data)
-}
-
-enum APIError: LocalizedError {
-    case invalidResponse
-    case decodingFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse: return "Server returned an invalid response"
-        case .decodingFailed: return "Failed to decode response"
+    var body: some View {
+        Group {
+            if viewModel.isLoading {
+                ProgressView()
+            } else if let user = viewModel.user {
+                UserContent(user: user)
+            } else if let error = viewModel.error {
+                ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
+            }
         }
+        .task { await viewModel.loadUser(id: userId) }
+        .refreshable { await viewModel.loadUser(id: userId) }
+    }
+}
+
+// Custom container with new ForEach subview API (iOS 18)
+struct CardStack<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 12) {
+            content
+        }
+        .padding()
+        .background(.regularMaterial, in: .rect(cornerRadius: 16))
+    }
+}
+
+// Mesh gradients (iOS 18)
+MeshGradient(
+    width: 3, height: 3,
+    points: [.init(0, 0), .init(0.5, 0), .init(1, 0),
+             .init(0, 0.5), .init(0.5, 0.5), .init(1, 0.5),
+             .init(0, 1), .init(0.5, 1), .init(1, 1)],
+    colors: [.red, .orange, .yellow,
+             .green, .blue, .purple,
+             .cyan, .mint, .pink]
+)
+
+// Custom transitions and animations
+struct SlideTransition: Transition {
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        content
+            .offset(x: phase == .willAppear ? -300 : phase == .didDisappear ? 300 : 0)
+            .opacity(phase.isIdentity ? 1 : 0)
     }
 }
 ```
+
+---
 
 ## SwiftData (iOS 17+)
 
 ```swift
 import SwiftData
 
+// Model definition — replaces Core Data's visual editor
 @Model
 class Task {
     var title: String
     var isComplete: Bool
+    var priority: Priority
     var createdAt: Date
+    @Relationship(deleteRule: .cascade) var subtasks: [Subtask]
 
-    init(title: String, isComplete: Bool = false) {
+    init(title: String, priority: Priority = .medium) {
         self.title = title
-        self.isComplete = isComplete
+        self.isComplete = false
+        self.priority = priority
         self.createdAt = .now
+        self.subtasks = []
     }
 }
 
-// In App
+enum Priority: Int, Codable, CaseIterable {
+    case low, medium, high, urgent
+}
+
+@Model
+class Subtask {
+    var title: String
+    var isComplete: Bool
+    var task: Task?
+
+    init(title: String) {
+        self.title = title
+        self.isComplete = false
+    }
+}
+
+// Container setup
 @main
 struct MyApp: App {
     var body: some Scene {
         WindowGroup { ContentView() }
-            .modelContainer(for: Task.self)
+            .modelContainer(for: [Task.self, Subtask.self])
     }
 }
 
-// In View
-struct TaskList: View {
-    @Query(sort: \Task.createdAt, order: .reverse) var tasks: [Task]
-    @Environment(\.modelContext) var context
+// Querying with predicates and sorting
+struct TaskListView: View {
+    @Query(
+        filter: #Predicate<Task> { !$0.isComplete },
+        sort: [SortDescriptor(\.priority, order: .reverse), SortDescriptor(\.createdAt)],
+        animation: .default
+    )
+    private var tasks: [Task]
+
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         List(tasks) { task in
-            Text(task.title)
+            TaskRow(task: task)
+                .swipeActions {
+                    Button("Complete") { task.isComplete = true }
+                        .tint(.green)
+                    Button("Delete", role: .destructive) { context.delete(task) }
+                }
         }
     }
 
-    func addTask(_ title: String) {
-        context.insert(Task(title: title))
+    func addTask(_ title: String, priority: Priority) {
+        let task = Task(title: title, priority: priority)
+        context.insert(task)
     }
 }
 ```
 
-## Protocols & Extensions
+---
+
+## visionOS & Spatial Computing
 
 ```swift
-protocol Repository {
-    associatedtype Entity: Identifiable
-    func fetch(id: Entity.ID) async throws -> Entity
-    func save(_ entity: Entity) async throws
+import SwiftUI
+import RealityKit
+
+// visionOS window
+struct ContentView: View {
+    @State private var showImmersive = false
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                Text("Welcome to Spatial")
+                    .font(.extraLargeTitle)
+                Toggle("Show 3D View", isOn: $showImmersive)
+            }
+            .padding()
+        }
+    }
 }
 
-extension Array where Element: Numeric {
-    var sum: Element { reduce(0, +) }
-}
-
-// Property wrapper
-@propertyWrapper
-struct Clamped<Value: Comparable> {
-    var wrappedValue: Value { didSet { wrappedValue = min(max(wrappedValue, range.lowerBound), range.upperBound) } }
-    let range: ClosedRange<Value>
-
-    init(wrappedValue: Value, _ range: ClosedRange<Value>) {
-        self.range = range
-        self.wrappedValue = min(max(wrappedValue, range.lowerBound), range.upperBound)
+// Volumetric window
+struct VolumetricView: View {
+    var body: some View {
+        RealityView { content in
+            let sphere = MeshResource.generateSphere(radius: 0.1)
+            let material = SimpleMaterial(color: .blue, isMetallic: true)
+            let entity = ModelEntity(mesh: sphere, materials: [material])
+            content.add(entity)
+        }
+        .gesture(TapGesture().targetedToAnyEntity().onEnded { value in
+            // Handle tap on 3D entity
+        })
     }
 }
 ```
+
+---
 
 ## Testing
 
 ```swift
-import XCTest
-@testable import MyApp
+import Testing
+import Foundation
 
-final class ProfileVMTests: XCTestCase {
-    @MainActor
-    func testLoadUser() async {
-        let mockRepo = MockUserRepository(user: .sample)
-        let vm = ProfileVM(repository: mockRepo)
+// Swift Testing framework (Xcode 16+) — replaces XCTest for unit tests
+@Suite("UserService Tests")
+struct UserServiceTests {
+    let mockRepo: MockUserRepository
+    let service: UserService
 
-        await vm.loadUser(id: "1")
-
-        XCTAssertEqual(vm.user?.name, "Alice")
-        XCTAssertFalse(vm.isLoading)
-        XCTAssertNil(vm.error)
+    init() {
+        mockRepo = MockUserRepository()
+        service = UserService(repository: mockRepo)
     }
+
+    @Test("loads user successfully")
+    func loadUser() async throws {
+        mockRepo.stubbedUser = User(id: "1", name: "Alice", email: "a@b.com")
+
+        let user = try await service.fetch(id: "1")
+
+        #expect(user.name == "Alice")
+        #expect(user.email == "a@b.com")
+        #expect(mockRepo.fetchCallCount == 1)
+    }
+
+    @Test("throws for missing user")
+    func loadMissingUser() async {
+        mockRepo.stubbedUser = nil
+
+        await #expect(throws: AppError.notFound) {
+            try await service.fetch(id: "999")
+        }
+    }
+
+    @Test("validates email format", arguments: ["bad", "no-at", "@", ""])
+    func invalidEmails(email: String) {
+        #expect(Email(email) == nil)
+    }
+}
+
+// Mock with protocol
+protocol UserRepository: Sendable {
+    func fetch(id: String) async throws -> User
+    func save(_ user: User) async throws
+}
+
+final class MockUserRepository: UserRepository, @unchecked Sendable {
+    var stubbedUser: User?
+    var fetchCallCount = 0
+
+    func fetch(id: String) async throws -> User {
+        fetchCallCount += 1
+        guard let user = stubbedUser else { throw AppError.notFound }
+        return user
+    }
+
+    func save(_ user: User) async throws { /* no-op */ }
 }
 ```
 
-## Best Practices
+---
 
-- Prefer `@StateObject` for owned objects, `@ObservedObject` for passed-in objects.
-- Use `@MainActor` on ViewModels to ensure UI updates on main thread.
-- Prefer `async let` for concurrent independent work over `TaskGroup` for simple cases.
-- Use `Result` type for error handling in callbacks; `throws` for async functions.
-- Mark views with `@ViewBuilder` for conditional composition.
-- Test ViewModels with dependency injection; mock protocols, not concrete types.
-- Follow Apple's accessibility guidelines: add `.accessibilityLabel()` to all interactive elements.
+## Anti-Patterns
+
+| Anti-Pattern | Problem | Solution |
+|---|---|---|
+| Force unwrapping (`!`) | Runtime crash | `guard let`, `if let`, nil coalescing |
+| `@StateObject` in iOS 17+ | Deprecated pattern | `@State` with `@Observable` class |
+| Massive view bodies (100+ lines) | Unreadable, slow previews | Extract subviews and components |
+| Blocking main thread | UI freezes | `async/await`, `Task { }` |
+| Retain cycles in closures | Memory leaks | `[weak self]` or actor isolation |
+| `DispatchQueue` in new code | Old concurrency model | Swift concurrency (async/await, actors) |
+| No `Sendable` conformance | Data races in Swift 6 | Mark value types Sendable, use actors |
+| God ViewModel (500+ lines) | Untestable, violates SRP | Split into focused services/use cases |
+
+---
+
+## Verification Checklist
+
+Before considering Swift/iOS work done:
+- [ ] Builds with strict concurrency checking enabled
+- [ ] No force unwraps (`!`) except `IBOutlet` (UIKit legacy)
+- [ ] All `@Observable` classes are `@MainActor` isolated
+- [ ] Actors used for shared mutable state
+- [ ] `Sendable` conformance on all types crossing boundaries
+- [ ] SwiftData models have proper relationships and delete rules
+- [ ] Tests pass with Swift Testing framework
+- [ ] Accessibility: `.accessibilityLabel()` on all interactive elements
+- [ ] Previews work for all views (`#Preview`)
+- [ ] No retain cycles — `[weak self]` in escaping closures
+- [ ] Memory profiled with Instruments (no leaks)

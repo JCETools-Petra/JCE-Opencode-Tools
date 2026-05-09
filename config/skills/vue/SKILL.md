@@ -6,53 +6,165 @@ description: Vue 3, Composition API, Pinia, Nuxt
 # Skill: Vue.js
 # Loaded on-demand when working with .vue files, Vue 3, Nuxt
 
-## Composition API Fundamentals
+## Auto-Detect
 
-### Reactivity Primitives
+Trigger this skill when:
+- File extensions: `.vue`
+- `package.json` contains: `vue`, `nuxt`, `@vue/`, `pinia`, `vite`
+- Imports from: `vue`, `@vue/reactivity`, `pinia`
+- Directory patterns: `composables/`, `pages/`, `components/`
+
+---
+
+## Decision Tree: State Management
+
+```
+Need to store data?
+├── Derived from other state? → computed() (no extra state needed)
+├── Only used by this component? → ref() / reactive()
+├── Shared by parent-child? → props + emit (one-way data flow)
+├── Shared by 2-3 nearby components? → Lift state up or provide/inject
+├── App-wide UI state (theme, auth, cart)? → Pinia store
+├── Server data (API responses)? → VueQuery / Nuxt useFetch
+├── Complex form state? → VeeValidate + Zod or FormKit
+├── URL-driven state? → useRoute().query / useUrlSearchParams (VueUse)
+└── Cross-component events? → Pinia action or composable (NOT event bus)
+```
+
+## Decision Tree: Reactivity Primitive
+
+```
+What kind of data?
+├── Primitive (string, number, boolean)? → ref()
+├── Object/Array you'll mutate deeply? → reactive()
+├── Large immutable dataset (replace, not mutate)? → shallowRef()
+├── Computed from other reactive sources? → computed()
+├── Need writable computed? → computed({ get, set })
+├── Prop that supports v-model? → defineModel() (Vue 3.4+)
+└── Need to watch for side effects? → watch() or watchEffect()
+```
+
+---
+
+## Vue 3.5+ Patterns
+
 ```vue
 <script setup lang="ts">
-import { ref, reactive, computed, watch, watchEffect, toRefs } from 'vue';
+import { ref, reactive, computed, watch, watchEffect, useTemplateRef } from 'vue';
 
-// ref: single values (primitives or objects), access via .value in script
+// ref: single values, access via .value in script
 const count = ref(0);
-count.value++; // .value required in <script>, auto-unwrapped in <template>
+count.value++; // .value in script, auto-unwrapped in template
 
-// reactive: objects only, deep reactive, no .value needed
+// reactive: objects, deep reactive, no .value
 const state = reactive({ name: 'Alice', items: [] as string[] });
 state.name = 'Bob'; // direct mutation
 
-// computed: cached derived state, auto-tracks dependencies
+// computed: cached derived state
 const doubled = computed(() => count.value * 2);
 
-// watch: explicit source, access old/new values
+// Writable computed
+const fullName = computed({
+  get: () => `${state.firstName} ${state.lastName}`,
+  set: (val: string) => {
+    const [first, ...rest] = val.split(' ');
+    state.firstName = first;
+    state.lastName = rest.join(' ');
+  },
+});
+
+// useTemplateRef (Vue 3.5+) — type-safe template refs
+const inputRef = useTemplateRef<HTMLInputElement>('input');
+// <input ref="input" /> in template
+
+// watch: explicit source, old/new values
 watch(count, (newVal, oldVal) => {
   console.log(`Changed from ${oldVal} to ${newVal}`);
-}, { immediate: true }); // fire on mount
+}, { immediate: true });
 
-// watchEffect: auto-tracks all reactive deps used inside
+// watchEffect: auto-tracks all reactive deps
 watchEffect(() => {
   document.title = `Count: ${count.value}`;
 });
 
-// watch multiple sources
-watch([count, () => state.name], ([newCount, newName]) => { /* ... */ });
+// watch with cleanup (Vue 3.5+ onWatcherCleanup)
+import { onWatcherCleanup } from 'vue';
+watch(searchQuery, (query) => {
+  const controller = new AbortController();
+  fetchResults(query, { signal: controller.signal });
+  onWatcherCleanup(() => controller.abort());
+});
 </script>
 ```
 
-### Destructuring Pitfall
-```ts
-// BAD: loses reactivity
-const { name, items } = reactive({ name: 'Alice', items: [] });
+### defineModel (Vue 3.4+)
 
-// GOOD: use toRefs to maintain reactivity
-const state = reactive({ name: 'Alice', items: [] });
-const { name, items } = toRefs(state);
+```vue
+<!-- CustomInput.vue — replaces modelValue + emit pattern -->
+<script setup lang="ts">
+// Single v-model
+const model = defineModel<string>({ required: true });
+
+// Named v-model: v-model:title="..."
+const title = defineModel<string>('title');
+
+// With transform/validation
+const count = defineModel<number>({ default: 0, set(val) { return Math.max(0, val); } });
+</script>
+
+<template>
+  <input v-model="model" />
+</template>
+
+<!-- Parent usage -->
+<!-- <CustomInput v-model="searchQuery" /> -->
 ```
+
+### Typed Slots (Vue 3.3+)
+
+```vue
+<script setup lang="ts">
+// Typed slots with defineSlots
+const slots = defineSlots<{
+  default(props: { item: User; index: number }): any;
+  header(props: { count: number }): any;
+  empty(): any;
+}>();
+</script>
+
+<template>
+  <div>
+    <slot name="header" :count="items.length" />
+    <div v-for="(item, i) in items" :key="item.id">
+      <slot :item="item" :index="i" />
+    </div>
+    <slot name="empty" v-if="items.length === 0" />
+  </div>
+</template>
+```
+
+### defineOptions & defineExpose
+
+```vue
+<script setup lang="ts">
+// defineOptions — set component options without separate <script> block
+defineOptions({ name: 'UserCard', inheritAttrs: false });
+
+// defineExpose — explicitly expose methods/state to parent via template ref
+const reset = () => { /* ... */ };
+const validate = () => { /* ... */ };
+defineExpose({ reset, validate });
+</script>
+```
+
+---
 
 ## Composables (Custom Hooks)
 
 ```ts
 // composables/useFetch.ts
+import { ref, toValue, watchEffect, type MaybeRefOrGetter } from 'vue';
+
 export function useFetch<T>(url: MaybeRefOrGetter<string>) {
   const data = ref<T | null>(null);
   const error = ref<Error | null>(null);
@@ -72,83 +184,57 @@ export function useFetch<T>(url: MaybeRefOrGetter<string>) {
     }
   }
 
-  watchEffect(() => { toValue(url); execute(); }); // re-fetch on URL change
+  watchEffect(() => { toValue(url); execute(); });
   return { data, error, loading, execute };
 }
 
-// Usage in component
-const { data: users, loading } = useFetch<User[]>('/api/users');
+// composables/useIntersectionObserver.ts
+export function useIntersectionObserver(
+  target: MaybeRefOrGetter<HTMLElement | null>,
+  callback: IntersectionObserverCallback,
+  options?: IntersectionObserverInit
+) {
+  const isIntersecting = ref(false);
+  let observer: IntersectionObserver | null = null;
+
+  watchEffect((onCleanup) => {
+    const el = toValue(target);
+    if (!el) return;
+    observer = new IntersectionObserver((entries, obs) => {
+      isIntersecting.value = entries.some(e => e.isIntersecting);
+      callback(entries, obs);
+    }, options);
+    observer.observe(el);
+    onCleanup(() => observer?.disconnect());
+  });
+
+  return { isIntersecting };
+}
 ```
 
-## Component Patterns
-
-### v-model with Components
-```vue
-<!-- Parent -->
-<CustomInput v-model="searchQuery" v-model:placeholder="hint" />
-
-<!-- CustomInput.vue -->
-<script setup lang="ts">
-const model = defineModel<string>(); // Vue 3.4+ — replaces modelValue/emit
-const placeholder = defineModel<string>('placeholder');
-</script>
-<template>
-  <input v-model="model" :placeholder="placeholder" />
-</template>
-```
-
-### Slots (Default, Named, Scoped)
-```vue
-<!-- DataTable.vue -->
-<template>
-  <table>
-    <thead><slot name="header" /></thead>
-    <tbody>
-      <tr v-for="row in data" :key="row.id">
-        <slot name="row" :row="row" :index="row.id" />  <!-- scoped slot -->
-      </tr>
-    </tbody>
-    <tfoot><slot name="footer">Default footer</slot></tfoot>
-  </table>
-</template>
-
-<!-- Usage -->
-<DataTable :data="users">
-  <template #header><th>Name</th><th>Email</th></template>
-  <template #row="{ row }"><td>{{ row.name }}</td><td>{{ row.email }}</td></template>
-</DataTable>
-```
-
-### Provide / Inject (Dependency Injection)
-```ts
-// Parent
-const theme = ref<'light' | 'dark'>('light');
-provide('theme', theme); // provide reactive ref
-
-// Deep child
-const theme = inject<Ref<'light' | 'dark'>>('theme', ref('light')); // with default
-```
-
-### Teleport & Suspense
-```vue
-<Teleport to="body">
-  <Modal v-if="showModal" @close="showModal = false" />
-</Teleport>
-
-<Suspense>
-  <template #default><AsyncComponent /></template>
-  <template #fallback><LoadingSpinner /></template>
-</Suspense>
-```
+---
 
 ## Pinia State Management
 
 ```ts
 // stores/useCartStore.ts
-export const useCartStore = defineStore('cart', () => {
-  const items = ref<CartItem[]>([]);
-  const total = computed(() => items.value.reduce((sum, i) => sum + i.price * i.qty, 0));
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
 
+export const useCartStore = defineStore('cart', () => {
+  // State
+  const items = ref<CartItem[]>([]);
+  const coupon = ref<string | null>(null);
+
+  // Getters (computed)
+  const total = computed(() =>
+    items.value.reduce((sum, i) => sum + i.price * i.qty, 0)
+  );
+  const itemCount = computed(() =>
+    items.value.reduce((sum, i) => sum + i.qty, 0)
+  );
+
+  // Actions
   function addItem(product: Product) {
     const existing = items.value.find(i => i.id === product.id);
     if (existing) existing.qty++;
@@ -159,50 +245,151 @@ export const useCartStore = defineStore('cart', () => {
     items.value = items.value.filter(i => i.id !== id);
   }
 
-  return { items, total, addItem, removeItem };
+  async function checkout() {
+    const response = await api.post('/orders', { items: items.value, coupon: coupon.value });
+    items.value = [];
+    coupon.value = null;
+    return response.data;
+  }
+
+  // Persist with plugin: https://prazdevs.github.io/pinia-plugin-persistedstate/
+  return { items, coupon, total, itemCount, addItem, removeItem, checkout };
 });
 
-// Component usage
+// Component usage — destructure with storeToRefs for reactivity
+import { storeToRefs } from 'pinia';
 const cart = useCartStore();
-cart.addItem(product);
-// Destructure with storeToRefs to keep reactivity
-const { items, total } = storeToRefs(cart);
+const { items, total } = storeToRefs(cart); // reactive refs
+cart.addItem(product); // actions called directly
 ```
 
-## Vue Router Patterns
+---
+
+## Nuxt 4 Patterns
+
+```vue
+<!-- pages/users/[id].vue -->
+<script setup lang="ts">
+// Auto-imported composables — no import needed
+const route = useRoute();
+
+// useFetch: SSR-friendly, auto-deduped, cached, typed
+const { data: user, status, error, refresh } = await useFetch<User>(
+  `/api/users/${route.params.id}`,
+  { watch: [() => route.params.id] } // re-fetch on param change
+);
+
+// useAsyncData: custom fetching logic
+const { data: stats } = await useAsyncData('user-stats', () => {
+  return $fetch(`/api/users/${route.params.id}/stats`);
+}, {
+  transform: (data) => ({ ...data, computed: data.a + data.b }),
+  getCachedData: (key, nuxtApp) => nuxtApp.payload.data[key], // SWR pattern
+});
+
+// useLazyFetch: non-blocking (doesn't await, renders immediately)
+const { data: recommendations, pending } = useLazyFetch('/api/recommendations');
+</script>
+
+<template>
+  <div v-if="status === 'error'">Error: {{ error?.message }}</div>
+  <div v-else-if="status === 'pending'">Loading...</div>
+  <div v-else>
+    <h1>{{ user?.name }}</h1>
+    <button @click="refresh()">Refresh</button>
+  </div>
+</template>
+```
 
 ```ts
-// Lazy-loaded routes
-const routes = [
-  { path: '/', component: () => import('./views/Home.vue') },
-  {
-    path: '/dashboard',
-    component: () => import('./views/Dashboard.vue'),
-    meta: { requiresAuth: true },
-    children: [
-      { path: 'settings', component: () => import('./views/Settings.vue') },
-    ],
-  },
-];
+// server/api/users/[id].get.ts — Nitro server route
+export default defineEventHandler(async (event) => {
+  const id = getRouterParam(event, 'id');
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) throw createError({ statusCode: 404, message: 'User not found' });
+  return user;
+});
 
-// Navigation guard
-router.beforeEach((to) => {
-  if (to.meta.requiresAuth && !useAuthStore().isAuthenticated) {
-    return { path: '/login', query: { redirect: to.fullPath } };
-  }
+// server/api/users/index.post.ts — with validation
+import { z } from 'zod';
+
+const schema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+});
+
+export default defineEventHandler(async (event) => {
+  const body = await readValidatedBody(event, schema.parse);
+  return await db.user.create({ data: body });
 });
 ```
+
+### Nuxt Middleware & Plugins
+
+```ts
+// middleware/auth.ts — route middleware
+export default defineNuxtRouteMiddleware((to) => {
+  const { loggedIn } = useUserSession();
+  if (!loggedIn.value && to.path !== '/login') {
+    return navigateTo('/login');
+  }
+});
+
+// plugins/api.ts — global plugin
+export default defineNuxtPlugin(() => {
+  const api = $fetch.create({
+    baseURL: useRuntimeConfig().public.apiBase,
+    onRequest({ options }) {
+      const token = useCookie('token');
+      if (token.value) options.headers.set('Authorization', `Bearer ${token.value}`);
+    },
+  });
+  return { provide: { api } };
+});
+```
+
+---
+
+## Vapor Mode (Vue 3.6+ — Experimental)
+
+```vue
+<!-- Opt-in per component for maximum performance -->
+<!-- No virtual DOM — compiles to direct DOM operations -->
+<script setup lang="ts" vapor>
+// Same Composition API, but compiled differently
+const count = ref(0);
+const doubled = computed(() => count.value * 2);
+</script>
+
+<template>
+  <button @click="count++">{{ count }} ({{ doubled }})</button>
+</template>
+
+<!-- Benefits: smaller bundle, faster updates, no VDOM diffing overhead -->
+<!-- Use for: performance-critical components (large lists, animations) -->
+<!-- Limitations: some directives/features may not be supported initially -->
+```
+
+---
 
 ## Performance Optimization
 
 ```vue
 <script setup>
-import { shallowRef, triggerRef } from 'vue';
+import { shallowRef, triggerRef, defineAsyncComponent } from 'vue';
 
 // shallowRef: only track .value replacement, not deep mutations
 const largeList = shallowRef<Item[]>([]);
 largeList.value = [...largeList.value, newItem]; // triggers update
-// largeList.value.push(newItem); triggerRef(largeList); // manual trigger
+
+// Async components with loading/error states
+const HeavyChart = defineAsyncComponent({
+  loader: () => import('./HeavyChart.vue'),
+  loadingComponent: ChartSkeleton,
+  errorComponent: ChartError,
+  delay: 200,
+  timeout: 10000,
+});
 </script>
 
 <template>
@@ -213,70 +400,77 @@ largeList.value = [...largeList.value, newItem]; // triggers update
   <div v-for="item in list" :key="item.id" v-memo="[item.selected]">
     <HeavyComponent :item="item" />
   </div>
+
+  <!-- Teleport for modals/tooltips (avoids z-index issues) -->
+  <Teleport to="body">
+    <Modal v-if="showModal" @close="showModal = false" />
+  </Teleport>
 </template>
 ```
 
-## Nuxt 3 Patterns
-
-```vue
-<!-- pages/users/[id].vue -->
-<script setup lang="ts">
-// Auto-imported composables — no import needed
-const route = useRoute();
-
-// useFetch: SSR-friendly, auto-deduped, cached
-const { data: user, pending, error } = await useFetch<User>(`/api/users/${route.params.id}`);
-
-// useAsyncData: when you need custom fetching logic
-const { data } = await useAsyncData('stats', () => $fetch('/api/stats'));
-</script>
-
-<!-- server/api/users/[id].get.ts — server route -->
-<script lang="ts">
-export default defineEventHandler(async (event) => {
-  const id = getRouterParam(event, 'id');
-  return await db.user.findUnique({ where: { id } });
-});
-</script>
-```
+---
 
 ## Testing
 
 ```ts
 import { mount } from '@vue/test-utils';
+import { createTestingPinia } from '@pinia/testing';
 import { describe, it, expect, vi } from 'vitest';
-import Counter from './Counter.vue';
+import UserList from './UserList.vue';
 
-describe('Counter', () => {
-  it('increments on click', async () => {
-    const wrapper = mount(Counter, { props: { initial: 0 } });
+describe('UserList', () => {
+  it('renders users and handles click', async () => {
+    const wrapper = mount(UserList, {
+      props: { users: [{ id: '1', name: 'Alice' }] },
+      global: {
+        plugins: [createTestingPinia({ createSpy: vi.fn })],
+      },
+    });
+
+    expect(wrapper.text()).toContain('Alice');
     await wrapper.find('button').trigger('click');
-    expect(wrapper.text()).toContain('1');
+    expect(wrapper.emitted('select')).toHaveLength(1);
+    expect(wrapper.emitted('select')![0]).toEqual(['1']);
   });
 
-  it('emits update event', async () => {
-    const wrapper = mount(Counter);
-    await wrapper.find('button').trigger('click');
-    expect(wrapper.emitted('update')).toHaveLength(1);
-    expect(wrapper.emitted('update')![0]).toEqual([1]);
+  it('shows loading state', () => {
+    const wrapper = mount(UserList, { props: { users: [], loading: true } });
+    expect(wrapper.find('[data-testid="spinner"]').exists()).toBe(true);
   });
 });
 ```
 
+---
+
 ## Anti-Patterns
 
-```ts
-// BAD: mutating props directly
-props.items.push(newItem);
-// GOOD: emit event to parent
-emit('add-item', newItem);
+| Don't | Do Instead |
+|-------|------------|
+| Mutate props directly | Emit event to parent |
+| Options API mixins | Composables (explicit, typed, traceable) |
+| `reactive()` for primitives | `ref()` for primitives |
+| Forget `.value` in script | Use Volar for IDE warnings |
+| `watch` without cleanup for async | Use `onWatcherCleanup` or AbortController |
+| Vuex in new projects | Pinia (official, simpler, typed) |
+| `v-if` + `v-for` on same element | Use `<template v-for>` with `v-if` inside |
+| Event bus (`mitt`) for state | Pinia store or provide/inject |
+| Destructure `reactive()` directly | Use `toRefs()` to maintain reactivity |
+| Global state in composable module scope | Pinia store (SSR-safe, devtools) |
 
-// BAD: Options API mixins (composition conflicts, unclear source)
-// GOOD: composables — explicit, typed, traceable
+---
 
-// BAD: reactive() for primitives — use ref()
-// BAD: forgetting .value in script — causes silent bugs
-// BAD: watch without cleanup for async operations
-// BAD: using Vuex in new Vue 3 projects — use Pinia
-// BAD: v-if + v-for on same element — v-if takes precedence in Vue 3, use <template> wrapper
-```
+## Verification Checklist
+
+Before considering Vue work done:
+- [ ] All reactive state uses correct primitive (ref vs reactive vs shallowRef)
+- [ ] Composables follow `use` prefix convention and return reactive refs
+- [ ] Props are typed with `defineProps<T>()` — no runtime validation objects
+- [ ] Events are typed with `defineEmits<T>()`
+- [ ] v-model uses `defineModel()` (Vue 3.4+)
+- [ ] No prop mutation — emit events for parent state changes
+- [ ] Pinia stores use composition API style (setup stores)
+- [ ] Async operations have proper cleanup (AbortController, onWatcherCleanup)
+- [ ] Large lists use `v-memo` or `shallowRef` for performance
+- [ ] Tests cover component behavior, not implementation details
+- [ ] Nuxt: `useFetch`/`useAsyncData` used instead of raw fetch in components
+- [ ] Accessibility: semantic HTML, proper ARIA, keyboard navigation

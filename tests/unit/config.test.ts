@@ -293,7 +293,7 @@ describe("config/skills/", () => {
       const fullPath = join(skillsDir, f);
       return statSync(fullPath).isDirectory() && existsSync(join(fullPath, "SKILL.md"));
     });
-    expect(skillDirs).toHaveLength(50);
+    expect(skillDirs).toHaveLength(53);
   });
 
   test("all SKILL.md files are non-empty and have frontmatter", () => {

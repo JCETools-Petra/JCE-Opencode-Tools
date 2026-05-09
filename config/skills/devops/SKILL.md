@@ -10,7 +10,7 @@ description: Docker, CI/CD, deployment, monitoring, infrastructure
 
 Trigger this skill when:
 - Files: `Dockerfile`, `docker-compose.yml`, `.github/workflows/*.yml`, `Jenkinsfile`
-- Files: `.gitlab-ci.yml`, `fly.toml`, `railway.json`, `vercel.json`, `terraform/*.tf`
+- Files: `.gitlab-ci.yml`, `fly.toml`, `terraform/*.tf`, `pulumi/*`, `cdk/*`
 - Task mentions: deploy, container, pipeline, monitoring, infrastructure, scaling
 - `package.json` scripts: `docker:*`, `deploy:*`, `ci:*`
 
@@ -20,150 +20,185 @@ Trigger this skill when:
 
 ```
 What's your risk tolerance and infrastructure?
-├── Zero-downtime required, instant rollback needed?
-│   └── Blue-Green deployment
-│       ├── Two identical environments (blue = current, green = new)
-│       ├── Deploy to green, test, switch traffic
-│       └── Rollback = switch back to blue (instant)
-├── Gradual rollout, want to test with real traffic?
-│   └── Canary deployment
-│       ├── Route 1-5% traffic to new version
-│       ├── Monitor error rates, latency, business metrics
-│       ├── Gradually increase (10% → 25% → 50% → 100%)
-│       └── Rollback = route all traffic back to old version
-├── Simple app, can tolerate brief mixed versions?
-│   └── Rolling deployment (Kubernetes default)
-│       ├── Replace instances one at a time
-│       ├── Old and new versions run simultaneously during rollout
-│       └── Rollback = roll forward or `kubectl rollout undo`
-├── Feature needs testing with specific users?
-│   └── Feature flags (LaunchDarkly, Unleash, custom)
-│       ├── Deploy code dark (disabled)
-│       ├── Enable per-user, per-team, per-percentage
-│       └── Rollback = disable flag (instant, no deploy)
-└── Database migration involved?
-    └── Expand-Contract pattern
-        ├── Phase 1: Add new column/table (expand) — backward compatible
-        ├── Phase 2: Migrate data, update code to use new schema
-        └── Phase 3: Remove old column/table (contract) — after all instances updated
-```
-
-## Decision Tree: Container Orchestration
-
-```
-How many containers/services?
-├── 1-3 services, single server?
-│   └── Docker Compose (simplest, good enough for most)
-├── Need auto-scaling, self-healing, multi-node?
-│   └── Kubernetes (EKS/GKE/AKS or k3s for lightweight)
-├── Serverless containers (no cluster management)?
-│   └── AWS Fargate / Google Cloud Run / Azure Container Apps
-├── Simple PaaS (just deploy and forget)?
-│   └── Railway / Fly.io / Render
-└── Static site + API?
-    └── Vercel / Netlify (frontend) + serverless functions or separate API
++-- Zero-downtime required, instant rollback?
+|   +-- Blue-Green deployment
+|       +-- Two identical environments (blue = current, green = new)
+|       +-- Deploy to green, test, switch traffic atomically
+|       +-- Rollback = switch back to blue (instant)
++-- Gradual rollout, test with real traffic?
+|   +-- Canary deployment
+|       +-- Route 1-5% traffic to new version
+|       +-- Monitor error rates, latency, business metrics
+|       +-- Gradually increase (10% -> 25% -> 50% -> 100%)
+|       +-- Rollback = route all traffic back to old version
++-- Simple app, can tolerate brief mixed versions?
+|   +-- Rolling deployment (Kubernetes default)
+|       +-- Replace instances one at a time
+|       +-- Rollback = kubectl rollout undo
++-- Feature needs testing with specific users?
+|   +-- Feature flags (LaunchDarkly, Unleash, custom)
+|       +-- Deploy code dark (disabled), enable per-user/percentage
+|       +-- Rollback = disable flag (instant, no deploy)
++-- Database migration involved?
+    +-- Expand-Contract pattern
+        +-- Phase 1: Add new column/table (backward compatible)
+        +-- Phase 2: Migrate data, update code
+        +-- Phase 3: Remove old column/table
 ```
 
 ---
 
-## Docker Best Practices
+## GitOps Workflow
 
-### Optimized Dockerfile
+```
+GitOps Principles:
++-- Git is the single source of truth for infrastructure state
++-- All changes via pull request (auditable, reviewable)
++-- Automated reconciliation (desired state -> actual state)
++-- Drift detection and self-healing
+
+GitOps Flow:
+  Developer -> PR to config repo -> Merge -> ArgoCD/Flux detects change
+  -> Applies to cluster -> Monitors health -> Rollback if unhealthy
+
+Tools:
++-- ArgoCD — Kubernetes-native, UI, multi-cluster, App of Apps pattern
++-- Flux v2 — Lightweight, GitOps Toolkit, Kustomize-native
++-- Crossplane — GitOps for cloud infrastructure (not just K8s workloads)
+```
+
+```yaml
+# ArgoCD Application manifest
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/org/k8s-manifests.git
+    targetRevision: main
+    path: apps/my-app/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+```
+
+---
+
+## IaC Comparison: Terraform vs Pulumi vs CDK
+
+```
+Which IaC tool?
++-- Multi-cloud, large team, established workflows?
+|   +-- Terraform (HCL) — largest ecosystem, most hiring, state management mature
++-- Want real programming language (TypeScript, Python, Go)?
+|   +-- Pulumi — same languages as app code, better abstractions, testing
++-- AWS-only, want tight integration?
+|   +-- AWS CDK — TypeScript/Python, generates CloudFormation, L2/L3 constructs
++-- Simple infrastructure, few resources?
+|   +-- SST (built on Pulumi) — optimized for serverless/full-stack apps
++-- Kubernetes-focused?
+    +-- Helm + Kustomize (manifests) or cdk8s (programmatic)
+```
+
+| Feature | Terraform | Pulumi | AWS CDK |
+|---------|-----------|--------|---------|
+| Language | HCL (DSL) | TS, Python, Go, C# | TS, Python, Java, C# |
+| State | Remote (S3, TFC) | Pulumi Cloud or self-managed | CloudFormation |
+| Multi-cloud | Excellent | Excellent | AWS only |
+| Testing | `terraform test` (limited) | Unit tests in any framework | CDK assertions |
+| Ecosystem | Largest provider library | Growing, Terraform bridge | AWS-focused |
+| Learning curve | Low (HCL is simple) | Low (if you know the language) | Medium (CFN concepts) |
+| Drift detection | `terraform plan` | `pulumi preview` | CFN drift detection |
+
+```typescript
+// Pulumi example — type-safe infrastructure
+import * as aws from '@pulumi/aws';
+
+const bucket = new aws.s3.Bucket('app-assets', {
+  website: { indexDocument: 'index.html' },
+  forceDestroy: true,
+});
+
+const cdn = new aws.cloudfront.Distribution('cdn', {
+  origins: [{ domainName: bucket.websiteEndpoint, originId: 'S3' }],
+  defaultCacheBehavior: {
+    viewerProtocolPolicy: 'redirect-to-https',
+    allowedMethods: ['GET', 'HEAD'],
+    cachedMethods: ['GET', 'HEAD'],
+    targetOriginId: 'S3',
+    forwardedValues: { queryString: false, cookies: { forward: 'none' } },
+  },
+  enabled: true,
+});
+
+export const cdnUrl = cdn.domainName;
+```
+
+---
+
+## Container Security Scanning
+
+```yaml
+# GitHub Actions — scan on every build
+- name: Build image
+  run: docker build -t myapp:${{ github.sha }} .
+
+- name: Scan with Trivy
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: myapp:${{ github.sha }}
+    format: sarif
+    output: trivy-results.sarif
+    severity: CRITICAL,HIGH
+    exit-code: 1  # Fail pipeline on HIGH/CRITICAL
+
+- name: Scan with Grype (alternative)
+  run: |
+    grype myapp:${{ github.sha }} --fail-on high --output table
+
+# Runtime scanning in Kubernetes
+# Deploy Falco for runtime threat detection
+# Deploy Kyverno/OPA Gatekeeper for admission policies
+```
+
+### Secure Dockerfile Pattern
+
 ```dockerfile
-# Stage 1: Dependencies (cached unless package files change)
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --only=production && \
-    cp -R node_modules /prod_modules && \
-    npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile --prod
 
-# Stage 2: Build
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build && \
-    npm prune --production
+RUN corepack enable && pnpm run build
 
-# Stage 3: Production (minimal image)
-FROM node:22-alpine AS runtime
-RUN addgroup -S app && adduser -S app -G app
+FROM gcr.io/distroless/nodejs22-debian12 AS runtime
+COPY --from=builder /app/dist /app/dist
+COPY --from=deps /app/node_modules /app/node_modules
 WORKDIR /app
-
-# Copy only what's needed
-COPY --from=builder --chown=app:app /app/dist ./dist
-COPY --from=builder --chown=app:app /app/node_modules ./node_modules
-COPY --from=builder --chown=app:app /app/package.json ./
-
-USER app
-ENV NODE_ENV=production
-EXPOSE 3000
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health || exit 1
-
-CMD ["node", "dist/index.js"]
-```
-
-### Docker Checklist
-- [ ] Multi-stage build (separate build/runtime)
-- [ ] Non-root user (`USER app`)
-- [ ] `.dockerignore` excludes: `node_modules`, `.git`, `.env`, `*.md`, `tests/`
-- [ ] Pin base image version (or digest for reproducibility)
-- [ ] HEALTHCHECK defined
-- [ ] No secrets in image (use runtime env vars or Docker secrets)
-- [ ] One process per container
-- [ ] Minimal base image (Alpine or distroless)
-- [ ] Layer ordering optimized (deps before source)
-- [ ] `npm ci` not `npm install` (deterministic)
-
-### Docker Compose (Development)
-```yaml
-services:
-  app:
-    build: .
-    ports: ["3000:3000"]
-    environment:
-      - DATABASE_URL=postgres://user:pass@db:5432/app
-      - REDIS_URL=redis://cache:6379
-    depends_on:
-      db: { condition: service_healthy }
-      cache: { condition: service_started }
-    volumes:
-      - ./src:/app/src  # Hot reload in dev
-    develop:
-      watch:
-        - action: sync
-          path: ./src
-          target: /app/src
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: app
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d app"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  cache:
-    image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-
-volumes:
-  pgdata:
+USER nonroot:nonroot
+CMD ["dist/index.js"]
 ```
 
 ---
 
-## CI/CD Pipeline Patterns
+## CI/CD Pipeline (GitHub Actions)
 
-### GitHub Actions Template
 ```yaml
 name: CI/CD
 on:
@@ -180,12 +215,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test -- --coverage
-      - run: npm audit --audit-level=moderate
+        with: { node-version: 22, cache: pnpm }
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm typecheck
+      - run: pnpm test --coverage
+      - run: pnpm audit --audit-level=moderate
 
   build:
     needs: quality
@@ -193,13 +227,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Scan image
+        if: github.ref == 'refs/heads/main'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          exit-code: 1
+          severity: CRITICAL,HIGH
 
   deploy:
     if: github.ref == 'refs/heads/main'
@@ -207,61 +248,64 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - run: echo "Deploy image ghcr.io/${{ github.repository }}:${{ github.sha }}"
-      # Add your deployment step (kubectl, fly deploy, railway, etc.)
+      - name: Deploy via GitOps
+        run: |
+          # Update image tag in GitOps repo, ArgoCD auto-syncs
+          gh api repos/org/k8s-manifests/dispatches \
+            -f event_type=deploy \
+            -f client_payload[image]="ghcr.io/${{ github.repository }}:${{ github.sha }}"
 ```
-
-### Pipeline Principles
-- **Every push**: lint → typecheck → test → security scan → build
-- **PR only**: preview deploy, visual regression tests
-- **Main only**: build image → deploy staging → smoke test → deploy production
-- **Concurrency**: cancel in-progress runs for same branch
-- **Caching**: npm cache, Docker layer cache, test result cache
-- **Secrets**: GitHub Secrets / environment-scoped, never in code
 
 ---
 
-## Monitoring Checklist
+## Cost Optimization
 
-### The Four Golden Signals
-| Signal | What to Measure | Alert When |
-|--------|----------------|------------|
+```
+Cloud cost reduction strategies:
++-- Compute
+|   +-- Right-size instances (monitor actual CPU/memory usage)
+|   +-- Spot/preemptible instances for stateless workloads (60-90% savings)
+|   +-- Auto-scaling with scale-to-zero for dev/staging
+|   +-- ARM instances (Graviton, Ampere) — 20-40% cheaper, same performance
++-- Storage
+|   +-- Lifecycle policies (move to cold storage after 30 days)
+|   +-- Delete unused EBS volumes, old snapshots
+|   +-- S3 Intelligent-Tiering for unpredictable access patterns
++-- Networking
+|   +-- CDN for static assets (reduce origin traffic)
+|   +-- VPC endpoints for AWS service traffic (avoid NAT gateway costs)
+|   +-- Compress responses (Brotli > gzip)
++-- Database
+|   +-- Reserved instances for predictable workloads (30-60% savings)
+|   +-- Serverless DB for variable workloads (Aurora Serverless, Neon)
+|   +-- Read replicas only if read-heavy (don't over-provision)
++-- Monitoring
+    +-- Set billing alerts at 50%, 80%, 100% of budget
+    +-- Weekly cost review (tag resources by team/service)
+    +-- Use Infracost in CI to estimate cost of IaC changes
+```
+
+---
+
+## Monitoring & Observability
+
+### Four Golden Signals
+
+| Signal | Measure | Alert When |
+|--------|---------|------------|
 | **Latency** | p50, p95, p99 response time | p95 > 500ms for 5 min |
-| **Traffic** | Requests/sec, concurrent users | Unusual spike or drop |
-| **Errors** | 5xx rate, error ratio | Error rate > 1% for 2 min |
-| **Saturation** | CPU, memory, disk, connections | > 80% sustained |
+| **Traffic** | Requests/sec | Unusual spike or drop (> 2 stddev) |
+| **Errors** | 5xx rate | Error rate > 1% for 2 min |
+| **Saturation** | CPU, memory, connections | > 80% sustained for 5 min |
 
-### Observability Stack
-```
-Logs:     stdout → collector (Fluentd/Vector) → storage (Loki/Elasticsearch)
-Metrics:  app → Prometheus/OTEL → Grafana dashboards
-Traces:   OpenTelemetry SDK → Jaeger/Tempo → distributed trace view
-Alerts:   Grafana/PagerDuty → on-call rotation → runbook
-```
+### Health Check
 
-### Structured Logging
-```typescript
-// Every log entry must have:
-const log = {
-  timestamp: new Date().toISOString(),
-  level: 'error',
-  service: 'payment-api',
-  traceId: req.headers['x-trace-id'],
-  message: 'Payment failed',
-  error: { code: 'CARD_DECLINED', provider: 'stripe' },
-  duration_ms: 1250,
-  userId: req.user?.id, // never log PII in plain text
-};
-```
-
-### Health Check Endpoint
 ```typescript
 app.get('/health', async (req, res) => {
   const checks = {
     database: await checkDb().catch(() => false),
     redis: await checkRedis().catch(() => false),
     uptime: process.uptime(),
-    memory: process.memoryUsage(),
   };
   const healthy = checks.database && checks.redis;
   res.status(healthy ? 200 : 503).json({ status: healthy ? 'ok' : 'degraded', checks });
@@ -270,62 +314,34 @@ app.get('/health', async (req, res) => {
 
 ---
 
-## Dockerfile Optimization Tips
-
-| Optimization | Impact |
-|-------------|--------|
-| Multi-stage builds | 60-80% smaller images |
-| Alpine base | ~5MB vs ~100MB for full Debian |
-| `npm ci --only=production` in final stage | No devDependencies in image |
-| Copy package files before source | Better layer caching |
-| Combine RUN commands | Fewer layers, smaller image |
-| Use `.dockerignore` | Faster build context transfer |
-| Pin versions | Reproducible builds |
-| `--no-cache` for security updates | Fresh packages in CI |
-
----
-
 ## Anti-Patterns
 
-| ❌ Don't | ✅ Do Instead |
-|----------|---------------|
-| Run as root in container | `USER nonroot` or `USER 1000` |
-| Store state in container filesystem | External volumes or object storage |
+| Don't | Do Instead |
+|-------|------------|
+| Run as root in container | `USER nonroot` or distroless |
 | Use `latest` tag in production | Pin specific version/SHA |
-| Manual deployments | Automated CI/CD pipeline |
+| Manual deployments | Automated CI/CD + GitOps |
 | Alert on every metric | Alert on symptoms (error rate), not causes (CPU) |
 | SSH into production containers | Immutable infrastructure, redeploy |
 | Shared credentials across environments | Per-environment secrets with rotation |
-| Skip health checks | Always define HEALTHCHECK + readiness/liveness probes |
-| Deploy on Friday | Deploy anytime with proper rollback + monitoring |
+| Skip health checks | HEALTHCHECK + readiness/liveness probes |
 | Monolithic CI pipeline (30+ min) | Parallel jobs, caching, affected-only |
+| No cost monitoring | Billing alerts + weekly review + Infracost |
+| Terraform without remote state locking | S3 + DynamoDB lock or Terraform Cloud |
 
 ---
 
 ## Verification Checklist
 
-Before considering DevOps work done:
 - [ ] Dockerfile uses multi-stage build with non-root user
-- [ ] `.dockerignore` excludes unnecessary files
-- [ ] Health check endpoint exists and is used by orchestrator
-- [ ] CI pipeline runs: lint, typecheck, test, security scan, build
-- [ ] Deployment is automated (no manual steps)
+- [ ] Container images scanned for vulnerabilities (Trivy/Grype)
+- [ ] CI pipeline: lint, typecheck, test, security scan, build
+- [ ] Deployment is automated (GitOps or CI/CD)
 - [ ] Rollback procedure documented and tested
-- [ ] Secrets managed via environment/secret manager (not in code/image)
-- [ ] Monitoring covers: latency, errors, traffic, saturation
+- [ ] Secrets managed via platform secret manager (not in code/image)
+- [ ] Monitoring covers four golden signals
 - [ ] Alerts are actionable with runbook links
-- [ ] Graceful shutdown handles SIGTERM (drain connections)
+- [ ] Graceful shutdown handles SIGTERM
 - [ ] Database migrations are backward-compatible
-- [ ] Container images are scanned for vulnerabilities (Trivy/Snyk)
-
----
-
-## MCP Integration
-
-| Tool | Use For |
-|------|---------|
-| `bash` | Run Docker builds, test pipelines locally, check container logs |
-| `context7` | Look up Docker, Kubernetes, Terraform docs |
-| `grep` | Find hardcoded secrets, missing health checks, `latest` tags |
-| `sequential-thinking` | Design deployment strategies, incident response plans |
-| `playwright` | Smoke tests after deployment |
+- [ ] Cost alerts configured at budget thresholds
+- [ ] IaC changes reviewed in PR with plan/preview output

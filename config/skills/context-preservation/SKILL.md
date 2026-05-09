@@ -3,91 +3,142 @@ name: context-preservation
 description: Maintaining project context across sessions
 ---
 
-# Context Preservation
+# Skill: Context Preservation
 
-Panduan untuk menjaga context antar sesi agar AI tidak pernah kehilangan informasi penting tentang project.
+## Auto-Detect
 
----
-
-## Enforcement: MCP Server `context-keeper`
-
-**Jika MCP server `context-keeper` tersedia, WAJIB gunakan tools-nya:**
-
-| Kapan | Tool | Deskripsi |
-|-------|------|-----------|
-| Awal sesi | `context_read` | Baca + auto-prune file. PANGGIL SEBELUM kerja apapun. |
-| Setelah task selesai | `context_update` | Update section tertentu (Stack, Current Status, dll) |
-| Sebelum sesi berakhir | `context_checkpoint` | Validasi, prune, archive jika perlu |
-
-**Jika MCP tidak tersedia, gunakan IRON RULE:**
-> Setiap kali TodoWrite dipanggil untuk mark items `completed`, WAJIB juga update `.opencode-context.md` di response yang SAMA.
+Trigger this skill when:
+- Task mentions: context, session, .opencode-context.md, cross-project, staleness
+- Patterns: maintaining state between sessions, project memory, context file management
+- Context: start of session, end of session, context audit, multi-project workflows
 
 ---
 
-## Prinsip Utama
-
-1. **Baca dulu, kerja kemudian** — Selalu baca `.opencode-context.md` di awal sesi sebelum mulai kerja
-2. **Tulis ringkas** — Hanya fakta penting, format bullet point, hindari narasi panjang
-3. **Update inkremental** — Tambah/ubah saat ada keputusan, jangan tulis ulang seluruh file
-4. **User adalah pemilik** — User boleh edit manual kapan saja
-
----
-
-## Flow Setiap Sesi (OTOMATIS)
-
-**Context file adalah PER-PROJECT** — setiap project root punya `.opencode-context.md` sendiri. Bukan file global.
+## Decision Tree: Context Action
 
 ```
-1. Awal sesi → Cek apakah .opencode-context.md ada di root project
-2. Jika TIDAK ada → BUAT OTOMATIS (jangan tanya user, langsung buat dengan template)
-   - Auto-detect stack dari package.json, Cargo.toml, go.mod, requirements.txt, dll
-   - Isi ## Stack dengan hasil deteksi
-3. Jika SUDAH ada → Baca, lalu PRUNE dulu sebelum lanjut kerja:
-   a. Hapus semua task [x] (sudah selesai) dari ## Current Status
-   b. Hapus notes di ## Important Notes yang sudah tidak relevan
-   c. Ringkas keputusan arsitektur lama yang sudah obvious jadi 1 baris
-   d. Target: file tetap ≤ 40 baris setelah prune
-4. Jika setelah prune masih > 50 baris → AUTO-ARCHIVE:
-   - Pindahkan entries lama ke .opencode-context-archive.md
-   - Di file utama tambah: "> Archived entries: see .opencode-context-archive.md"
-   - Archive file = referensi history, tidak ada batas ukuran
-5. Selama sesi → Update file saat ada:
-   - Keputusan arsitektur baru
-   - Stack/dependency baru ditambahkan
-   - Task selesai (mark [x])
-   - Bug penting ditemukan & di-fix
-   - Konvensi baru disepakati
-6. Akhir sesi → Pastikan status terkini tercatat
+What phase of the session?
++-- Starting a new session?
+|   +-- MCP context-keeper available? -> Call context_read (auto-prunes)
+|   +-- No MCP? -> Read .opencode-context.md manually, prune completed tasks
++-- Completed a task?
+|   +-- MCP available? -> Call context_update with section + changes
+|   +-- No MCP? -> Edit .opencode-context.md directly (append/update)
++-- Ending session / committing?
+|   +-- MCP available? -> Call context_checkpoint (validates + archives)
+|   +-- No MCP? -> Review file, ensure status is current
++-- File doesn't exist?
+|   +-- Auto-create from template (detect stack from project files)
++-- File > 50 lines after prune?
+|   +-- Archive old entries to .opencode-context-archive.md
++-- Need sibling project context?
+    +-- MCP available? -> Call context_query_related
+    +-- No MCP? -> Read sibling's .opencode-context.md directly
 ```
 
-> **PENTING:** User tidak perlu jalankan `opencode-jce context init` manual.
-> AI WAJIB buat file ini otomatis di awal sesi jika belum ada.
-> AI WAJIB prune di awal sesi agar file tidak membengkak.
+## Decision Tree: What to Record
+
+```
+Is this worth recording?
++-- Architecture decision (affects future work)? -> YES (## Architecture Decisions)
++-- New dependency added? -> YES (## Stack)
++-- Convention established? -> YES (## Conventions)
++-- Task completed? -> YES (mark [x] in ## Current Status)
++-- Critical bug found/fixed? -> YES (## Important Notes)
++-- Typo fix / minor rename? -> NO
++-- Implementation detail readable from code? -> NO
++-- Temporary debugging info? -> NO
+```
 
 ---
 
-## Kapan HARUS Update Context File
+## MCP Enforcement (context-keeper server)
 
-| Event | Contoh | Action |
-|-------|--------|--------|
-| Keputusan arsitektur | "Kita pakai JWT untuk auth" | Tambah di ## Architecture Decisions |
-| Dependency baru | "Install Redis untuk caching" | Update ## Stack |
-| Task selesai | "Auth controller done" | Checklist [x] di ## Current Status |
-| Konvensi baru | "Semua API return {success,data,error}" | Tambah di ## Conventions |
-| Bug kritis di-fix | "Race condition di payment" | Tambah di ## Important Notes |
+```
+Tool usage (MANDATORY when MCP available):
+
+| When                    | Tool              | Purpose                              |
+|-------------------------|-------------------|--------------------------------------|
+| Session start           | context_read      | Load + auto-prune + enrich with git  |
+| After task completion   | context_update    | Update specific section              |
+| Before commit/end       | context_checkpoint| Validate, prune, archive if needed   |
+| Debug context health    | context_history   | Check staleness, session count       |
+| Cross-project reference | context_query_related | Read sibling project contexts   |
+```
+
+```typescript
+// context_update usage examples:
+
+// After completing a task:
+context_update({
+  section: 'Current Status',
+  action: 'replace',
+  lines: [
+    '- [x] User authentication (JWT + refresh)',
+    '- [x] Product CRUD + image upload',
+    '- [ ] Shopping cart <- IN PROGRESS',
+    '- [ ] Checkout + Stripe payment',
+  ],
+});
+
+// After architecture decision:
+context_update({
+  section: 'Architecture Decisions',
+  action: 'add',
+  lines: ['- Cache: Redis with 5min TTL, invalidate on write'],
+});
+
+// After adding dependency:
+context_update({
+  section: 'Stack',
+  action: 'add',
+  lines: ['- Redis 7 (caching + session store)'],
+});
+```
 
 ---
 
-## Kapan TIDAK PERLU Update
+## IRON RULE (Backup — when MCP unavailable)
 
-- Perubahan kecil (typo fix, rename variable)
-- Hal yang sudah jelas dari kode (import statements)
-- Informasi sementara yang tidak relevan sesi berikutnya
-- Detail implementasi yang bisa dibaca dari source code
+```
+Every time TodoWrite marks items as `completed`:
+  -> MUST also update .opencode-context.md in the SAME response
+  -> No exceptions. They are coupled operations.
+
+This ensures context is never stale even without the MCP server.
+```
 
 ---
 
-## Format File .opencode-context.md
+## Session Flow (Automatic)
+
+```
+1. SESSION START:
+   a. Check if .opencode-context.md exists in project root
+   b. If NOT exists -> Create from template (auto-detect stack)
+   c. If EXISTS -> Read it, then PRUNE:
+      - Remove all [x] tasks from ## Current Status
+      - Remove resolved notes from ## Important Notes
+      - Condense old architecture decisions to 1 line
+      - Target: <= 40 lines after prune
+
+2. DURING SESSION:
+   - Update on: architecture decision, dependency added, task done, convention set
+   - Don't update on: typos, minor refactors, obvious-from-code details
+
+3. SESSION END:
+   - Ensure current status reflects actual state
+   - Call context_checkpoint (or manually verify)
+
+4. AUTO-ARCHIVE (if > 50 lines after prune):
+   - Move old ## Architecture Decisions and ## Important Notes to archive
+   - Add: "> Archived entries: see .opencode-context-archive.md"
+   - Archive has no size limit (historical reference)
+```
+
+---
+
+## File Template
 
 ```markdown
 # Project Context
@@ -95,159 +146,176 @@ Panduan untuk menjaga context antar sesi agar AI tidak pernah kehilangan informa
 > Last updated: YYYY-MM-DD
 
 ## Stack
-- [bahasa/framework utama]
-- [database]
-- [tools penting]
+- [auto-detect from package.json, Cargo.toml, go.mod, etc.]
 
 ## Architecture Decisions
-- [keputusan 1]: [alasan singkat]
-- [keputusan 2]: [alasan singkat]
+- (none yet)
 
 ## Conventions
-- [aturan 1]
-- [aturan 2]
+- (none yet)
 
 ## Current Status
-- [x] [task selesai]
-- [x] [task selesai]
-- [ ] [task sedang dikerjakan] ← IN PROGRESS
-- [ ] [task belum mulai]
+- [ ] (session start)
 
 ## Important Notes
-- [hal penting yang harus diingat]
+- (none yet)
+
+## Related Projects
+- (none - add as: - ../path: "description")
 ```
 
 ---
 
-## Rules Penulisan (Hemat Token)
+## Writing Rules (Token-Efficient)
 
-1. **Maksimal 40 baris** (target) / **50 baris** (hard limit sebelum archive)
-2. **Bullet point only** — Tidak perlu paragraf
-3. **Tidak ada duplikasi** — Jangan tulis yang sudah ada
-4. **Gunakan simbol:**
-   - `[x]` = selesai (akan di-prune sesi berikutnya)
-   - `[ ]` = belum
-   - `←` = sedang dikerjakan
-   - `⚠️` = perlu perhatian
-5. **Tanggal di header** — Agar tahu kapan terakhir update
-6. **Prune setiap awal sesi** — Hapus [x] tasks, notes lama, ringkas decisions
+```
+1. Max 40 lines (target) / 50 lines (hard limit before archive)
+2. Bullet points only — no paragraphs, no prose
+3. No duplication — check before adding
+4. Symbols:
+   - [x] = completed (pruned next session)
+   - [ ] = pending
+   - <- = in progress marker
+   - !! = needs attention / warning
+5. Date in header — know when last updated
+6. One fact per line — scannable, greppable
+```
 
-## Auto-Archive (.opencode-context-archive.md)
+---
 
-Jika setelah prune file masih > 50 baris:
+## Cross-Project Context
+
+```markdown
+## Related Projects
+- ../shared-lib: "Shared utilities used by this service"
+- ../api-gateway: "Routes traffic to this service"
+- ../mobile-app: "Consumes this API"
+```
+
+```typescript
+// Query related project context (MCP tool)
+context_query_related({ project: '../shared-lib' });
+
+// Returns that project's .opencode-context.md content
+// Useful for: understanding shared interfaces, avoiding breaking changes,
+// coordinating migrations across projects
+```
+
+---
+
+## Multi-Session Awareness (v2)
+
+```
+Features:
+- Session counter: incremented on each context_read
+- Staleness detection: warns if >7 days or >5 sessions without meaningful update
+- Content hash: optimistic concurrency (prevents lost updates from parallel sessions)
+- Auto-enrichment: context_read response includes git branch, uncommitted changes, deps
+
+Staleness escalation:
+- 3 sessions without update: gentle reminder
+- 5 sessions without update: warning in context_read response
+- 7+ days without update: strong warning, suggest review
+
+Session metadata stored as HTML comment (invisible in rendered markdown):
+<!-- session:5 last_update:2026-05-09 hash:abc123 -->
+```
+
+---
+
+## Auto-Prune Strategy
+
+```
+On every session start, BEFORE adding new content:
+
+1. ## Current Status:
+   - Remove all [x] (completed) items
+   - Keep [ ] (pending) and <- (in progress) items
+
+2. ## Important Notes:
+   - Remove notes about bugs that were fixed 2+ sessions ago
+   - Remove temporary notes (debugging info, one-time reminders)
+   - Keep: ongoing warnings, environment quirks, non-obvious gotchas
+
+3. ## Architecture Decisions:
+   - Condense old obvious decisions to 1 line
+   - Example: "Auth: JWT + refresh (15min/7d)" instead of 3 lines explaining why
+
+4. Verify total <= 40 lines
+   - If > 50 lines: trigger auto-archive
+```
+
+---
+
+## Archive Format
 
 ```markdown
 # Context Archive — [Project Name]
 > Historical decisions and notes. Reference only.
 
-## Archived: 2025-05-02
-- [keputusan lama yang dipindahkan]
-- [notes lama yang dipindahkan]
+## Archived: 2026-05-09
+- Auth: Switched from Sanctum to custom JWT (performance reasons)
+- Redis connection pool: max 10 in production (tested under load)
 
-## Archived: 2025-04-28
-- [entries lebih lama]
+## Archived: 2026-04-28
+- Initial architecture: monolith with modular boundaries
+- Database: PostgreSQL 16 chosen over MySQL (JSON support, CTEs)
 ```
 
-Rules archive:
-- Grouped by tanggal archive
-- Tidak ada batas ukuran
-- AI boleh baca archive jika perlu context historis
-- User boleh hapus archive kapan saja
-
----
-
-## Integrasi dengan Memory MCP
-
-Jika MCP Memory server aktif, gunakan untuk:
-- **Fakta permanen** (API keys location, deployment URL) → simpan di Memory
-- **Status project yang berubah** (current task, progress) → simpan di .opencode-context.md
-
-Pembagian:
-| Jenis Info | Simpan Di |
-|-----------|-----------|
-| Stack & arsitektur | .opencode-context.md |
-| Status & progress | .opencode-context.md |
-| Credentials location | Memory MCP |
-| User preferences | Memory MCP |
-| Deployment info | Memory MCP |
-
----
-
-## Contoh Lengkap
-
-```markdown
-# Project Context
-> Auto-maintained by AI. You can edit this file freely.
-> Last updated: 2025-01-15
-
-## Stack
-- Laravel 11, PHP 8.3
-- PostgreSQL 16, Redis 7
-- Frontend: Blade + Livewire 3 + Tailwind CSS 3.4
-- Queue: Laravel Horizon
-- Deploy: Docker + AWS ECS
-
-## Architecture Decisions
-- Auth: JWT + refresh token (access 15min, refresh 7d)
-- API: RESTful, versioned /api/v1/, rate limited 60/min
-- File storage: S3 with signed URLs
-- Cache: Redis with 5min TTL default
-
-## Conventions
-- All endpoints return: { success: bool, data: any, error: string|null }
-- Migrations: YYYY_MM_DD_HHMMSS_verb_noun (e.g. create_users_table)
-- Tests: Feature tests for endpoints, Unit tests for services
-- Commits: feat|fix|refactor(scope): description
-
-## Current Status
-- [x] User authentication (JWT + refresh)
-- [x] Product CRUD + image upload
-- [x] Category management
-- [ ] Shopping cart ← IN PROGRESS
-- [ ] Checkout + Stripe payment
-- [ ] Order management
-- [ ] Email notifications
-
-## Important Notes
-- Products table has soft deletes enabled
-- User model uses HasApiTokens trait (Sanctum removed, custom JWT)
-- Redis connection pool max 10 in production
-- ⚠️ Migration 2025_01_10 has breaking change on products.price (int→decimal)
+```
+Archive rules:
+- Grouped by archive date
+- No size limit (historical reference)
+- AI reads archive only when historical context needed
+- User can delete archive freely
 ```
 
 ---
 
-## v2 Features
+## Integration with Memory MCP
 
-### Multi-Session Awareness
-- Session metadata stored as HTML comment (invisible in rendered markdown)
-- Session counter incremented on each `context_read`
-- Staleness detection: warns if >7 days or >5 sessions without update
-- Use `context_history` tool to check health metrics
+```
+If Memory MCP server is also active, split concerns:
 
-### Context Enrichment
-- `context_read` now includes auto-detected project state:
-  - Git branch, uncommitted changes, last commit
-  - Dependency list from package.json
-- This data is in the RESPONSE only (not written to file)
-- Provides immediate context without manual exploration
+| Info Type                | Store In                    |
+|--------------------------|-----------------------------|
+| Stack & architecture     | .opencode-context.md        |
+| Current status & tasks   | .opencode-context.md        |
+| Credentials location     | Memory MCP (persistent)     |
+| User preferences         | Memory MCP (persistent)     |
+| Deployment URLs          | Memory MCP (persistent)     |
+| API key locations        | Memory MCP (persistent)     |
 
-### Semantic Intelligence
-- Fuzzy deduplication: entries with >60% word overlap are merged
-- Resolved note detection: entries containing "fixed", "resolved", "completed" etc. are auto-pruned
-- Runs automatically during `context_read`
+Rule: .opencode-context.md = project state (changes often)
+      Memory MCP = permanent facts (rarely changes)
+```
 
-### Cross-Project Context
-- Define related projects in `## Related Projects` section:
-  ```
-  ## Related Projects
-  - ../shared-lib: "Shared utilities used by this service"
-  - ../api-gateway: "Routes traffic to this service"
-  ```
-- Use `context_query_related` tool to read their contexts
-- Summaries included in `context_read` response automatically
+---
 
-### Compliance
-- Staleness warnings escalate based on sessions without update
-- `opencode-jce context audit` CLI command for manual compliance check
-- Content hash enables optimistic concurrency detection
+## Anti-Patterns
+
+| Anti-Pattern | Problem | Solution |
+|---|---|---|
+| Never reading context at session start | Repeat work, lose decisions | ALWAYS read first, work second |
+| Writing paragraphs instead of bullets | Wastes tokens, hard to scan | One fact per bullet, max 10 words |
+| Never pruning completed tasks | File grows unbounded | Prune [x] items every session start |
+| Duplicating info readable from code | Noise, goes stale | Only record non-obvious decisions |
+| Overwriting entire file | Loses concurrent edits | Incremental updates (add/replace section) |
+| No related projects defined | Miss cross-project impacts | Add sibling projects with descriptions |
+| Ignoring staleness warnings | Context drifts from reality | Review and update when warned |
+| Storing secrets in context file | Security risk (committed to git) | Use Memory MCP or reference by key name |
+
+---
+
+## Verification Checklist
+
+- [ ] .opencode-context.md exists in project root
+- [ ] File is <= 40 lines (50 max before archive)
+- [ ] ## Stack reflects actual project dependencies
+- [ ] No [x] completed tasks lingering (pruned at session start)
+- [ ] Architecture decisions are current and concise
+- [ ] Related projects listed (if any sibling projects exist)
+- [ ] Last updated date is within 7 days
+- [ ] No secrets or credentials in the file
+- [ ] Archive file exists if main file was ever > 50 lines
+- [ ] context_read called at session start (MCP enforcement)

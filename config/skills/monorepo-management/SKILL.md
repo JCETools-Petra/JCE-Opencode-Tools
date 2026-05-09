@@ -4,12 +4,11 @@ description: Turborepo, Nx, pnpm workspaces, affected builds, task caching
 ---
 
 # Skill: Monorepo Management
-# Loaded on-demand when task involves Turborepo, Nx, pnpm workspaces, dependency graphs, or CI optimization
 
 ## Auto-Detect
 
 Trigger this skill when:
-- Task mentions: monorepo, workspace, turborepo, nx, pnpm workspaces, lerna
+- Task mentions: monorepo, workspace, turborepo, nx, pnpm workspaces, lerna, changesets
 - Files: `turbo.json`, `nx.json`, `pnpm-workspace.yaml`, `lerna.json`
 - Patterns: shared packages, dependency graph, affected builds, task caching
 - Root `package.json` contains: `workspaces` field or `turbo`/`nx` dependency
@@ -20,71 +19,54 @@ Trigger this skill when:
 
 ```
 What do you need?
-+-- Simple task orchestration + caching?
-|   +-- Turborepo (minimal config, fast, works with any package manager)
-+-- Full-featured with generators + plugins?
-|   +-- Nx (project graph, code generation, module boundaries)
-+-- Just workspace linking (no orchestration)?
-|   +-- pnpm workspaces / npm workspaces / yarn workspaces
-+-- Publishing packages to npm?
-|   +-- Changesets (versioning + changelogs + publish)
-+-- Legacy, migrating away?
-|   +-- Lerna (use Nx-powered Lerna for modern features)
+├── Task orchestration + caching (minimal config)?
+│   └── Turborepo 2 (fast, convention-based, any package manager)
+├── Full-featured: generators, plugins, module boundaries?
+│   └── Nx 20 (project graph, code generation, enforce boundaries)
+├── Just workspace linking (no orchestration)?
+│   └── pnpm workspaces / npm workspaces / yarn workspaces
+├── Publishing packages to npm?
+│   └── Changesets (versioning + changelogs + publish automation)
+└── Need both orchestration AND publishing?
+    └── Turborepo/Nx + Changesets (complementary tools)
 
-Package manager for monorepos:
-+-- Best dependency management? -> pnpm (strict, fast, disk-efficient)
-+-- Need broad ecosystem compat? -> npm/yarn
-+-- Bun ecosystem? -> Bun workspaces (fast but less mature)
+Package manager:
+├── Best dependency isolation + speed? → pnpm (strict, disk-efficient)
+├── Broad ecosystem compatibility? → npm/yarn
+└── Bun ecosystem? → Bun workspaces (fast, less mature)
+```
+
+## Decision Tree: Internal Package Strategy
+
+```
+How should internal packages be consumed?
+├── Apps consume packages (Next.js, Vite)?
+│   └── Just-in-Time Transpilation (no build step)
+│       ├── next.config: transpilePackages: ['@acme/ui']
+│       ├── Fastest DX, instant changes
+│       └── Package exports point to source: "./src/index.ts"
+├── External consumers (npm publish)?
+│   └── Pre-built with tsup/unbuild
+│       ├── Build CJS + ESM + .d.ts
+│       └── Use Changesets for versioning
+└── Large codebase, slow type checking?
+    └── TypeScript project references (tsc --build)
+        └── Incremental compilation, composite projects
 ```
 
 ---
 
-## Repository Structure
-
-```
-my-monorepo/
-+-- apps/
-|   +-- web/                    # Next.js frontend
-|   |   +-- package.json        # name: "@acme/web"
-|   |   +-- tsconfig.json       # extends shared config
-|   +-- api/                    # Express backend
-|   |   +-- package.json        # name: "@acme/api"
-|   +-- mobile/                 # React Native app
-|       +-- package.json
-+-- packages/
-|   +-- ui/                     # Shared component library
-|   |   +-- package.json        # name: "@acme/ui"
-|   |   +-- src/
-|   +-- config-typescript/      # Shared tsconfig
-|   |   +-- package.json        # name: "@acme/tsconfig"
-|   |   +-- base.json
-|   +-- config-eslint/          # Shared ESLint config
-|   |   +-- package.json
-|   +-- database/               # Prisma schema + client
-|   |   +-- package.json        # name: "@acme/database"
-|   +-- shared/                 # Shared utilities/types
-|       +-- package.json        # name: "@acme/shared"
-+-- tooling/
-|   +-- scripts/                # Build/deploy scripts
-+-- turbo.json                  # Task pipeline definition
-+-- pnpm-workspace.yaml         # Workspace definition
-+-- package.json                # Root (devDependencies only)
-+-- .github/workflows/ci.yml
-```
-
----
-
-## Turborepo Configuration
+## Turborepo 2 Configuration
 
 ```jsonc
-// turbo.json
+// turbo.json — Turborepo 2 syntax
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env.*local"],
   "globalEnv": ["NODE_ENV", "CI"],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],  // Build dependencies first (topological)
+      "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
       "env": ["DATABASE_URL", "NEXT_PUBLIC_*"]
     },
@@ -94,7 +76,7 @@ my-monorepo/
       "env": ["CI"]
     },
     "lint": {
-      "dependsOn": ["^build"],  // Need built types for type-aware linting
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "typecheck": {
@@ -102,15 +84,11 @@ my-monorepo/
       "outputs": []
     },
     "dev": {
-      "cache": false,           // Never cache dev server
-      "persistent": true        // Long-running process
-    },
-    "db:generate": {
-      "cache": false
+      "cache": false,
+      "persistent": true
     },
     "deploy": {
       "dependsOn": ["build", "test", "lint"],
-      "outputs": [],
       "cache": false
     }
   }
@@ -125,93 +103,56 @@ packages:
   - "tooling/*"
 ```
 
-```jsonc
-// Root package.json
-{
-  "name": "acme-monorepo",
-  "private": true,
-  "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
-  },
-  "devDependencies": {
-    "turbo": "^2.0.0",
-    "prettier": "^3.0.0"
-  },
-  "packageManager": "pnpm@9.0.0"
-}
+### Turborepo Filter Syntax
+
+```bash
+# Affected since main (CI optimization)
+turbo run build --filter="...[origin/main]"
+
+# Package and its dependencies (build what it needs)
+turbo run build --filter="@acme/web..."
+
+# Package and its dependents (what depends on it)
+turbo run build --filter="...@acme/ui"
+
+# Exclude a package
+turbo run build --filter="!@acme/mobile"
+
+# Directory-based filter
+turbo run build --filter="./apps/*"
+
+# Combine filters
+turbo run build --filter="@acme/web..." --filter="@acme/api..."
 ```
 
 ---
 
-## Dependency Management
+## Remote Caching
 
-```jsonc
-// packages/ui/package.json
-{
-  "name": "@acme/ui",
-  "version": "0.0.0",
-  "private": true,
-  "exports": {
-    ".": "./src/index.ts",
-    "./button": "./src/button.tsx",
-    "./card": "./src/card.tsx"
-  },
-  "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
-    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
-    "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "react": "^18.0.0"
-  },
-  "devDependencies": {
-    "@acme/tsconfig": "workspace:*",
-    "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
-  }
-}
+```bash
+# Vercel Remote Cache (managed)
+npx turbo login
+npx turbo link
 
-// apps/web/package.json — consuming internal package
-{
-  "name": "@acme/web",
-  "dependencies": {
-    "@acme/ui": "workspace:*",
-    "@acme/shared": "workspace:*",
-    "@acme/database": "workspace:*"
-  }
-}
+# Self-hosted remote cache (Docker)
+# docker run -p 3000:3000 ducktors/turborepo-remote-cache
+
+# CI configuration
+# env:
+#   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+#   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 ```
 
-### Internal Package Strategies
-
-```
-Strategy 1: Just-in-Time Transpilation (recommended for apps)
-- No build step for internal packages
-- Consumer (Next.js/Vite) transpiles on import
-- Configure: next.config.js transpilePackages: ['@acme/ui']
-- Fastest DX, instant changes
-
-Strategy 2: Pre-built packages (for publishable libraries)
-- Build with tsup/unbuild
-- Publish to npm or private registry
-- Use when: external consumers, need CJS+ESM, complex build
-
-Strategy 3: TypeScript project references
-- tsc --build with composite projects
-- Incremental compilation
-- Use when: large codebase, need fast type checking
+```bash
+# Debug cache misses
+turbo run build --dry=json          # Shows what would run
+turbo run build --summarize         # Shows cache hit/miss reasons
+turbo run build --verbosity=2       # Detailed hash inputs
 ```
 
 ---
 
-## Affected Builds (CI Optimization)
+## Affected Builds in CI
 
 ```yaml
 # .github/workflows/ci.yml
@@ -221,90 +162,88 @@ on:
     branches: [main]
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      packages: ${{ steps.filter.outputs.changes }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Need full history for comparison
-
-      - name: Detect affected packages
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            web:
-              - 'apps/web/**'
-              - 'packages/ui/**'
-              - 'packages/shared/**'
-            api:
-              - 'apps/api/**'
-              - 'packages/database/**'
-              - 'packages/shared/**'
-            packages:
-              - 'packages/**'
-
-  build:
-    needs: detect-changes
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for affected detection
+
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
 
-      # Turborepo remote caching
+      # Only build/test/lint what changed
       - name: Build affected
-        run: pnpm turbo run build test lint --filter="...[origin/main]"
+        run: pnpm turbo run build test lint typecheck --filter="...[origin/main]"
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
-  # Only deploy if relevant app changed
+  # Conditional deploy based on what changed
   deploy-web:
-    needs: [detect-changes, build]
-    if: needs.detect-changes.outputs.packages == 'web' || contains(needs.detect-changes.outputs.packages, 'web')
+    needs: build-and-test
+    if: contains(github.event.pull_request.labels.*.name, 'deploy-web')
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Deploy web app"
-```
-
-### Turborepo Filter Syntax
-
-```bash
-# Build only packages affected since main
-turbo run build --filter="...[origin/main]"
-
-# Build specific package and its dependencies
-turbo run build --filter="@acme/web..."
-
-# Build specific package and its dependents
-turbo run build --filter="...@acme/ui"
-
-# Build everything except one package
-turbo run build --filter="!@acme/mobile"
-
-# Build only packages in apps/ directory
-turbo run build --filter="./apps/*"
+      - run: echo "Deploy web"
 ```
 
 ---
 
-## Versioning with Changesets
+## Nx 20 Configuration
+
+```jsonc
+// nx.json
+{
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": ["production", "^production"]
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/.eslintrc.json"]
+    }
+  },
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": ["default", "!{projectRoot}/**/*.spec.ts"],
+    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json"]
+  },
+  "plugins": ["@nx/vite/plugin", "@nx/eslint/plugin"]
+}
+```
 
 ```bash
-# Install
-pnpm add -Dw @changesets/cli @changesets/changelog-github
+# Nx affected commands
+nx affected -t build          # Build only affected projects
+nx affected -t test --base=main
+nx graph                      # Visualize dependency graph
+nx run-many -t build --all    # Build everything (rare)
 
-# Initialize
-pnpm changeset init
+# Module boundary enforcement
+# In .eslintrc.json:
+# "@nx/enforce-module-boundaries": ["error", {
+#   "depConstraints": [
+#     { "sourceTag": "scope:app", "onlyDependOnLibsWithTags": ["scope:shared", "scope:feature"] },
+#     { "sourceTag": "scope:feature", "onlyDependOnLibsWithTags": ["scope:shared"] }
+#   ]
+# }]
 ```
+
+---
+
+## Changesets (Versioning + Publishing)
 
 ```jsonc
 // .changeset/config.json
@@ -313,91 +252,25 @@ pnpm changeset init
   "changelog": ["@changesets/changelog-github", { "repo": "acme/monorepo" }],
   "commit": false,
   "fixed": [],
-  "linked": [["@acme/ui", "@acme/shared"]],  // Version together
+  "linked": [["@acme/ui", "@acme/shared"]],
   "access": "restricted",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@acme/web", "@acme/api"]  // Don't version apps
+  "ignore": ["@acme/web", "@acme/api"]
 }
 ```
 
 ```bash
 # Developer workflow
-pnpm changeset              # Create a changeset (interactive)
-pnpm changeset version      # Bump versions + update changelogs
-pnpm changeset publish      # Publish to npm
-```
+pnpm changeset                # Create changeset (interactive — pick packages + semver bump)
+pnpm changeset version        # Consume changesets → bump versions + update CHANGELOGs
+pnpm changeset publish        # Publish to npm registry
 
----
-
-## Task Caching
-
-```typescript
-// How Turborepo caching works:
-// 1. Hash inputs: source files + env vars + dependencies
-// 2. Check cache (local ~/.turbo/cache or remote)
-// 3. If hit: restore outputs from cache (instant)
-// 4. If miss: run task, store outputs in cache
-
-// Debugging cache misses
-// turbo run build --dry=json  (shows what would run)
-// turbo run build --summarize (shows cache hit/miss reasons)
-
-// Remote caching setup (Vercel)
-// turbo login
-// turbo link
-
-// Self-hosted remote cache (Docker)
-// docker run -p 3000:3000 ducktors/turborepo-remote-cache
-```
-
----
-
-## Shared Configuration
-
-```typescript
-// packages/config-typescript/base.json
-{
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "compilerOptions": {
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
-  }
-}
-
-// packages/config-typescript/nextjs.json
-{
-  "extends": "./base.json",
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "jsx": "preserve",
-    "noEmit": true,
-    "plugins": [{ "name": "next" }]
-  }
-}
-
-// apps/web/tsconfig.json
-{
-  "extends": "@acme/tsconfig/nextjs.json",
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
+# CI automation (GitHub Action)
+# uses: changesets/action@v1
+# with:
+#   publish: pnpm changeset publish
+#   version: pnpm changeset version
 ```
 
 ---
@@ -406,11 +279,26 @@ pnpm changeset publish      # Publish to npm
 
 | Anti-Pattern | Problem | Solution |
 |---|---|---|
-| Everything in one package.json | No isolation, version conflicts | Proper workspace packages with clear boundaries |
-| Circular dependencies | Build failures, infinite loops | Strict dependency direction (apps -> packages) |
-| No task caching | CI takes 30+ minutes | Turborepo/Nx with remote caching |
-| Building everything on every PR | Wasted CI time and money | Affected/filtered builds based on changes |
-| Shared node_modules hoisting issues | Phantom dependencies | pnpm strict mode (no hoisting) |
-| No internal package boundaries | Spaghetti imports across packages | Module boundary rules (Nx) or lint rules |
-| Publishing internal packages to npm | Unnecessary complexity | Use workspace:* protocol for internal deps |
-| Monolithic CI pipeline | One failure blocks everything | Parallel jobs per package/app |
+| Everything in one package.json | No isolation, version conflicts, slow installs | Proper workspace packages with clear boundaries |
+| Circular dependencies | Build failures, infinite loops | Strict direction: apps → features → shared |
+| No task caching | CI takes 30+ minutes on every PR | Turborepo/Nx with remote caching |
+| Building everything on every PR | Wasted CI time and money | Affected/filtered builds based on git diff |
+| Phantom dependencies (hoisting) | Works locally, fails in CI or other packages | pnpm strict mode (no hoisting) |
+| No internal package boundaries | Spaghetti imports across packages | Nx module boundaries or eslint-plugin-import |
+| Publishing internal packages to npm | Unnecessary complexity for private code | Use `workspace:*` protocol for internal deps |
+| Monolithic CI pipeline | One failure blocks all deploys | Parallel jobs per package/app |
+
+---
+
+## Verification Checklist
+
+- [ ] `pnpm-workspace.yaml` (or equivalent) defines all package locations
+- [ ] `turbo.json` / `nx.json` defines task pipeline with correct `dependsOn`
+- [ ] Remote caching configured and working (check hit rate in CI)
+- [ ] CI uses affected/filter builds (not building everything)
+- [ ] Internal packages use `workspace:*` protocol
+- [ ] No circular dependencies (run `turbo run build --graph` to verify)
+- [ ] Shared configs (tsconfig, eslint, prettier) extracted to packages
+- [ ] Changesets configured for publishable packages
+- [ ] Package exports defined correctly (source for JIT, dist for published)
+- [ ] CI cache restored between runs (node_modules + turbo cache)

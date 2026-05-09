@@ -6,150 +6,435 @@ description: Spring Boot, Spring Security, JPA
 # Skill: Spring Boot
 # Loaded on-demand when working with Spring Boot, Spring Framework, Java backend
 
-## Dependency Injection & Configuration
+## Auto-Detect
+
+Trigger this skill when:
+- Files: `pom.xml` or `build.gradle` with `spring-boot-starter`
+- Directories: `src/main/java/`, `src/main/resources/application.yml`
+- Task mentions: Spring Boot, Spring Security, JPA, Hibernate, Spring Data
+
+---
+
+## Decision Tree: Architecture Style
+
+```
+What are you building?
+├── Simple REST API (< 10 endpoints)?
+│   └── Controller + Service + Repository (standard layered)
+├── Complex domain logic?
+│   ├── Hexagonal architecture (ports & adapters)
+│   └── Domain-Driven Design (aggregates, value objects)
+├── High-throughput / reactive?
+│   ├── Virtual threads (Spring Boot 3.4+, Project Loom) → preferred
+│   └── WebFlux (only if streaming/backpressure needed)
+├── Microservices?
+│   ├── Spring Cloud (discovery, config, gateway)
+│   └── Direct HTTP/gRPC with resilience4j
+├── Native compilation needed?
+│   └── GraalVM native image (Spring Boot 3.4 AOT)
+└── Batch processing?
+    └── Spring Batch with chunk-oriented processing
+```
+
+## Decision Tree: Threading Model
+
+```
+Need concurrency?
+├── I/O-bound (DB, HTTP calls, file)?
+│   └── Virtual threads (zero-cost, Spring Boot 3.4 default option)
+├── CPU-bound computation?
+│   └── Platform threads with bounded pool
+├── Streaming with backpressure?
+│   └── WebFlux + Project Reactor
+├── Background tasks?
+│   └── @Async with virtual thread executor
+└── Scheduled jobs?
+    └── @Scheduled + ShedLock for distributed locking
+```
+
+---
+
+## Spring Boot 3.4 — Virtual Threads
+
 ```java
-// GOOD: Constructor injection — immutable, testable, no @Autowired needed
+// application.yml — enable virtual threads (one line!)
+spring:
+  threads:
+    virtual:
+      enabled: true  // All request handling uses virtual threads
+
+// That's it. Every @RestController, @Service, @Repository
+// now runs on virtual threads. No code changes needed.
+
+// Custom virtual thread executor for @Async
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+    @Bean
+    public Executor taskExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
+    }
+}
+
+// Structured concurrency (Java 21+ preview, production in Java 24)
 @Service
 public class OrderService {
-    private final OrderRepository orderRepo;
-    private final PaymentGateway gateway;
-    public OrderService(OrderRepository orderRepo, PaymentGateway gateway) {
-        this.orderRepo = orderRepo;
-        this.gateway = gateway;
+    public OrderDetails getOrderDetails(Long orderId) throws Exception {
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            var orderFuture = scope.fork(() -> orderRepo.findById(orderId).orElseThrow());
+            var paymentFuture = scope.fork(() -> paymentClient.getPayment(orderId));
+            var shippingFuture = scope.fork(() -> shippingClient.getStatus(orderId));
+
+            scope.join().throwIfFailed();
+
+            return new OrderDetails(
+                orderFuture.get(),
+                paymentFuture.get(),
+                shippingFuture.get()
+            );
+        }
     }
 }
-// ANTI-PATTERN: @Autowired field injection — hides deps, untestable without Spring context
-
-// Type-safe config
-@ConfigurationProperties(prefix = "app.mail")
-public record MailProperties(String from, String replyTo, int maxRetries) {}
 ```
 
-## Spring Data JPA — Repositories, Specifications, Projections
+---
+
+## GraalVM Native Image
+
 ```java
-public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificationExecutor<Post> {
-    @EntityGraph(attributePaths = {"author", "tags"})
-    Page<Post> findAll(Pageable pageable);
+// Build native image — 10x faster startup, 5x less memory
+// mvn -Pnative native:compile
+// or: gradle nativeCompile
 
-    @Query("SELECT p FROM Post p JOIN FETCH p.author WHERE p.category.id = :catId")
-    List<Post> findByCategoryWithAuthor(@Param("catId") Long categoryId);
-}
+// Runtime hints for reflection (needed for native)
+@RegisterReflectionForBinding({User.class, OrderDto.class})
+@Configuration
+public class NativeConfig {}
 
-// Dynamic filtering with Specifications
-public class PostSpecs {
-    public static Specification<Post> hasCategory(Long id) {
-        return (root, q, cb) -> id == null ? null : cb.equal(root.get("category").get("id"), id);
+// Conditional beans for native vs JVM
+@Profile("native")
+@Configuration
+public class NativeSpecificConfig {
+    @Bean
+    public DataSource dataSource() {
+        // HikariCP works, but pool size should be smaller for native
+        var ds = new HikariDataSource();
+        ds.setMaximumPoolSize(5); // Native apps use less memory
+        return ds;
     }
-    public static Specification<Post> titleContains(String kw) {
-        return (root, q, cb) -> kw == null ? null : cb.like(cb.lower(root.get("title")), "%" + kw.toLowerCase() + "%");
-    }
 }
-// Usage: postRepo.findAll(hasCategory(1L).and(titleContains("spring")), pageable);
-
-// Projection — fetch only needed columns
-public interface PostSummary { Long getId(); String getTitle(); @Value("#{target.author.name}") String getAuthorName(); }
 ```
 
-## Spring Security — JWT & SecurityFilterChain
+```yaml
+# application.yml for native builds
+spring:
+  aot:
+    enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/app
+    hikari:
+      maximum-pool-size: ${POOL_SIZE:10}
+```
+
+---
+
+## Spring Security 6.4
+
 ```java
-@Configuration @EnableWebSecurity
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity // Enables @PreAuthorize, @PostAuthorize
 public class SecurityConfig {
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        return http.csrf(c -> c.disable())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        return http
+            .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+            .sessionManagement(sm -> sm.sessionCreationPolicy(STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .anyRequest().authenticated())
-            .oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()))
+                .requestMatchers(HttpMethod.GET, "/api/posts/**").permitAll()
+                .anyRequest().authenticated()
+            )
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter()))
+            )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((req, res, e) ->
+                    res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token"))
+            )
             .build();
     }
-}
-```
 
-## Controllers, Validation & Exception Handling
-```java
-@RestController @RequestMapping("/api/v1/posts")
-public class PostController {
-    private final PostService postService;
-    public PostController(PostService postService) { this.postService = postService; }
-
-    @GetMapping
-    public Page<PostDto> list(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return postService.findAll(PageRequest.of(page, size, Sort.by("createdAt").descending()));
-    }
-
-    @PostMapping @ResponseStatus(HttpStatus.CREATED)
-    public PostDto create(@Valid @RequestBody CreatePostRequest req, @AuthenticationPrincipal UserDetails user) {
-        return postService.create(req, user.getUsername());
+    @Bean
+    public JwtAuthenticationConverter jwtAuthConverter() {
+        var converter = new JwtGrantedAuthoritiesConverter();
+        converter.setAuthoritiesClaimName("roles");
+        converter.setAuthorityPrefix("ROLE_");
+        var jwtConverter = new JwtAuthenticationConverter();
+        jwtConverter.setJwtGrantedAuthoritiesConverter(converter);
+        return jwtConverter;
     }
 }
 
-public record CreatePostRequest(@NotBlank @Size(max = 255) String title, @NotBlank @Size(min = 50) String body, @NotNull Long categoryId) {}
-
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-    @ExceptionHandler(ResourceNotFoundException.class) @ResponseStatus(HttpStatus.NOT_FOUND)
-    public ErrorResponse handleNotFound(ResourceNotFoundException ex) { return new ErrorResponse(404, ex.getMessage()); }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class) @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorResponse handleValidation(MethodArgumentNotValidException ex) {
-        var errors = ex.getBindingResult().getFieldErrors().stream()
-            .collect(Collectors.toMap(FieldError::getField, FieldError::getDefaultMessage, (a, b) -> a));
-        return new ErrorResponse(400, "Validation failed", errors);
-    }
-}
-```
-
-## Caching, Scheduling & Actuator
-```java
-@Service @CacheConfig(cacheNames = "posts")
+// Method-level security
+@Service
 public class PostService {
-    @Cacheable(key = "#id") public PostDto findById(Long id) { /* ... */ }
-    @CacheEvict(key = "#id") public PostDto update(Long id, UpdatePostRequest req) { /* ... */ }
-    @CacheEvict(allEntries = true) @Scheduled(fixedRate = 3600000) public void evictCache() {}
+    @PreAuthorize("hasRole('ADMIN') or #post.authorId == authentication.name")
+    public void deletePost(Post post) { /* ... */ }
+
+    @PostAuthorize("returnObject.authorId == authentication.name or hasRole('ADMIN')")
+    public Post getPost(Long id) { return postRepo.findById(id).orElseThrow(); }
 }
 ```
-```yaml
-management.endpoints.web.exposure.include: health,info,metrics,prometheus  # Actuator
-```
 
-## Flyway & Testing
-```sql
--- V1__create_posts.sql
-CREATE TABLE posts (id BIGSERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, author_id BIGINT REFERENCES users(id) ON DELETE CASCADE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-```
+---
+
+## Spring Data JPA — Modern Patterns
+
 ```java
-@SpringBootTest @AutoConfigureMockMvc
-class PostControllerIT {
-    @Autowired MockMvc mockMvc;
-    @Test @WithMockUser(roles = "USER")
-    void shouldCreatePost() throws Exception {
-        mockMvc.perform(post("/api/v1/posts").contentType(APPLICATION_JSON)
-            .content("""{"title":"Test","body":"%s","categoryId":1}""".formatted("a".repeat(50))))
-            .andExpect(status().isCreated()).andExpect(jsonPath("$.title").value("Test"));
+// Repository with EntityGraph and custom queries
+public interface PostRepository extends JpaRepository<Post, Long>,
+                                        JpaSpecificationExecutor<Post> {
+
+    @EntityGraph(attributePaths = {"author", "tags"})
+    Page<Post> findByPublishedTrue(Pageable pageable);
+
+    @Query("""
+        SELECT p FROM Post p
+        JOIN FETCH p.author
+        WHERE p.category.id = :categoryId
+        AND p.publishedAt <= CURRENT_TIMESTAMP
+        ORDER BY p.publishedAt DESC
+        """)
+    List<Post> findPublishedByCategory(@Param("categoryId") Long categoryId);
+
+    // Projection — fetch only needed columns
+    @Query("SELECT p.id as id, p.title as title, p.author.name as authorName FROM Post p")
+    List<PostSummaryProjection> findAllSummaries(Pageable pageable);
+}
+
+// Record-based DTO projection (Spring Boot 3.4)
+public record PostSummary(Long id, String title, String authorName) {}
+
+// Specifications for dynamic filtering
+public class PostSpecifications {
+    public static Specification<Post> hasCategory(Long categoryId) {
+        return (root, query, cb) -> categoryId == null
+            ? cb.conjunction()
+            : cb.equal(root.get("category").get("id"), categoryId);
+    }
+
+    public static Specification<Post> titleContains(String keyword) {
+        return (root, query, cb) -> keyword == null
+            ? cb.conjunction()
+            : cb.like(cb.lower(root.get("title")), "%" + keyword.toLowerCase() + "%");
+    }
+
+    public static Specification<Post> publishedBefore(Instant date) {
+        return (root, query, cb) -> cb.lessThanOrEqualTo(root.get("publishedAt"), date);
     }
 }
 
-@DataJpaTest // Slice test — JPA only, no web layer
-class PostRepositoryTest {
-    @Autowired TestEntityManager em;
+// Usage in service
+public Page<Post> search(PostSearchCriteria criteria, Pageable pageable) {
+    var spec = Specification.where(hasCategory(criteria.categoryId()))
+        .and(titleContains(criteria.keyword()))
+        .and(publishedBefore(Instant.now()));
+    return postRepo.findAll(spec, pageable);
+}
+```
+
+---
+
+## Configuration & Observability
+
+```java
+// Type-safe configuration with records
+@ConfigurationProperties(prefix = "app.payment")
+public record PaymentProperties(
+    String apiKey,
+    String webhookSecret,
+    Duration timeout,
+    RetryProperties retry
+) {
+    public record RetryProperties(int maxAttempts, Duration backoff) {}
+}
+
+// Usage — inject directly
+@Service
+public class PaymentService {
+    private final PaymentProperties config;
+    public PaymentService(PaymentProperties config) { this.config = config; }
+}
+```
+
+```yaml
+# application.yml
+app:
+  payment:
+    api-key: ${PAYMENT_API_KEY}
+    webhook-secret: ${PAYMENT_WEBHOOK_SECRET}
+    timeout: 30s
+    retry:
+      max-attempts: 3
+      backoff: 2s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0  # 100% in dev, lower in prod
+```
+
+---
+
+## Exception Handling & Validation
+
+```java
+// Global exception handler with RFC 7807 Problem Details
+@RestControllerAdvice
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setTitle("Resource Not Found");
+        problem.setProperty("resourceId", ex.getResourceId());
+        return problem;
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+        var problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Validation Failed");
+        var errors = ex.getBindingResult().getFieldErrors().stream()
+            .collect(Collectors.toMap(
+                FieldError::getField,
+                fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "invalid",
+                (a, b) -> a
+            ));
+        problem.setProperty("errors", errors);
+        return ResponseEntity.badRequest().body(problem);
+    }
+}
+
+// Validation with records
+public record CreatePostRequest(
+    @NotBlank @Size(max = 255) String title,
+    @NotBlank @Size(min = 50, max = 50000) String body,
+    @NotNull Long categoryId,
+    @Size(max = 10) List<Long> tagIds
+) {}
+```
+
+---
+
+## Testing — Sliced & Integration
+
+```java
+// Integration test with Testcontainers (Spring Boot 3.4)
+@SpringBootTest
+@Testcontainers
+class PostControllerIT {
+
+    @Container
+    @ServiceConnection // Auto-configures datasource
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Autowired MockMvc mockMvc;
     @Autowired PostRepository postRepo;
-    @Test void shouldFindPublished() {
-        em.persist(new Post("Published", true));
-        assertThat(postRepo.findByPublishedTrue()).hasSize(1);
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void shouldCreatePost() throws Exception {
+        mockMvc.perform(post("/api/v1/posts")
+                .contentType(APPLICATION_JSON)
+                .content("""
+                    {"title": "Test Post", "body": "%s", "categoryId": 1}
+                    """.formatted("a".repeat(50))))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.title").value("Test Post"));
+
+        assertThat(postRepo.count()).isEqualTo(1);
+    }
+}
+
+// Slice test — JPA only, no web layer
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = NONE)
+@Testcontainers
+class PostRepositoryTest {
+    @Container @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Autowired PostRepository postRepo;
+    @Autowired TestEntityManager em;
+
+    @Test
+    void shouldFindPublishedPosts() {
+        em.persist(new Post("Published", true, Instant.now().minusSeconds(3600)));
+        em.persist(new Post("Draft", false, null));
+
+        var published = postRepo.findByPublishedTrue(Pageable.unpaged());
+        assertThat(published).hasSize(1);
+    }
+}
+
+// WebMvc slice test — controller only
+@WebMvcTest(PostController.class)
+class PostControllerTest {
+    @Autowired MockMvc mockMvc;
+    @MockitoBean PostService postService;
+
+    @Test
+    void shouldReturn404WhenPostNotFound() throws Exception {
+        when(postService.findById(99L)).thenThrow(new ResourceNotFoundException("Post", 99L));
+        mockMvc.perform(get("/api/v1/posts/99"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.title").value("Resource Not Found"));
     }
 }
 ```
 
-## Anti-Patterns Summary
-| Anti-Pattern | Fix |
-|---|---|
-| Field injection | Constructor injection |
-| N+1 in JPA | `@EntityGraph`, `JOIN FETCH` |
-| No validation on DTOs | `@Valid` + Bean Validation |
-| Blocking in WebFlux | `subscribeOn(Schedulers.boundedElastic())` |
-| Hardcoded config | `@ConfigurationProperties` + profiles |
-| No migration tool | Flyway or Liquibase from day one |
-| Monolithic test context | `@WebMvcTest`, `@DataJpaTest` slices |
+---
+
+## Anti-Patterns
+
+| Anti-Pattern | Problem | Fix |
+|---|---|---|
+| Field injection (`@Autowired`) | Hidden deps, untestable | Constructor injection (implicit with single constructor) |
+| N+1 in JPA | Lazy loading in loops | `@EntityGraph`, `JOIN FETCH`, or DTO projections |
+| No validation on DTOs | Invalid data reaches service | `@Valid` + Bean Validation annotations |
+| Blocking calls in WebFlux | Thread starvation | Use virtual threads instead of WebFlux for most cases |
+| Hardcoded config values | Can't change per environment | `@ConfigurationProperties` + profiles |
+| No migration tool | Schema drift between environments | Flyway or Liquibase from day one |
+| Monolithic test context | Slow tests, 30s+ startup | `@WebMvcTest`, `@DataJpaTest` slices |
+| Catching `Exception` broadly | Swallows real errors | Catch specific exceptions, let others propagate |
+| `@Transactional` on everything | Unnecessary DB locks | Only on methods that need atomicity |
+| Returning entities from controllers | Exposes internal model | Use DTOs/records for API responses |
+
+---
+
+## Verification Checklist
+
+Before considering Spring Boot work done:
+- [ ] `./mvnw verify` or `./gradlew check` passes
+- [ ] No field injection — all constructor-based
+- [ ] All endpoints have integration tests
+- [ ] Security config tested (authenticated + unauthorized paths)
+- [ ] Database migrations present (Flyway/Liquibase)
+- [ ] `@Valid` on all request body parameters
+- [ ] Global exception handler returns consistent error format
+- [ ] Actuator health endpoint exposed (not sensitive endpoints)
+- [ ] Virtual threads enabled if on Spring Boot 3.4+
+- [ ] No `@Transactional` on read-only queries (use `@Transactional(readOnly = true)`)
