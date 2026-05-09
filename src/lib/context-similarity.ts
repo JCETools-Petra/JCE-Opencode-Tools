@@ -53,10 +53,10 @@ const STOP_WORDS = new Set([
 ]);
 
 /**
- * Normalise a context line for comparison: strip bullet prefix,
+ * Normalize a context line for comparison: strip bullet prefix,
  * remove stop words, lowercase.
  */
-function normaliseLine(line: string): string {
+function normalizeLine(line: string): string {
   const stripped = line.replace(/^-\s*/, "");
   return stripped
     .toLowerCase()
@@ -75,7 +75,7 @@ export function findDuplicates(
   lines: string[],
   threshold: number = 0.6
 ): DuplicatePair[] {
-  const normalised = lines.map(normaliseLine);
+  const normalized = lines.map(normalizeLine);
   const removed = new Set<number>();
   const result: DuplicatePair[] = [];
 
@@ -83,7 +83,7 @@ export function findDuplicates(
     if (removed.has(i)) continue;
     for (let j = i + 1; j < lines.length; j++) {
       if (removed.has(j)) continue;
-      const sim = jaccardSimilarity(normalised[i], normalised[j]);
+      const sim = jaccardSimilarity(normalized[i], normalized[j]);
       if (sim >= threshold) {
         result.push({ kept: lines[i], removed: lines[j], similarity: sim });
         removed.add(j);

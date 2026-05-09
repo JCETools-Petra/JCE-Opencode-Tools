@@ -213,3 +213,45 @@ export function determineSkillsForMessage(text: string): string[] {
   const combined = [...baseSkills, ...route.skills, ...contextSkills];
   return [...new Set(combined)];
 }
+
+// ─── Sub-Agent Skill Injection ───────────────────────────────
+
+/** Agents eligible for skill injection when dispatched as sub-agents. */
+const SKILL_ELIGIBLE_AGENTS = new Set(["oracle", "frontend"]);
+
+/** Max skills to inject into sub-agent prompts (lower than main chat to preserve token budget). */
+const MAX_SUBAGENT_SKILLS = 2;
+
+/**
+ * Determine and resolve skills for a sub-agent delegation prompt.
+ * Only injects skills for eligible agents (oracle, frontend).
+ * Returns formatted skill content to prepend to the delegation prompt, or empty string.
+ */
+export async function resolveSubAgentSkills(agent: string, delegationPrompt: string): Promise<string> {
+  if (!SKILL_ELIGIBLE_AGENTS.has(agent)) return "";
+
+  const route = routeJceWorkerIntent(delegationPrompt);
+  const contextSkills = detectContextSkills(delegationPrompt);
+  const combined = [...new Set([...route.skills, ...contextSkills])];
+
+  if (combined.length === 0) return "";
+
+  const loadedFiles = new Set<string>();
+  const results: string[] = [];
+
+  for (const name of combined) {
+    if (results.length >= MAX_SUBAGENT_SKILLS) break;
+
+    const fileName = SKILL_NAME_TO_FILE[name];
+    if (!fileName || loadedFiles.has(fileName)) continue;
+
+    const content = await readSkillFile(name);
+    if (content) {
+      loadedFiles.add(fileName);
+      results.push(`<!-- Skill: ${fileName} -->\n${content}`);
+    }
+  }
+
+  if (results.length === 0) return "";
+  return `\n\n<!-- Sub-agent skills (auto-injected) -->\n${results.join("\n\n")}\n\n`;
+}

@@ -1,5 +1,5 @@
 import type { BackgroundManager } from "./manager.js";
-import type { LaunchInput } from "./types.js";
+import type { LaunchInput, OpenCodeClient } from "./types.js";
 import { applyContextBudget } from "../lib/context-budget.js";
 
 export function extractPromptText(result: unknown): string {
@@ -30,7 +30,7 @@ function buildPromptRequest(sessionId: string, input: LaunchInput, prompt: strin
   };
 }
 
-function runSessionPrompt(client: any, sessionId: string, input: LaunchInput, prompt: string): Promise<unknown> {
+function runSessionPrompt(client: OpenCodeClient, sessionId: string, input: LaunchInput, prompt: string): Promise<unknown> {
   if (typeof client.session?.prompt === "function") {
     return client.session.prompt(buildPromptRequest(sessionId, input, prompt));
   }
@@ -43,7 +43,7 @@ function runSessionPrompt(client: any, sessionId: string, input: LaunchInput, pr
   return Promise.reject(new Error("No supported session prompt method found: expected session.prompt, session.promptAsync, or session.chat"));
 }
 
-export async function launchExistingBackgroundTask(manager: BackgroundManager, client: any, taskId: string): Promise<boolean> {
+export async function launchExistingBackgroundTask(manager: BackgroundManager, client: OpenCodeClient, taskId: string): Promise<boolean> {
   const task = manager.getTask(taskId);
   if (!task) return false;
   if (task.status !== "pending") return true;
@@ -54,12 +54,13 @@ export async function launchExistingBackgroundTask(manager: BackgroundManager, c
       body: { parentID: task.parentSessionId },
     });
 
-    if (!session?.id) {
+    const sessionId = session?.id ?? session?.data?.id;
+    if (!sessionId) {
       manager.failTask(task.id, "Failed to create child session");
       return false;
     }
 
-    manager.markRunning(task.id, session.id);
+    manager.markRunning(task.id, sessionId);
     const budgeted = applyContextBudget(task.prompt);
     manager.recordContextBudget(task.id, {
       originalChars: budgeted.originalChars,
@@ -69,7 +70,7 @@ export async function launchExistingBackgroundTask(manager: BackgroundManager, c
       changed: budgeted.changed,
     });
 
-    runSessionPrompt(client, session.id, task, budgeted.text)
+    runSessionPrompt(client, sessionId, task, budgeted.text)
       .then((result: unknown) => {
         manager.completeTask(task.id, extractPromptText(result));
       })
@@ -89,7 +90,7 @@ export async function launchExistingBackgroundTask(manager: BackgroundManager, c
  */
 export async function spawnBackgroundTask(
   manager: BackgroundManager,
-  client: any,
+  client: OpenCodeClient,
   input: LaunchInput,
 ): Promise<string> {
   manager.setPendingLauncher((taskId) => {

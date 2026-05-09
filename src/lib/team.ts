@@ -60,7 +60,9 @@ export async function loadTeamConfig(configDir = getConfigDir()): Promise<TeamCo
     return null;
   }
 
-  const content = await readFile(configPath, "utf-8");
+  const content = await readFile(configPath, "utf-8").catch((err) => {
+    throw new Error(`Failed to read team config: ${err.code ?? err.message} (${configPath})`);
+  });
   try {
     return JSON.parse(content) as TeamConfig;
   } catch {

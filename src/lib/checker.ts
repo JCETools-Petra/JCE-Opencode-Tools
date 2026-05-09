@@ -3,6 +3,7 @@ import { join } from "path";
 import { platform } from "os";
 import { getConfigDir, loadConfigFile } from "./config.js";
 import { validateAgainstSchema } from "./schema.js";
+import { commandExistsAsync } from "./utils.js";
 import type { CheckResult, McpConfig, LspConfig } from "../types.js";
 
 /**
@@ -23,24 +24,6 @@ async function getToolVersion(command: string): Promise<string | null> {
     return null;
   } catch {
     return null;
-  }
-}
-
-/**
- * Check if a command exists in PATH (without running --version).
- */
-async function commandExists(command: string): Promise<boolean> {
-  try {
-    const isWindows = platform() === "win32";
-    const checkCmd = isWindows ? "where" : "which";
-    const proc = Bun.spawn([checkCmd, command], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    return exitCode === 0;
-  } catch {
-    return false;
   }
 }
 
@@ -243,7 +226,7 @@ export async function checkMcpServers(): Promise<CheckResult[]> {
       }
     } else if (entry.type === "local" && entry.command?.length) {
       const cmd = entry.command[0];
-      const exists = await commandExists(cmd);
+      const exists = await commandExistsAsync(cmd);
       if (exists) {
         results.push({ name: `MCP: ${name}`, status: "pass", message: `${cmd} found` });
       } else {
@@ -319,7 +302,7 @@ export async function checkLspServers(): Promise<CheckResult[]> {
     const servers = Object.entries(lspConfig.lsp);
 
     for (const [name, entry] of servers) {
-      const exists = await commandExists(entry.command);
+      const exists = await commandExistsAsync(entry.command);
       if (exists) {
         results.push({ name: `LSP: ${name}`, status: "pass", message: `${entry.command} found in PATH` });
       } else {

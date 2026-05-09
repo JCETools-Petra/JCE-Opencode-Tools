@@ -5,6 +5,7 @@ import { platform } from "os";
 import { createInterface } from "readline";
 import chalk from "chalk";
 import { getConfigDir, loadConfigFile, getConfigPath } from "./config.js";
+import { commandExistsAsync } from "./utils.js";
 import type { CheckResult, LspConfig } from "../types.js";
 import { success, warn, info, error } from "./ui.js";
 
@@ -17,21 +18,6 @@ export interface FixResult {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
-
-async function commandExists(command: string): Promise<boolean> {
-  try {
-    const isWindows = platform() === "win32";
-    const checkCmd = isWindows ? "where" : "which";
-    const proc = Bun.spawn([checkCmd, command], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    return exitCode === 0;
-  } catch {
-    return false;
-  }
-}
 
 async function runCommand(command: string, args: string[]): Promise<{ success: boolean; output: string }> {
   try {
@@ -146,7 +132,7 @@ export async function fixMissingLsp(): Promise<FixResult[]> {
   const missingServers: MissingLsp[] = [];
 
   for (const [name, entry] of servers) {
-    const exists = await commandExists(entry.command);
+    const exists = await commandExistsAsync(entry.command);
     if (!exists) {
       missingServers.push({
         name,
@@ -219,7 +205,7 @@ export async function fixMissingLsp(): Promise<FixResult[]> {
   }
 
   // Check if npm is available
-  const hasNpm = await commandExists("npm");
+  const hasNpm = await commandExistsAsync("npm");
   if (!hasNpm) {
     for (const server of selected) {
       results.push({
@@ -272,14 +258,14 @@ export async function fixMissingTools(allowGlobalInstall = false): Promise<FixRe
   const isWindows = platform() === "win32";
 
   // Check OpenCode CLI
-  const hasOpencode = await commandExists("opencode");
+  const hasOpencode = await commandExistsAsync("opencode");
   if (!hasOpencode) {
     if (!allowGlobalInstall) {
       results.push({ name: "OpenCode CLI", fixed: false, message: "Global install skipped. Re-run with --install-tools to install via bun." });
       return results;
     }
 
-    const hasBun = await commandExists("bun");
+    const hasBun = await commandExistsAsync("bun");
     if (hasBun) {
       const result = await runCommand("bun", ["install", "-g", "opencode"]);
       if (result.success) {
@@ -304,7 +290,7 @@ export async function fixLspConfig(): Promise<FixResult[]> {
     // Try multiple ways to find the CLI
     const configDir = getConfigDir();
     const cliPath = join(configDir, "cli", "src", "index.ts");
-    const hasGlobalCli = await commandExists("opencode-jce");
+    const hasGlobalCli = await commandExistsAsync("opencode-jce");
 
     if (hasGlobalCli) {
       // Prefer globally installed CLI
@@ -352,7 +338,8 @@ export async function fixContextKeeper(): Promise<FixResult[]> {
 
   if (!existsSync(opencodeJsonPath)) {
     const { buildDefaultOpenCodeJson } = await import("./opencode-json-template.js");
-    const template = buildDefaultOpenCodeJson(configDir);
+    const { buildAgentConfigs } = await import("../plugin/config.js");
+    const template = buildDefaultOpenCodeJson(configDir, buildAgentConfigs());
     await writeFile(
       opencodeJsonPath,
       JSON.stringify(template, null, 2) + "\n",

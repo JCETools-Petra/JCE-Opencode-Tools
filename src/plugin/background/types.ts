@@ -63,3 +63,28 @@ export interface BackgroundManagerOptions {
   staleAfterMs?: number;
   now?: () => string;
 }
+
+// ─── OpenCode SDK Client Interface ───────────────────────────
+
+export interface SessionPromptRequest {
+  path: { id: string };
+  body: { agent: string; parts: Array<{ type: "text"; text: string }> };
+}
+
+export interface SessionChatRequest {
+  params: { id: string };
+  body: { content: string; agent: string };
+}
+
+/**
+ * Minimal interface for the OpenCode SDK client.
+ * Accepts the real SDK client shape without requiring exact type alignment.
+ */
+export interface OpenCodeClient {
+  session: {
+    create(opts: Record<string, unknown>): Promise<{ id?: string; data?: { id?: string } } & Record<string, unknown>>;
+    prompt?: (request: SessionPromptRequest) => Promise<unknown>;
+    promptAsync?: (request: SessionPromptRequest) => Promise<unknown>;
+    chat?: (request: SessionChatRequest) => Promise<unknown>;
+  };
+}

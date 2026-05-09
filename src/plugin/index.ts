@@ -1,6 +1,7 @@
 import type { Plugin, Hooks } from "@opencode-ai/plugin";
 import { BackgroundManager } from "./background/manager.js";
 import { extractPromptText } from "./background/spawner.js";
+import type { OpenCodeClient } from "./background/types.js";
 import { buildDispatchTool, buildStatusTool, buildCollectTool } from "./tools/dispatch.js";
 import { buildAgentConfigs } from "./config.js";
 import { analyzeCommentDensity, COMMENT_WARNING } from "./hooks/comment-checker.js";

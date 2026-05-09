@@ -1,6 +1,7 @@
 import { join } from "path";
 import { existsSync } from "fs";
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { readFile, writeFile, mkdir, rename } from "fs/promises";
+import { randomBytes } from "crypto";
 import { getConfigDir } from "./config.js";
 import { log } from "./logger.js";
 
@@ -95,7 +96,10 @@ export async function writeVersionInfo(info: VersionInfo): Promise<void> {
     await mkdir(configDir, { recursive: true });
   }
 
-  await writeFile(getVersionFilePath(), JSON.stringify(info, null, 2), "utf-8");
+  const versionPath = getVersionFilePath();
+  const tmpPath = `${versionPath}.${randomBytes(4).toString("hex")}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(info, null, 2), "utf-8");
+  await rename(tmpPath, versionPath);
 }
 
 /**

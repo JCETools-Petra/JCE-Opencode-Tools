@@ -9,71 +9,10 @@
 
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
-import { execFileSync } from "child_process";
 import { platform } from "os";
-import { buildAgentConfigs } from "../plugin/config.js";
+import { commandExistsSync, FILETYPE_EXTENSIONS } from "./utils.js";
 
 // ─── LSP Auto-Detection ──────────────────────────────────────
-
-const FILETYPE_EXTENSIONS: Record<string, string[]> = {
-  python: [".py", ".pyi"],
-  typescript: [".ts", ".tsx"],
-  javascript: [".js", ".jsx", ".mjs", ".cjs"],
-  typescriptreact: [".tsx"],
-  javascriptreact: [".jsx"],
-  rust: [".rs"],
-  go: [".go"],
-  dockerfile: [".dockerfile"],
-  sql: [".sql"],
-  java: [".java"],
-  c: [".c", ".h"],
-  cpp: [".cpp", ".cc", ".cxx", ".hpp", ".hh"],
-  objc: [".m", ".mm"],
-  php: [".php"],
-  ruby: [".rb"],
-  bash: [".sh", ".bash"],
-  sh: [".sh"],
-  yaml: [".yaml", ".yml"],
-  html: [".html", ".htm"],
-  css: [".css"],
-  scss: [".scss"],
-  kotlin: [".kt", ".kts"],
-  dart: [".dart"],
-  lua: [".lua"],
-  svelte: [".svelte"],
-  vue: [".vue"],
-  terraform: [".tf", ".tfvars"],
-  tf: [".tf"],
-  zig: [".zig"],
-  markdown: [".md"],
-  toml: [".toml"],
-  graphql: [".graphql", ".gql"],
-  gql: [".graphql", ".gql"],
-  elixir: [".ex", ".exs"],
-  eelixir: [".eex", ".heex"],
-  scala: [".scala", ".sbt"],
-  csharp: [".cs"],
-  json: [".json", ".jsonc"],
-  zsh: [".zsh"],
-  yml: [".yaml", ".yml"],
-  less: [".less"],
-  hcl: [".hcl"],
-  htm: [".html"],
-  sbt: [".sbt"],
-  jsonc: [".jsonc"],
-};
-
-function commandExists(cmd: string): boolean {
-  if (!/^[\w@./+:-]+$/.test(cmd)) return false;
-
-  try {
-    const checkCmd = platform() === "win32" ? "where" : "which";
-    execFileSync(checkCmd, [cmd], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 interface LspEntry {
   command: string[];
@@ -119,7 +58,7 @@ export function detectInstalledLsp(configDir: string): Record<string, LspEntry> 
   const result: Record<string, LspEntry> = {};
 
   for (const [name, entry] of Object.entries(lspData.lsp || {})) {
-    if (!commandExists(entry.command)) continue;
+    if (!commandExistsSync(entry.command)) continue;
 
     const extensions: string[] = [];
     for (const ft of entry.filetypes) {
@@ -141,9 +80,8 @@ export function detectInstalledLsp(configDir: string): Record<string, LspEntry> 
   return result;
 }
 
-export function buildNativeJceAgents(): Record<string, NativeAgentEntry> {
-  const agents = buildAgentConfigs();
-  return Object.fromEntries(Object.entries(agents).map(([id, config]) => [id, {
+export function buildNativeJceAgents(agentConfigs: Record<string, { systemPrompt: string }>): Record<string, NativeAgentEntry> {
+  return Object.fromEntries(Object.entries(agentConfigs).map(([id, config]) => [id, {
     description: AGENT_DESCRIPTIONS[id] ?? id,
     mode: AGENT_MODES[id] ?? "all",
     prompt: config.systemPrompt,
@@ -201,7 +139,7 @@ export function buildDefaultMcpConfig(configDir: string): Record<string, unknown
  * @param configDir - The resolved config directory (e.g., ~/.config/opencode)
  *                    Used to compute the context-keeper path and detect LSP.
  */
-export function buildDefaultOpenCodeJson(configDir: string): Record<string, unknown> {
+export function buildDefaultOpenCodeJson(configDir: string, agentConfigs?: Record<string, { systemPrompt: string }>): Record<string, unknown> {
   // Auto-detect installed LSP servers
   const lsp = detectInstalledLsp(configDir);
 
@@ -210,7 +148,7 @@ export function buildDefaultOpenCodeJson(configDir: string): Record<string, unkn
     plugin: [
       `file://${configDir.replace(/\\/g, "/")}/cli/src/plugin/index.ts`,
     ],
-    agent: buildNativeJceAgents(),
+    agent: agentConfigs ? buildNativeJceAgents(agentConfigs) : {},
     mcp: buildDefaultMcpConfig(configDir),
     lsp,
   };

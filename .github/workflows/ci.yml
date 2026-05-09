@@ -65,8 +65,8 @@ jobs:
       - name: CLI --version
         run: bun ./src/index.ts --version
       - name: CLI validate
-        run: bun ./src/index.ts validate
-        continue-on-error: true  # Config not deployed in CI — expected to exit 1
+        run: |
+          bun ./src/index.ts validate || if [ $? -eq 1 ]; then echo "Expected: config not deployed in CI"; else exit 1; fi
 
   lint-shell:
     runs-on: ubuntu-latest
@@ -121,6 +121,17 @@ jobs:
               } else {
                 console.log('PASS:', dataFile);
               }
+            }
+
+            // Enforce unique agent IDs (uniqueItemProperties is not standard JSON Schema)
+            const agentsData = JSON.parse(fs.readFileSync('config/agents.json', 'utf8'));
+            const agentIds = agentsData.agents.map(a => a.id);
+            const duplicateIds = agentIds.filter((id, i) => agentIds.indexOf(id) !== i);
+            if (duplicateIds.length > 0) {
+              console.error('FAIL: Duplicate agent IDs found:', [...new Set(duplicateIds)]);
+              failed = true;
+            } else {
+              console.log('PASS: All agent IDs are unique');
             }
 
             // Validate all profiles

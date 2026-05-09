@@ -57,13 +57,6 @@ export class MemoryStore {
     return join(this.memoryDir, `${this.projectHash}.json`);
   }
 
-  /**
-   * Get the global memory file path.
-   */
-  private getGlobalFilePath(): string {
-    return join(this.memoryDir, GLOBAL_FILE);
-  }
-
   private withFileLock<T>(filePath: string, operation: () => T): T {
     this.ensureMemoryDir();
     const lockPath = `${filePath}.lock`;

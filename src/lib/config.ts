@@ -2,6 +2,7 @@ import { join, dirname } from "path";
 import { homedir, platform } from "os";
 import { existsSync } from "fs";
 import { readFile, writeFile, mkdir } from "fs/promises";
+import { FILETYPE_EXTENSIONS } from "./utils.js";
 
 /**
  * Returns the cross-platform config directory for OpenCode JCE.
@@ -129,8 +130,9 @@ export async function loadOpenCodeConfig(): Promise<Record<string, any>> {
     if (err.code === "ENOENT") {
       // Auto-create with full template
       const { buildDefaultOpenCodeJson } = await import("./opencode-json-template.js");
+      const { buildAgentConfigs } = await import("../plugin/config.js");
       const configDir = getConfigDir();
-      const template = buildDefaultOpenCodeJson(configDir);
+      const template = buildDefaultOpenCodeJson(configDir, buildAgentConfigs());
       await mkdir(dirname(configPath), { recursive: true });
       await writeFile(configPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
       return template as Record<string, any>;
@@ -167,55 +169,6 @@ interface LspServerDef {
   extensions: string[];
 }
 
-/** Map of filetype names to file extensions */
-const FILETYPE_TO_EXTENSIONS: Record<string, string[]> = {
-  python: [".py", ".pyi"],
-  typescript: [".ts", ".tsx"],
-  javascript: [".js", ".jsx", ".mjs", ".cjs"],
-  typescriptreact: [".tsx"],
-  javascriptreact: [".jsx"],
-  rust: [".rs"],
-  go: [".go"],
-  dockerfile: [".dockerfile"],
-  sql: [".sql"],
-  java: [".java"],
-  c: [".c", ".h"],
-  cpp: [".cpp", ".cc", ".cxx", ".hpp", ".hh"],
-  objc: [".m", ".mm"],
-  php: [".php"],
-  ruby: [".rb"],
-  bash: [".sh", ".bash"],
-  sh: [".sh"],
-  zsh: [".zsh"],
-  yaml: [".yaml", ".yml"],
-  yml: [".yaml", ".yml"],
-  html: [".html", ".htm"],
-  htm: [".html"],
-  css: [".css"],
-  scss: [".scss"],
-  less: [".less"],
-  kotlin: [".kt", ".kts"],
-  dart: [".dart"],
-  lua: [".lua"],
-  svelte: [".svelte"],
-  vue: [".vue"],
-  terraform: [".tf", ".tfvars"],
-  tf: [".tf"],
-  hcl: [".hcl"],
-  zig: [".zig"],
-  markdown: [".md"],
-  toml: [".toml"],
-  graphql: [".graphql", ".gql"],
-  gql: [".graphql", ".gql"],
-  elixir: [".ex", ".exs"],
-  eelixir: [".eex", ".heex"],
-  scala: [".scala", ".sbt"],
-  sbt: [".sbt"],
-  csharp: [".cs"],
-  json: [".json", ".jsonc"],
-  jsonc: [".jsonc"],
-};
-
 /**
  * Convert our lsp.json format to OpenCode's opencode.json lsp format.
  * Only includes servers whose command is found in PATH.
@@ -233,7 +186,7 @@ export function buildOpenCodeLspConfig(
     // Build extensions list from filetypes
     const extensions: string[] = [];
     for (const ft of entry.filetypes) {
-      const exts = FILETYPE_TO_EXTENSIONS[ft];
+      const exts = FILETYPE_EXTENSIONS[ft];
       if (exts) {
         for (const ext of exts) {
           if (!extensions.includes(ext)) extensions.push(ext);

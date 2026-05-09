@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { buildDefaultOpenCodeJson, buildDefaultTuiJson } from "./opencode-json-template.js";
+import { buildAgentConfigs } from "../plugin/config.js";
 import { cleanupLegacyMcpEntries } from "./version.js";
 
 export interface EnsureOpenCodeJsonResult {
@@ -122,7 +123,7 @@ export function readOrRepairTuiJson(configDir: string): ReadOpenCodeJsonResult {
 }
 
 export function ensureOpenCodeJsonEntries(configDir: string): EnsureOpenCodeJsonResult {
-  const defaults = buildDefaultOpenCodeJson(configDir) as Record<string, unknown>;
+  const defaults = buildDefaultOpenCodeJson(configDir, buildAgentConfigs()) as Record<string, unknown>;
   const configPath = join(configDir, "opencode.json");
   const { config: current, repaired, backupPath } = readOrRepairOpenCodeJson(configDir);
 

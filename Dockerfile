@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS base
+FROM oven/bun:1.3 AS base
 WORKDIR /app
 
 RUN addgroup --system opencode && adduser --system --ingroup opencode opencode
@@ -25,7 +25,7 @@ RUN mkdir -p /root/.config/opencode/profiles && \
     cp config/lsp.json /root/.config/opencode/ && \
     cp config/fallback.json /root/.config/opencode/ && \
     cp config/AGENTS.md /root/.config/opencode/ && \
-    cp config/skills/*.md /root/.config/opencode/skills/ && \
+    cp -r config/skills/ /root/.config/opencode/skills/ && \
     cp config/profiles/*.json /root/.config/opencode/profiles/ && \
     cp config/prompts/*.txt /root/.config/opencode/prompts/
 

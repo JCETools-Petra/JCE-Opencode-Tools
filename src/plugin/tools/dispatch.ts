@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import type { BackgroundManager } from "../background/manager.js";
-import type { BackgroundTask } from "../background/types.js";
+import type { BackgroundTask, OpenCodeClient } from "../background/types.js";
 import { launchExistingBackgroundTask, spawnBackgroundTask } from "../background/spawner.js";
 import { buildDelegatedResultContractInstructions } from "../lib/contracts.js";
 import { buildDelegationEnvelope, formatDelegationEnvelope } from "../lib/delegation-envelope.js";
@@ -13,6 +13,7 @@ import { buildRetryPrompt, decideRecovery } from "../lib/recovery.js";
 import { classifyDelegatedReview } from "../lib/review.js";
 import type { SkillRoute } from "../lib/skill-router.js";
 import { routeJceWorkerIntent } from "../lib/skill-router.js";
+import { resolveSubAgentSkills } from "../lib/skill-loader.js";
 import { createWorkflowRun } from "../lib/workflow.js";
 
 const z = tool.schema;
@@ -70,7 +71,7 @@ function formatTaskResult(task: BackgroundTask): string {
   return appendResearchOutputWarning(result);
 }
 
-async function handleRecovery(manager: BackgroundManager, client: any, task: BackgroundTask, errorText: string): Promise<string> {
+async function handleRecovery(manager: BackgroundManager, client: OpenCodeClient | undefined, task: BackgroundTask, errorText: string): Promise<string> {
   const evidence = evidenceForTask(task);
   if (task.retryTaskId) {
     const existingRetry = manager.getTask(task.retryTaskId);
@@ -146,7 +147,7 @@ function formatContextBudget(task: BackgroundTask): string {
 
 export function buildDispatchTool(
   manager: BackgroundManager,
-  client: any,
+  client: OpenCodeClient,
   afterRoute?: (text: string, route: SkillRoute, agent: string) => DispatchRoutePolicyResult | void,
 ): ToolDefinition {
   return tool({
@@ -168,9 +169,16 @@ export function buildDispatchTool(
       const route = routeJceWorkerIntent(routeText);
       const policy = afterRoute?.(routeText, route, args.agent as string);
       if (policy?.status === "block") return policy.message ?? "EXECUTION POLICY: blocked";
+
+      // Resolve skills for eligible sub-agents (oracle, frontend)
+      const skillContent = await resolveSubAgentSkills(args.agent as string, args.prompt as string);
+      const enrichedPrompt = skillContent
+        ? `${args.prompt as string}${skillContent}`
+        : args.prompt as string;
+
       const taskId = await spawnBackgroundTask(manager, client, {
         description: args.description as string,
-        prompt: buildDelegatedPrompt(args.prompt as string, args.description as string, args.agent as string),
+        prompt: buildDelegatedPrompt(enrichedPrompt, args.description as string, args.agent as string),
         agent: args.agent as string,
         parentSessionId: context.sessionID,
         parentMessageId: context.messageID,
@@ -200,7 +208,7 @@ export function buildStatusTool(manager: BackgroundManager): ToolDefinition {
 
 export function buildCollectTool(
   manager: BackgroundManager,
-  client?: any,
+  client?: OpenCodeClient,
   afterMutation?: () => void,
   chineseTranslator?: ChineseTranslator,
 ): ToolDefinition {

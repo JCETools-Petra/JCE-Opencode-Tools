@@ -33,7 +33,13 @@ export async function listProfiles(): Promise<Profile[]> {
   const profiles: Profile[] = [];
 
   for (const file of files) {
-    const content = await readFile(join(profilesDir, file), "utf-8");
+    let content: string;
+    try {
+      content = await readFile(join(profilesDir, file), "utf-8");
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? (err as { code: string }).code : "UNKNOWN";
+      throw new Error(`Failed to read profile ${file}: ${code}`);
+    }
     try {
       const profile = JSON.parse(content) as Profile;
       profiles.push(profile);
