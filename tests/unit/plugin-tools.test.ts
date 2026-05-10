@@ -85,8 +85,8 @@ describe("plugin tools", () => {
     );
 
     const task = manager.listTasks()[0];
-    expect(task.prompt).toContain("## Goal");
-    expect(task.prompt).toContain("## Scope");
+    expect(task.prompt).toContain("## 1. TASK");
+    expect(task.prompt).toContain("## 6. CONTEXT");
     expect(task.prompt).toContain("## Output Contract");
     expect(task.prompt).toContain("## Summary");
     expect(task.prompt).toContain("## Verification");

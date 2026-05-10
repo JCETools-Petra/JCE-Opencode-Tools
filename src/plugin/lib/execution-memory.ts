@@ -15,6 +15,14 @@ export interface ExecutionMemory {
   activeWorkflow?: WorkflowRun;
   workflowRuns: WorkflowRun[];
   contextBudgetSummary?: ContextBudgetSummary;
+  wisdom: WisdomEntry[];
+}
+
+export interface WisdomEntry {
+  id: string;
+  learning: string;
+  source: "task" | "delegation" | "debug" | "review";
+  createdAt: string;
 }
 
 export interface ContextBudgetSummary {
@@ -54,6 +62,7 @@ export function createEmptyExecutionMemory(now = new Date().toISOString()): Exec
     retryHistory: [],
     traceEvents: [],
     workflowRuns: [],
+    wisdom: [],
   };
 }
 
@@ -87,6 +96,7 @@ export function pruneExecutionMemory(memory: ExecutionMemory): ExecutionMemory {
     activeWorkflow: memory.activeWorkflow,
     workflowRuns: newest(memory.workflowRuns ?? [], 10),
     contextBudgetSummary: memory.contextBudgetSummary,
+    wisdom: newest(memory.wisdom ?? [], 50),
   };
 }
 
@@ -100,6 +110,7 @@ export function mergeExecutionMemorySnapshot(previous: ExecutionMemory, next: Ex
     activeWorkflow: options.clearWorkflowRuntime ? next.activeWorkflow : next.activeWorkflow ?? previous.activeWorkflow,
     workflowRuns: options.clearWorkflowRuntime ? next.workflowRuns : next.workflowRuns.length > 0 ? next.workflowRuns : previous.workflowRuns,
     contextBudgetSummary: next.contextBudgetSummary ?? previous.contextBudgetSummary,
+    wisdom: [...(previous.wisdom ?? []), ...(next.wisdom ?? [])],
   });
 }
 
@@ -117,7 +128,7 @@ export function loadExecutionMemory(projectRoot: string, now = new Date().toISOS
 
   try {
     const parsed = JSON.parse(readFileSync(path, "utf-8")) as ExecutionMemory;
-    return { path, memory: pruneExecutionMemory({ ...createEmptyExecutionMemory(now), ...parsed, workflowRuns: parsed.workflowRuns ?? [] }), recoveredFromInvalid: false };
+    return { path, memory: pruneExecutionMemory({ ...createEmptyExecutionMemory(now), ...parsed, workflowRuns: parsed.workflowRuns ?? [], wisdom: parsed.wisdom ?? [] }), recoveredFromInvalid: false };
   } catch {
     const backupPath = `${path}.invalid-${Date.now()}`;
     renameSync(path, backupPath);

@@ -347,6 +347,7 @@ export class BackgroundManager {
       })),
       traceEvents: this.getTraceEvents(),
       workflowRuns: [],
+      wisdom: [],
       contextBudgetSummary: budgets.length > 0 ? {
         originalChars,
         compressedChars,

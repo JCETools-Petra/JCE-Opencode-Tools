@@ -4,6 +4,11 @@ export interface DelegationEnvelopeInput {
   goal: string;
   prompt: string;
   agent: string;
+  expectedOutcome?: string;
+  requiredTools?: string[];
+  mustDo?: string[];
+  mustNotDo?: string[];
+  context?: string[];
   scope?: string;
   nonGoals?: string[];
   constraints?: string[];
@@ -13,14 +18,13 @@ export interface DelegationEnvelopeInput {
 }
 
 export interface DelegationEnvelope {
-  goal: string;
-  scope: string;
+  task: string;
+  expectedOutcome: string;
+  requiredTools: string[];
+  mustDo: string[];
+  mustNotDo: string[];
+  context: string[];
   agent: string;
-  nonGoals: string[];
-  constraints: string[];
-  allowedFiles: string[];
-  expectedVerification: string[];
-  timeoutHint: string;
   outputContract: string;
 }
 
@@ -34,14 +38,28 @@ function list(items: string[]): string {
 
 export function buildDelegationEnvelope(input: DelegationEnvelopeInput): DelegationEnvelope {
   return {
-    goal: input.goal,
-    scope: input.scope ?? input.prompt,
+    task: input.goal,
+    expectedOutcome: input.expectedOutcome ?? "Complete the task and return Summary, Files, Verification, and Risks.",
+    requiredTools: unique(input.requiredTools ?? ["Read", "Grep", "Glob", "Bash", "Edit", "Write"]),
+    mustDo: unique([
+      ...(input.mustDo ?? []),
+      ...(input.constraints ?? []),
+      "Preserve existing user changes",
+      "Verify results before reporting completion",
+    ]),
+    mustNotDo: unique([
+      ...(input.mustNotDo ?? []),
+      ...(input.nonGoals ?? []).map((ng) => `Do not: ${ng}`),
+      "Do not modify unrelated files",
+      "Do not invent APIs, paths, or behavior",
+      "Do not claim completion without verification evidence",
+    ]),
+    context: unique([
+      ...(input.context ?? []),
+      ...(input.allowedFiles ?? []).map((f) => `Allowed file: ${f}`),
+      input.scope ?? input.prompt,
+    ]),
     agent: input.agent,
-    nonGoals: unique([...(input.nonGoals ?? []), "Do not modify unrelated files"]),
-    constraints: unique([...(input.constraints ?? []), "Preserve existing user changes"]),
-    allowedFiles: unique(input.allowedFiles ?? ["unrestricted"]),
-    expectedVerification: unique(input.expectedVerification ?? ["report inspected files and confidence"]),
-    timeoutHint: input.timeoutHint ?? "Use the smallest verification that proves the result.",
     outputContract: buildDelegatedResultContractInstructions(),
   };
 }
@@ -50,29 +68,26 @@ export function formatDelegationEnvelope(envelope: DelegationEnvelope): string {
   return [
     "# Delegated Task Envelope",
     "",
-    "## Goal",
-    envelope.goal,
+    "## 1. TASK",
+    envelope.task,
     "",
-    "## Scope",
-    envelope.scope,
+    "## 2. EXPECTED OUTCOME",
+    envelope.expectedOutcome,
+    "",
+    "## 3. REQUIRED TOOLS",
+    list(envelope.requiredTools),
+    "",
+    "## 4. MUST DO",
+    list(envelope.mustDo),
+    "",
+    "## 5. MUST NOT DO",
+    list(envelope.mustNotDo),
+    "",
+    "## 6. CONTEXT",
+    list(envelope.context),
     "",
     "## Assigned Agent",
     envelope.agent,
-    "",
-    "## Non-Goals",
-    list(envelope.nonGoals),
-    "",
-    "## Constraints",
-    list(envelope.constraints),
-    "",
-    "## Allowed Files",
-    list(envelope.allowedFiles),
-    "",
-    "## Expected Verification",
-    list(envelope.expectedVerification),
-    "",
-    "## Timeout Hint",
-    envelope.timeoutHint,
     "",
     "## Output Contract",
     envelope.outputContract,

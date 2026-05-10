@@ -6,6 +6,7 @@ import { buildDispatchTool, buildStatusTool, buildCollectTool } from "./tools/di
 import { buildAgentConfigs } from "./config.js";
 import { analyzeCommentDensity, COMMENT_WARNING } from "./hooks/comment-checker.js";
 import { looksLikeCompletionClaim, shouldWarnForMissingVerification, VERIFICATION_WARNING } from "./hooks/jce-worker-guard.js";
+import { shouldEnforceContinuation, detectPrematureStop, CONTINUATION_PROMPT } from "./hooks/todo-enforcer.js";
 import { loadExecutionMemory, mergeExecutionMemorySnapshot, saveExecutionMemory } from "./lib/execution-memory.js";
 import type { ExecutionMemory } from "./lib/execution-memory.js";
 import { buildChineseTranslationPrompt, filterChineseOutput, type ChineseTranslator } from "./lib/chinese-output-filter.js";
@@ -238,6 +239,14 @@ const jcePlugin: Plugin = async (input) => {
 
       if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && shouldWarnForMissingVerification(output.output)) {
         output.output = `${output.output}${VERIFICATION_WARNING}`;
+      }
+
+      // Todo enforcer: warn when completion is claimed but todos remain incomplete
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeCompletionClaim(output.output) && detectPrematureStop(output.output)) {
+        const messages = [{ role: "assistant", content: output.output }];
+        if (shouldEnforceContinuation(messages)) {
+          output.output = `${output.output}\n\n${CONTINUATION_PROMPT}`;
+        }
       }
 
       if (typeof output.output === "string" && shouldTranslateToolOutput(input.tool)) {
