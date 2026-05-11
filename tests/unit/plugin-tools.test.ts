@@ -327,4 +327,43 @@ describe("plugin tools", () => {
     expect(result).toContain("failed");
     expect(result).toContain("Network timeout");
   });
+
+  test("collect tool records delegation savings on completed task", async () => {
+    const manager = new BackgroundManager({ maxConcurrency: 3 });
+    // Create a task with a substantial prompt (simulating a real delegation envelope)
+    const longPrompt = "## 1. TASK\nInvestigate the authentication flow.\n\n## 2. CONTEXT\n" + "Background context line for the sub-agent.\n".repeat(20);
+    const task = manager.createTask({
+      description: "Investigate auth",
+      prompt: longPrompt,
+      agent: "oracle",
+      parentSessionId: "s",
+      parentMessageId: "m",
+    });
+    // Complete with a well-formed result (accepted review)
+    manager.completeTask(task.id, "## Summary\nAuth uses JWT tokens.\n\n## Files\n- src/auth.ts\n\n## Verification\n- Confirmed via code read\n\n## Risks\n- none");
+
+    const tool = buildCollectTool(manager);
+    await tool.execute({ taskId: task.id } as any, {
+      sessionID: "s",
+      messageID: "m",
+      agent: "jce-worker",
+      directory: "/tmp",
+      worktree: "/tmp",
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: () => { throw new Error("not implemented"); },
+    } as any);
+
+    // Delegation savings should be recorded: prompt was offloaded to sub-agent context
+    const collected = manager.getTask(task.id)!;
+    expect(collected.contextBudget).toBeDefined();
+    expect(collected.contextBudget!.estimatedTokensSaved).toBeGreaterThan(0);
+    expect(collected.contextBudget!.originalChars).toBeGreaterThan(collected.contextBudget!.compressedChars);
+
+    // Execution memory should reflect the savings
+    const memory = manager.toExecutionMemory();
+    expect(memory.contextBudgetSummary).toBeDefined();
+    expect(memory.contextBudgetSummary!.estimatedTokensSaved).toBeGreaterThan(0);
+    expect(memory.contextBudgetSummary!.tasks).toBe(1);
+  });
 });

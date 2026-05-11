@@ -5,6 +5,7 @@ import type { BackgroundTask, OpenCodeClient, TaskCategory } from "../background
 import { launchExistingBackgroundTask, spawnBackgroundTask } from "../background/spawner.js";
 import { resolveModelForCategory, detectTaskCategory } from "../background/types.js";
 import { buildDelegatedResultContractInstructions } from "../lib/contracts.js";
+import { applyContextBudget, estimateTokensFromChars } from "../lib/context-budget.js";
 import { buildDelegationEnvelope, formatDelegationEnvelope } from "../lib/delegation-envelope.js";
 import { buildExecutionSummary } from "../lib/execution-summary.js";
 import { buildHandoffReport } from "../lib/handoff.js";
@@ -70,6 +71,42 @@ function formatTaskResult(task: BackgroundTask): string {
   const result = task.result ?? "";
   if (task.agent !== "jce-researcher") return result;
   return appendResearchOutputWarning(result);
+}
+
+/**
+ * Apply context budget compression to the collected result and accumulate savings.
+ * This is where real token savings happen — sub-agent results often contain verbose
+ * test output, file contents, and logs that can be compressed.
+ *
+ * Additionally, estimates delegation savings: the sub-agent's internal work (tool calls,
+ * file reads, reasoning) stays in a separate context window. The prompt size represents
+ * work offloaded from the main context — conservatively, the sub-agent consumed at least
+ * the prompt tokens internally that never enter the main agent's context.
+ */
+function compressAndRecordResultBudget(manager: BackgroundManager, task: BackgroundTask, resultText: string): string {
+  const budgeted = applyContextBudget(resultText, { level: "aggressive" });
+
+  // Delegation savings: the prompt was offloaded to a separate context.
+  // The sub-agent processed the prompt + generated internal context (tool calls, reads, etc.)
+  // that never enters the main agent. Conservative estimate: prompt chars represent
+  // offloaded work that would have consumed equivalent context in the main agent.
+  const promptChars = task.prompt.length;
+  // The main agent only receives the compressed result instead of doing all the work inline.
+  // Savings = (prompt sent to sub-agent + full result) - compressed result returned
+  const delegationOriginalChars = promptChars + budgeted.originalChars;
+  const delegationCompressedChars = budgeted.compressedChars;
+  const delegationTokensSaved = Math.max(0, estimateTokensFromChars(delegationOriginalChars) - estimateTokensFromChars(delegationCompressedChars));
+  const delegationSavingsPercent = delegationOriginalChars === 0 ? 0 : Math.max(0, Math.round((1 - delegationCompressedChars / delegationOriginalChars) * 100));
+
+  manager.recordContextBudget(task.id, {
+    originalChars: delegationOriginalChars,
+    compressedChars: delegationCompressedChars,
+    estimatedTokensSaved: delegationTokensSaved,
+    estimatedSavingsPercent: delegationSavingsPercent,
+    changed: budgeted.changed || delegationTokensSaved > 0,
+  });
+
+  return budgeted.text;
 }
 
 async function handleRecovery(manager: BackgroundManager, client: OpenCodeClient | undefined, task: BackgroundTask, errorText: string): Promise<string> {
@@ -254,17 +291,20 @@ export function buildCollectTool(
         review.status === "accepted" ? "delegated output includes required sections" : undefined,
       );
 
+      // Compress the task result to save tokens in the main agent's context
+      const compressedResult = compressAndRecordResultBudget(manager, task, formatTaskResult(task));
+
       if (review.status === "retryable_failure") {
         const reason = review.notes.join(", ") || "Delegated result did not satisfy the required contract";
         manager.recordRetryableFailure(task.id, reason);
-        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${formatTaskResult(task)}`;
+        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${compressedResult}`;
         afterMutation?.();
         return filterOutput(result);
       }
 
       if (review.status === "needs_followup" && review.missing.length) {
         const reason = review.notes.join(", ") || "Delegated result did not satisfy the required contract";
-        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${formatTaskResult(task)}`;
+        const result = `${await handleRecovery(manager, client, task, reason)}\n\nOriginal task output:\n${compressedResult}`;
         afterMutation?.();
         return filterOutput(result);
       }
@@ -274,7 +314,7 @@ export function buildCollectTool(
           status: "blocked" as const,
           completed: [task.description],
           blocker: review.notes.join(", ") || task.failureReason || "Delegated task is blocked",
-          evidence: [formatTaskResult(task) || "No delegated output"],
+          evidence: [compressedResult || "No delegated output"],
           nextOptions: ["Resolve blocker and rerun delegated task", "Accept documented risk and continue manually"],
         };
         manager.blockTaskForRecovery(task.id, "delegated_contract_failure", handoff.blocker, handoff);
@@ -287,7 +327,7 @@ export function buildCollectTool(
           retries: task.retryCount > 0 ? [`${task.id} retries: ${task.retryCount}/${task.maxRetries}`] : [],
           traceHighlights: (task.traceEvents ?? []).map((event) => event.type).slice(-5),
         });
-        const result = `Task ${taskId} blocked:\nReview: ${review.status}\n\n${summary}\n\n${buildHandoffReport(handoff)}\n\n${formatTaskResult(task)}`;
+        const result = `Task ${taskId} blocked:\nReview: ${review.status}\n\n${summary}\n\n${buildHandoffReport(handoff)}\n\n${compressedResult}`;
         afterMutation?.();
         return filterOutput(result);
       }
@@ -303,7 +343,7 @@ export function buildCollectTool(
       });
 
       afterMutation?.();
-      return filterOutput(`Task ${taskId} completed:\nReview: ${review.status}${review.missing.length ? ` (${review.missing.join(", ")})` : ""}\n\n${summary}\n\n${formatTaskResult(task)}`);
+      return filterOutput(`Task ${taskId} completed:\nReview: ${review.status}${review.missing.length ? ` (${review.missing.join(", ")})` : ""}\n\n${summary}\n\n${compressedResult}`);
     },
   });
 }
