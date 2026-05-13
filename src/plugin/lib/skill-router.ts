@@ -8,12 +8,22 @@ export interface SkillRoute {
   agentHint?: JceWorkerAgentHint;
 }
 
+/**
+ * @deprecated Use `scoreIntent` from `./orchestration/intent-router.js` instead.
+ * This function is preserved only for backward compatibility with tests.
+ * The runtime now uses the v2 intent router (multi-signal scoring).
+ */
 function includesAny(text: string, markers: string[]): boolean {
   const tokens = new Set(text.split(/[^a-z0-9]+/).filter(Boolean));
 
   return markers.some((marker) => (marker.includes(" ") ? text.includes(marker) : tokens.has(marker)));
 }
 
+/**
+ * @deprecated Use `scoreIntent` from `./orchestration/intent-router.js` instead.
+ * This function is preserved only for backward compatibility with tests.
+ * The runtime now uses the v2 intent router (multi-signal scoring).
+ */
 export function routeJceWorkerIntent(input: string): SkillRoute {
   const text = input.toLowerCase();
 

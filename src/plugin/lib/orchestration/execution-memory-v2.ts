@@ -46,7 +46,7 @@ interface ExecutionMemoryV1 {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MEMORY_DIR = ".opencode-jce";
-const MEMORY_FILE = "jce-worker-execution.json";
+const MEMORY_FILE = "orchestration-state.json";
 const SKILL_CACHE_FILE = "skill-cache.json";
 
 const PRUNE_LIMITS = {

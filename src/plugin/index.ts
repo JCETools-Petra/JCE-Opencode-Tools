@@ -24,6 +24,7 @@ import { applyContextBudget } from "./lib/context-budget.js";
 import { scoreIntent, toLegacyRoute } from "./lib/orchestration/intent-router.js";
 import type { ScoredIntent } from "./lib/orchestration/types.js";
 import type { AgentRole } from "./lib/orchestration/types.js";
+import { OrchestrationController } from "./lib/orchestration/controller.js";
 
 function delegatedReviewStrings(memory: ExecutionMemory): string[] {
   return [...memory.completedSummaries, ...memory.verificationEvidence]
@@ -91,6 +92,9 @@ const jcePlugin: Plugin = async (input) => {
   let currentMemory = loadedMemory.memory;
   let lastUserMessage = "";
   let workflowRuntimeActive = currentMemory.activeTasks.length > 0;
+
+  // Initialize orchestration controller (v2 system — runs alongside BackgroundManager)
+  const orchestrator = new OrchestrationController({ projectRoot });
 
   if (currentMemory.activeTasks.length === 0 && currentMemory.blockers.length > 0) {
     currentMemory = saveExecutionMemory(projectRoot, {
@@ -241,6 +245,8 @@ const jcePlugin: Plugin = async (input) => {
       const text = typeof msg === "string" ? msg : output.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join(" ") || "";
       if (typeof text === "string" && text.trim()) {
         lastUserMessage = text;
+        // Route intent through orchestration controller (v2)
+        orchestrator.routeIntent(text);
       }
     },
 
