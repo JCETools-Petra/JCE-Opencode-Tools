@@ -60,6 +60,28 @@ import {
   endSession,
 } from "./execution-memory-v2.js";
 import type { ExecutionMemoryV2 } from "./types.js";
+import {
+  assessTaskComplexity,
+  shouldAutoActivate,
+  buildCrossNodeContext,
+  formatCrossNodeContext,
+  evaluateCompletionGate,
+  formatCompletionGateResult,
+  shouldEscalateToUser,
+  formatEscalation,
+  shouldRecordToolEvidence,
+  extractToolEvidence,
+  findRelevantWisdom,
+  findRelevantLearnings,
+  formatWisdomContext,
+  buildOrchestrationStatusReport,
+  formatOrchestrationStatus,
+  identifyParallelGroups,
+  type ComplexityAssessment,
+  type CompletionGateResult,
+  type EscalationDecision,
+  type OrchestrationStatusReport,
+} from "./intelligence.js";
 
 // ─── Controller State ─────────────────────────────────────────────────────────
 
@@ -426,5 +448,121 @@ export class OrchestrationController {
    */
   getMemory(): OrchestrationMemory {
     return this.memory;
+  }
+
+  // ─── Intelligence Layer ─────────────────────────────────────────────────────
+
+  /**
+   * Assess if a message is complex enough to warrant auto-activation.
+   */
+  assessComplexity(message: string): ComplexityAssessment {
+    const intent = this.currentIntent ?? scoreIntent(message);
+    return assessTaskComplexity(message, intent);
+  }
+
+  /**
+   * Check if auto-activation should trigger for this message.
+   */
+  shouldAutoActivate(message: string): boolean {
+    const intent = this.currentIntent ?? scoreIntent(message);
+    return shouldAutoActivate(message, intent, this.graph !== null && !this.isComplete());
+  }
+
+  /**
+   * Get enriched context for a node (cross-node discoveries).
+   */
+  getCrossNodeContext(nodeId: string): string {
+    if (!this.graph) return "";
+    const facts = buildCrossNodeContext(this.graph, nodeId, this.memory);
+    return formatCrossNodeContext(facts);
+  }
+
+  /**
+   * Evaluate the completion gate using the new evidence system.
+   */
+  evaluateCompletionGate(minConfidence = 0.7): CompletionGateResult | null {
+    if (!this.graph) return null;
+    return evaluateCompletionGate(this.graph, minConfidence);
+  }
+
+  /**
+   * Format completion gate result for output.
+   */
+  formatCompletionGate(): string {
+    const result = this.evaluateCompletionGate();
+    if (!result) return "";
+    return formatCompletionGateResult(result);
+  }
+
+  /**
+   * Check if human escalation is needed.
+   */
+  checkEscalation(): EscalationDecision {
+    if (!this.graph) return { shouldEscalate: false, reason: "none", context: "" };
+    return shouldEscalateToUser(this.graph, this.memory);
+  }
+
+  /**
+   * Format escalation message for output.
+   */
+  formatEscalation(): string {
+    const decision = this.checkEscalation();
+    return formatEscalation(decision);
+  }
+
+  /**
+   * Record evidence from direct tool execution.
+   */
+  recordDirectToolEvidence(tool: string, output: string, exitCode?: number): void {
+    if (!this.graph) return;
+    if (!shouldRecordToolEvidence(tool, output)) return;
+
+    const evidence = extractToolEvidence({ tool, output, exitCode });
+    if (!evidence) return;
+
+    // Attach to the currently running node (if any)
+    const runningNodes = Array.from(this.graph.nodes.values()).filter((n) => n.status === "running");
+    if (runningNodes.length > 0) {
+      runningNodes[0].evidence.push(evidence);
+    } else {
+      // Attach to the last completed node
+      const doneNodes = Array.from(this.graph.nodes.values()).filter((n) => n.status === "done");
+      if (doneNodes.length > 0) {
+        doneNodes[doneNodes.length - 1].evidence.push(evidence);
+      }
+    }
+  }
+
+  /**
+   * Get wisdom-informed context for planning.
+   */
+  getWisdomContext(goal: string): string {
+    const intent = this.currentIntent?.intent ?? "general";
+    const wisdom = findRelevantWisdom(this.execMemory.wisdom, intent, goal);
+    const learnings = findRelevantLearnings(this.execMemory.taskLearnings, intent, goal);
+    return formatWisdomContext(wisdom, learnings);
+  }
+
+  /**
+   * Get full orchestration status report.
+   */
+  getStatusReport(): OrchestrationStatusReport {
+    return buildOrchestrationStatusReport(this.graph, this.memory);
+  }
+
+  /**
+   * Format orchestration status for bg_status display.
+   */
+  formatStatusReport(): string {
+    const report = this.getStatusReport();
+    return formatOrchestrationStatus(report);
+  }
+
+  /**
+   * Get parallel execution opportunities.
+   */
+  getParallelOpportunities(): string[][] {
+    if (!this.graph) return [];
+    return identifyParallelGroups(this.graph);
   }
 }

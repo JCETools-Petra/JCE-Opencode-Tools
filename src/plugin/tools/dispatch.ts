@@ -239,19 +239,21 @@ export function buildDispatchTool(
   });
 }
 
-export function buildStatusTool(manager: BackgroundManager): ToolDefinition {
+export function buildStatusTool(manager: BackgroundManager, getOrchestrationStatus?: () => string): ToolDefinition {
   return tool({
     description: "Check the status of all background tasks launched in this session.",
     args: {},
     async execute() {
       const tasks = manager.listTasks();
-      if (tasks.length === 0) return "No background tasks.";
-      return tasks
+      const orchestrationStatus = getOrchestrationStatus?.() ?? "";
+      if (tasks.length === 0 && !orchestrationStatus) return "No background tasks.";
+      const taskLines = tasks
         .map(
           (t) =>
             `[${t.status.toUpperCase()}] ${t.id} — ${t.description} (agent: ${t.agent}, state: ${t.logicalState}, review: ${t.reviewStatus}, stale: ${t.stale}, ${formatRetryStatus(t)}, ${formatContextBudget(t)}${t.failureReason ? `, failure: ${t.failureReason}` : ""}${t.reviewNotes.length ? `, notes: ${t.reviewNotes.join(", ")}` : ""})`,
         )
         .join("\n");
+      return orchestrationStatus ? `${taskLines}${taskLines ? "\n" : ""}${orchestrationStatus}` : taskLines;
     },
   });
 }

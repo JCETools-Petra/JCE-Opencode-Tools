@@ -191,9 +191,16 @@ export class OrchestrationBridge {
 
     for (const node of nodes) {
       try {
+        // Enrich prompt with cross-node context (prior discoveries)
+        const crossNodeContext = this.orchestrator.getCrossNodeContext(node.nodeId);
+
+        // Enrich prompt with wisdom from past sessions
+        const wisdomContext = this.orchestrator.getWisdomContext(node.prompt.slice(0, 100));
+
         // Enrich prompt with skills
         const skillContent = await resolveSubAgentSkills(node.agent, node.prompt);
-        const enrichedPrompt = skillContent ? `${node.prompt}${skillContent}` : node.prompt;
+
+        const enrichedPrompt = `${node.prompt}${crossNodeContext}${wisdomContext}${skillContent ? skillContent : ""}`;
 
         // Wrap in delegation envelope
         const envelope = formatDelegationEnvelope(buildDelegationEnvelope({

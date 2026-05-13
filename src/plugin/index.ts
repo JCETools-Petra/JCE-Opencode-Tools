@@ -273,7 +273,7 @@ const jcePlugin: Plugin = async (input) => {
         }
         if (policy.status === "warn") return { status: "warn", message: formatExecutionPolicyDecision(policy) };
       }),
-      bg_status: buildStatusTool(manager),
+      bg_status: buildStatusTool(manager, () => orchestrator.formatStatusReport()),
       bg_collect: buildCollectTool(manager, client, () => {
         persistCurrentMemory();
         // After collecting, check if orchestration loop should continue
@@ -303,6 +303,13 @@ const jcePlugin: Plugin = async (input) => {
         if (constraintMatch) {
           orchestrator.addConstraint(constraintMatch[0].trim(), "user");
         }
+        // Auto-activation: detect complex tasks and auto-create plan
+        if (orchestrator.shouldAutoActivate(text)) {
+          const goal = text.trim().slice(0, 300);
+          orchestrator.createPlan(goal);
+          // Auto-dispatch first nodes via bridge
+          bridge.planAndDispatch(goal, "", "").catch(() => {});
+        }
       }
     },
 
@@ -323,6 +330,11 @@ const jcePlugin: Plugin = async (input) => {
       // Extract facts from tool outputs into orchestration memory
       if (typeof output.output === "string" && output.output.length > 0) {
         extractFactsFromToolOutput(orchestrator, input.tool, output.output);
+      }
+
+      // Record direct tool evidence in orchestration graph (e.g., bun test run directly)
+      if (typeof output.output === "string" && input.tool === "Bash") {
+        orchestrator.recordDirectToolEvidence(input.tool, output.output);
       }
 
       if (input.tool === "Write" || input.tool === "Edit") {
@@ -391,6 +403,22 @@ const jcePlugin: Plugin = async (input) => {
         const messages = [{ role: "assistant", content: output.output }];
         if (shouldEnforceContinuation(messages)) {
           output.output = `${output.output}\n\n${CONTINUATION_PROMPT}`;
+        }
+      }
+
+      // Evidence-based completion gating (v2 orchestration system)
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeCompletionClaim(output.output) && bridge.hasActivePlan()) {
+        const gateResult = orchestrator.formatCompletionGate();
+        if (gateResult) {
+          output.output = `${output.output}\n\n${gateResult}`;
+        }
+      }
+
+      // Human escalation: detect when orchestration is stuck and needs user input
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && bridge.hasActivePlan()) {
+        const escalation = orchestrator.formatEscalation();
+        if (escalation) {
+          output.output = `${output.output}${escalation}`;
         }
       }
 

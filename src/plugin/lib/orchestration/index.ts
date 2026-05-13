@@ -157,3 +157,24 @@ export type { OrchestrationControllerConfig, DispatchResult, CollectResult, Orch
 // Orchestration Bridge
 export { OrchestrationBridge } from "./bridge.js";
 export type { OrchestrationBridgeConfig, DispatchLoopResult, CollectLoopResult } from "./bridge.js";
+
+// Intelligence Layer
+export {
+  assessTaskComplexity,
+  shouldAutoActivate,
+  buildCrossNodeContext,
+  formatCrossNodeContext,
+  identifyParallelGroups,
+  evaluateCompletionGate,
+  formatCompletionGateResult,
+  shouldEscalateToUser,
+  formatEscalation,
+  shouldRecordToolEvidence,
+  extractToolEvidence,
+  findRelevantWisdom,
+  findRelevantLearnings,
+  formatWisdomContext,
+  buildOrchestrationStatusReport,
+  formatOrchestrationStatus,
+} from "./intelligence.js";
+export type { ComplexityAssessment, CompletionGateResult, EscalationDecision, OrchestrationStatusReport, ToolEvidenceInput } from "./intelligence.js";
