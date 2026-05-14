@@ -212,16 +212,29 @@ async function updateLocalCliFolder(latestVersion: string): Promise<void> {
       await rm(tempDir, { recursive: true, force: true });
     }
 
-    // Clone latest
+    // Clone latest — try tag first, fallback to main branch
     const releaseRef = `v${latestVersion}`;
-    const cloneProc = Bun.spawn(
-      ["git", "clone", "--depth", "1", "--branch", releaseRef, `https://github.com/${GITHUB_REPO}.git`, tempDir],
+    let cloneRef = releaseRef;
+    let cloneProc = Bun.spawn(
+      ["git", "clone", "--depth", "1", "--branch", cloneRef, `https://github.com/${GITHUB_REPO}.git`, tempDir],
       { stdout: "pipe", stderr: "pipe" }
     );
-    const cloneExit = await cloneProc.exited;
+    let cloneExit = await cloneProc.exited;
+
+    // If tag clone fails, try main branch (tag might not be updated yet)
+    if (cloneExit !== 0) {
+      if (existsSync(tempDir)) await rm(tempDir, { recursive: true, force: true });
+      cloneRef = "main";
+      cloneProc = Bun.spawn(
+        ["git", "clone", "--depth", "1", "--branch", cloneRef, `https://github.com/${GITHUB_REPO}.git`, tempDir],
+        { stdout: "pipe", stderr: "pipe" }
+      );
+      cloneExit = await cloneProc.exited;
+    }
+
     if (cloneExit !== 0) {
       const stderr = await new Response(cloneProc.stderr).text();
-      throw new Error(`Could not clone release ${releaseRef} from GitHub.${stderr ? ` ${stderr}` : ""}`);
+      throw new Error(`Could not clone release ${releaseRef} or main from GitHub.${stderr ? ` ${stderr}` : ""}`);
     }
 
     for (const dir of [stagingDir, backupDir]) {

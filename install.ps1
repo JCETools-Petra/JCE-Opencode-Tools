@@ -409,12 +409,17 @@ function Install-OpenCode {
 function Deploy-Config {
     Write-Info "Deploying configuration..."
 
-    # Clone config repo
+    # Clone config repo — try tag first, fallback to main branch
     if (Test-Path $TempDir) { Remove-Item $TempDir -Recurse -Force }
     Write-Info "Downloading configuration from GitHub..."
     $prevErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     git clone --depth 1 --branch "v$Version" $RepoUrl $TempDir 2>$null
+    if (!(Test-Path (Join-Path $TempDir "config"))) {
+        Write-Info "Tag v$Version not found, trying main branch..."
+        if (Test-Path $TempDir) { Remove-Item $TempDir -Recurse -Force }
+        git clone --depth 1 --branch "main" $RepoUrl $TempDir 2>$null
+    }
     $ErrorActionPreference = $prevErrorAction
     if (!(Test-Path (Join-Path $TempDir "config"))) {
         Write-Err "Failed to clone config repository. Check your internet connection."

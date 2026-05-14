@@ -261,12 +261,16 @@ download_repo_tarball() {
 deploy_config() {
     info "Deploying configuration..."
 
-    # Clone config repo
+    # Clone config repo — try tag first, fallback to main branch
     rm -rf "$TEMP_DIR"
     if ! git clone --depth 1 --branch "v${VERSION}" "$REPO_URL" "$TEMP_DIR" 2>/dev/null; then
-        warn "Release clone failed. Falling back to GitHub release archive download..."
+        info "Tag v${VERSION} not found, trying main branch..."
         rm -rf "$TEMP_DIR"
-        download_repo_tarball || error "Failed to download config repository. Check your internet connection."
+        if ! git clone --depth 1 --branch "main" "$REPO_URL" "$TEMP_DIR" 2>/dev/null; then
+            warn "Main branch clone failed. Falling back to GitHub release archive download..."
+            rm -rf "$TEMP_DIR"
+            download_repo_tarball || error "Failed to download config repository. Check your internet connection."
+        fi
     fi
 
     # Ensure config directory exists
