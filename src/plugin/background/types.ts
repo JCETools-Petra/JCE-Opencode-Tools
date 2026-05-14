@@ -1,4 +1,12 @@
-import type { JceWorkerState } from "../lib/state.js";
+export type JceWorkerState =
+  | "intake"
+  | "planning"
+  | "executing"
+  | "delegating"
+  | "verifying"
+  | "blocked"
+  | "awaiting_user"
+  | "completed";
 import type { JceWorkerErrorCategory } from "../lib/error-taxonomy.js";
 import type { HandoffReportInput } from "../lib/handoff.js";
 import type { TraceEvent } from "../lib/trace.js";
