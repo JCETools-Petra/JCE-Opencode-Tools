@@ -178,3 +178,24 @@ export {
   formatOrchestrationStatus,
 } from "./intelligence.js";
 export type { ComplexityAssessment, CompletionGateResult, EscalationDecision, OrchestrationStatusReport, ToolEvidenceInput } from "./intelligence.js";
+
+// Reliability Layer
+export {
+  withErrorBoundary,
+  withAsyncErrorBoundary,
+  cancelPlan,
+  createRateLimiter,
+  detectTimedOutNodes,
+  evaluateApprovalGate,
+  formatApprovalGate,
+  detectFileConflicts,
+  formatConflictWarnings,
+  createTokenBudgetTracker,
+  estimateNodeTokenCost,
+  createOrchestrationLogger,
+  runHealthCheck,
+  formatHealthCheck,
+  generateRollbackPlan,
+  formatRollbackPlan,
+} from "./reliability.js";
+export type { CancellationResult, RateLimiter, RateLimiterState, RateLimiterConfig, NodeTimeoutConfig, ApprovalGateResult, FileConflict, TokenBudget, TokenBudgetTracker, RollbackPlan, RollbackStep, LogLevel, LogEntry, OrchestrationLogger, HealthCheckResult, HealthCheck } from "./reliability.js";

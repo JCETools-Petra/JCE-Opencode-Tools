@@ -26,6 +26,23 @@ import type { ScoredIntent } from "./lib/orchestration/types.js";
 import type { AgentRole } from "./lib/orchestration/types.js";
 import { OrchestrationController } from "./lib/orchestration/controller.js";
 import { OrchestrationBridge } from "./lib/orchestration/bridge.js";
+import {
+  withErrorBoundary,
+  withAsyncErrorBoundary,
+  cancelPlan,
+  createRateLimiter,
+  detectTimedOutNodes,
+  evaluateApprovalGate,
+  formatApprovalGate,
+  detectFileConflicts,
+  formatConflictWarnings,
+  createTokenBudgetTracker,
+  estimateNodeTokenCost,
+  createOrchestrationLogger,
+  runHealthCheck,
+  formatHealthCheck,
+  type OrchestrationLogger,
+} from "./lib/orchestration/reliability.js";
 
 function delegatedReviewStrings(memory: ExecutionMemory): string[] {
   return [...memory.completedSummaries, ...memory.verificationEvidence]
@@ -127,6 +144,9 @@ const jcePlugin: Plugin = async (input) => {
 
   // Initialize orchestration controller (v2 system — runs alongside BackgroundManager)
   const orchestrator = new OrchestrationController({ projectRoot });
+  const orchestrationLogger = createOrchestrationLogger();
+  const rateLimiter = createRateLimiter();
+  const tokenBudget = createTokenBudgetTracker();
   const bridge = new OrchestrationBridge({
     manager,
     client,
@@ -250,6 +270,17 @@ const jcePlugin: Plugin = async (input) => {
       if (event?.type === "session.idle" || event?.type === "message.updated") {
         manager.markStaleTasks(30 * 60 * 1000);
         persistCurrentMemory();
+        // Periodic timeout detection and health check
+        withErrorBoundary(() => {
+          const graph = orchestrator.getGraph();
+          if (graph) {
+            const timedOut = detectTimedOutNodes(graph);
+            for (const node of timedOut) {
+              orchestrator.handleFailure(node.id, `Node timed out`);
+              orchestrationLogger.log("warn", "node.timeout.periodic", `Periodic check: node ${node.id} timed out`);
+            }
+          }
+        }, undefined, orchestrationLogger);
       }
     },
 
@@ -273,7 +304,14 @@ const jcePlugin: Plugin = async (input) => {
         }
         if (policy.status === "warn") return { status: "warn", message: formatExecutionPolicyDecision(policy) };
       }),
-      bg_status: buildStatusTool(manager, () => orchestrator.formatStatusReport()),
+      bg_status: buildStatusTool(manager, () => {
+        const statusReport = withErrorBoundary(() => orchestrator.formatStatusReport(), "", orchestrationLogger);
+        const health = withErrorBoundary(() => {
+          const result = runHealthCheck(orchestrator.getGraph(), orchestrationLogger, rateLimiter, tokenBudget);
+          return result.healthy ? "" : `\n${formatHealthCheck(result)}`;
+        }, "", orchestrationLogger);
+        return `${statusReport}${health}`;
+      }),
       bg_collect: buildCollectTool(manager, client, () => {
         persistCurrentMemory();
         // After collecting, check if orchestration loop should continue
@@ -296,19 +334,44 @@ const jcePlugin: Plugin = async (input) => {
       const text = typeof msg === "string" ? msg : output.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join(" ") || "";
       if (typeof text === "string" && text.trim()) {
         lastUserMessage = text;
-        // Route intent through orchestration controller (v2)
-        orchestrator.routeIntent(text);
-        // Extract user constraints (simple heuristic: "don't", "must not", "never")
+        // Route intent through orchestration controller (v2) — with error boundary
+        withErrorBoundary(() => orchestrator.routeIntent(text), undefined, orchestrationLogger);
+
+        // Extract user constraints
         const constraintMatch = text.match(/\b(don'?t|must not|never|do not|cannot)\s+(.{5,80})/i);
         if (constraintMatch) {
-          orchestrator.addConstraint(constraintMatch[0].trim(), "user");
+          withErrorBoundary(() => orchestrator.addConstraint(constraintMatch[0].trim(), "user"), undefined, orchestrationLogger);
         }
-        // Auto-activation: detect complex tasks and auto-create plan
-        if (orchestrator.shouldAutoActivate(text)) {
+
+        // Plan cancellation: detect "cancel", "stop", "abort" commands
+        if (/\b(cancel|stop|abort)\s*(the\s*)?(plan|orchestration|execution)\b/i.test(text) && bridge.hasActivePlan()) {
+          const graph = orchestrator.getGraph();
+          if (graph) {
+            const { result } = cancelPlan(graph, "User requested cancellation");
+            orchestrationLogger.log("info", "plan.cancelled", `Plan cancelled: ${result.nodesAffected} nodes affected`);
+          }
+        }
+
+        // Auto-activation with rate limiting, approval gate, and error boundary
+        if (withErrorBoundary(() => orchestrator.shouldAutoActivate(text), false, orchestrationLogger) && rateLimiter.canActivate()) {
           const goal = text.trim().slice(0, 300);
-          orchestrator.createPlan(goal);
-          // Auto-dispatch first nodes via bridge
-          bridge.planAndDispatch(goal, "", "").catch(() => {});
+          const graph = withErrorBoundary(() => orchestrator.createPlan(goal), null, orchestrationLogger);
+
+          if (graph) {
+            // Check approval gate
+            const complexity = orchestrator.assessComplexity(text);
+            const approval = evaluateApprovalGate(graph, complexity.score);
+
+            if (approval.requiresApproval) {
+              // Don't auto-dispatch — inject approval request into next output
+              orchestrationLogger.log("info", "plan.approval_required", `Plan requires approval: ${approval.reason}`);
+            } else {
+              // Safe to auto-dispatch
+              rateLimiter.recordActivation();
+              orchestrationLogger.log("info", "plan.auto_activated", `Auto-activated plan: ${goal.slice(0, 80)}`);
+              withAsyncErrorBoundary(() => bridge.planAndDispatch(goal, "", ""), { dispatched: [], graphStatus: "failed", message: "Auto-dispatch failed" }, orchestrationLogger);
+            }
+          }
         }
       }
     },
@@ -327,14 +390,34 @@ const jcePlugin: Plugin = async (input) => {
       const hadActiveWorkflow = Boolean(currentMemory.activeWorkflow);
       const hadWorkflowRuntimeActive = workflowRuntimeActive;
 
-      // Extract facts from tool outputs into orchestration memory
+      // Extract facts from tool outputs into orchestration memory (with error boundary)
       if (typeof output.output === "string" && output.output.length > 0) {
-        extractFactsFromToolOutput(orchestrator, input.tool, output.output);
+        withErrorBoundary(() => extractFactsFromToolOutput(orchestrator, input.tool, output.output as string), undefined, orchestrationLogger);
       }
 
       // Record direct tool evidence in orchestration graph (e.g., bun test run directly)
       if (typeof output.output === "string" && input.tool === "Bash") {
-        orchestrator.recordDirectToolEvidence(input.tool, output.output);
+        withErrorBoundary(() => orchestrator.recordDirectToolEvidence(input.tool, output.output as string), undefined, orchestrationLogger);
+      }
+
+      // Per-node timeout detection (check on every tool output)
+      if (bridge.hasActivePlan()) {
+        withErrorBoundary(() => {
+          const graph = orchestrator.getGraph();
+          if (graph) {
+            const timedOut = detectTimedOutNodes(graph);
+            for (const node of timedOut) {
+              orchestrator.handleFailure(node.id, `Node timed out after ${node.startedAt ? Math.round((Date.now() - Date.parse(node.startedAt)) / 1000) : "?"}s`);
+              orchestrationLogger.log("warn", "node.timeout", `Node ${node.id} timed out`, { nodeId: node.id, title: node.title });
+            }
+            // Conflict detection
+            const conflicts = detectFileConflicts(graph);
+            if (conflicts.length > 0 && typeof output.output === "string") {
+              output.output = `${output.output}${formatConflictWarnings(conflicts)}`;
+              orchestrationLogger.log("warn", "file.conflict", `${conflicts.length} file conflict(s) detected`);
+            }
+          }
+        }, undefined, orchestrationLogger);
       }
 
       if (input.tool === "Write" || input.tool === "Edit") {
@@ -408,7 +491,7 @@ const jcePlugin: Plugin = async (input) => {
 
       // Evidence-based completion gating (v2 orchestration system)
       if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeCompletionClaim(output.output) && bridge.hasActivePlan()) {
-        const gateResult = orchestrator.formatCompletionGate();
+        const gateResult = withErrorBoundary(() => orchestrator.formatCompletionGate(), "", orchestrationLogger);
         if (gateResult) {
           output.output = `${output.output}\n\n${gateResult}`;
         }
@@ -416,10 +499,24 @@ const jcePlugin: Plugin = async (input) => {
 
       // Human escalation: detect when orchestration is stuck and needs user input
       if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && bridge.hasActivePlan()) {
-        const escalation = orchestrator.formatEscalation();
+        const escalation = withErrorBoundary(() => orchestrator.formatEscalation(), "", orchestrationLogger);
         if (escalation) {
           output.output = `${output.output}${escalation}`;
         }
+      }
+
+      // Plan approval gate: inject approval request if pending
+      if (typeof output.output === "string" && bridge.hasActivePlan()) {
+        withErrorBoundary(() => {
+          const graph = orchestrator.getGraph();
+          if (graph && graph.status === "planning") {
+            const complexity = orchestrator.assessComplexity(lastUserMessage);
+            const approval = evaluateApprovalGate(graph, complexity.score);
+            if (approval.requiresApproval) {
+              output.output = `${output.output}${formatApprovalGate(approval)}`;
+            }
+          }
+        }, undefined, orchestrationLogger);
       }
 
       if (typeof output.output === "string" && shouldTranslateToolOutput(input.tool)) {
