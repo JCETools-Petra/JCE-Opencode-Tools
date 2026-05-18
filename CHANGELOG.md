@@ -6,6 +6,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.1.0] - 2026-05-18
+
+### Added
+- Added native Android specialist agent with Gradle/AGP/KSP, Kotlin/Java Android, Jetpack Compose, adb/logcat, APK/AAB, R8/ProGuard, and release diagnostics guidance.
+- Added Android skills: `android-kotlin`, `android-gradle`, `android-testing`, `android-release`, `android-compose`, and `android-security`.
+- Added Android intelligence libraries for verification recipes, project scanning, and failure classification.
+- Added `android_logcat` plugin tool for automatic adb logcat collection, package/PID filtering, and crash/ANR/native failure classification.
+- Added context continuity tools: `context_autocapture`, `context_session_summary`, and `context_compact`.
+- Added structured project facts storage at `.opencode-jce/project-facts.json` for durable session continuity.
+
+### Changed
+- JCE-Worker now routes native Android work to the Android specialist and uses Android-specific verification guidance.
+- `opencode-jce update` now refreshes existing bundled skills with timestamped `SKILL.md.backup.*` files so skill updates are realized without losing local edits.
+- Native OpenCode template now exposes the bundled Android agent after restart.
+- Bumped project, installer, config, MCP, README, and release workflow test versions to `3.1.0`.
+
+### Verified
+- `bun run typecheck`
+- `bun ./src/index.ts validate` (`24` config files valid)
+- `bun test` (`916 pass`, `0 fail`)
+
+---
+
 ## [2.0.16] - 2026-05-08
 
 ### Fixed

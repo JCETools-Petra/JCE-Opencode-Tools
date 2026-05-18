@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/JCETools-Petra/JCE-Opencode-Tools/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-3.0.0-green)]()
+[![Version](https://img.shields.io/badge/Version-3.1.0-green)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen)]()
 
 **Install once. Get structured agents, workflows, orchestration, MCP tools, LSP config, and safer updates.**
@@ -47,6 +47,7 @@ Typical specialist routing:
 - `jce-researcher` -> docs, library behavior, GitHub and web research
 - `oracle` -> hard debugging, architecture, and trade-off analysis
 - `frontend` -> UI, styling, accessibility, and responsive work
+- `android` -> native Android Gradle/Kotlin/Compose/logcat/release diagnostics
 
 Core rule:
 
@@ -82,7 +83,7 @@ opencode-jce doctor
 - JCE OpenCode plugin agents
 - JCE-Worker orchestration workflow with planning, delegation, review, and verification gates
 - 42 AI agent definitions for global routing and task specialization
-- 50 skill/workflow files
+- 64 skill/workflow files, including native Android Gradle/testing/release/Compose/security skills
 - 19 model profiles
 - 6 MCP tools
 - 28 LSP server configs
@@ -104,6 +105,7 @@ OpenCode JCE does not replace the default OpenCode experience. The built-in `Bui
 | `jce-researcher` | Documentation and code research specialist. | You need official docs, library behavior, examples, or repo research. |
 | `explorer` | Fast codebase mapping agent. | You need quick file discovery, references, line numbers, and facts. |
 | `frontend` | UI/UX implementation specialist. | You work on React, Vue, Svelte, CSS, Tailwind, accessibility, or responsive layout. |
+| `android` | Native Android specialist. | You work on Gradle/AGP/KSP, Kotlin/Java Android, Jetpack Compose, adb/logcat, APK/AAB, R8/ProGuard, or Android release diagnostics. |
 
 ### How They Work Together
 
@@ -112,7 +114,7 @@ OpenCode JCE does not replace the default OpenCode experience. The built-in `Bui
 Typical flow:
 
 ```text
-User request -> JCE-Worker -> Explorer / Researcher / Oracle / Frontend -> Review -> Verification -> Final answer
+User request -> JCE-Worker -> Explorer / Researcher / Oracle / Frontend / Android -> Review -> Verification -> Final answer
 ```
 
 This keeps complex work organized without forcing every task into the same mode.
@@ -144,6 +146,24 @@ The installer and update command preserve user keys, providers, plugins, MCP ent
 ### Context Keeper
 
 The bundled context keeper keeps a small project memory file so long-running work can continue across sessions without losing decisions, stack details, or current status.
+
+New continuity tools help future sessions resume without rescanning the whole repository:
+
+- `context_autocapture` stores high-confidence session facts, touched files, verification, blockers, next steps, and Android facts.
+- `context_session_summary` writes a compact handoff summary for the next session.
+- `context_compact` deduplicates and compacts verbose context entries.
+- Structured facts are preserved in `.opencode-jce/project-facts.json` while `.opencode-context.md` stays concise.
+
+### Native Android Support
+
+OpenCode JCE now includes a native Android specialist workflow:
+
+- `android` agent for Gradle/AGP/KSP, Kotlin/Java Android, Jetpack Compose, Room, Hilt, WorkManager, R8/ProGuard, APK/AAB, and release diagnostics.
+- Android skills: `android-kotlin`, `android-gradle`, `android-testing`, `android-release`, `android-compose`, and `android-security`.
+- Android intelligence helpers classify build/runtime failures, scan Android project/module configuration, and recommend verification commands.
+- `android_logcat` tool can read `adb logcat` from an authorized device/emulator, filter by package/PID when available, and classify crashes/ANRs/native failures.
+
+For one authorized device/emulator, `android_logcat` selects it automatically. Pass `packageName` for cleaner app-focused diagnostics.
 
 ### Token Savings Sidebar
 

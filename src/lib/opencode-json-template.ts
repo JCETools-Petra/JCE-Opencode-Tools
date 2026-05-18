@@ -31,6 +31,7 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
   "jce-researcher": "Evidence-first technical research analyst for docs, libraries, codebases, GitHub, and web sources.",
   explorer: "Fast codebase navigation agent for mapping files, symbols, references, and implementation details.",
   frontend: "UI/UX and frontend specialist for components, accessibility, responsive design, and visual verification.",
+  android: "Native Android specialist for Gradle, Kotlin/Java Android, Compose, adb/logcat, APK/AAB, and release diagnostics.",
 };
 
 const AGENT_MODES: Record<string, NativeAgentEntry["mode"]> = {
@@ -39,6 +40,7 @@ const AGENT_MODES: Record<string, NativeAgentEntry["mode"]> = {
   "jce-researcher": "all",
   explorer: "all",
   frontend: "all",
+  android: "all",
 };
 
 /**

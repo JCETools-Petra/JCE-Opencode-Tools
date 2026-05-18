@@ -68,6 +68,16 @@ describe("audit fixes", () => {
     expect(config.mcp).not.toHaveProperty("postgres");
   });
 
+  test("OpenCode template can expose bundled Android native agent after restart", async () => {
+    const { buildAgentConfigs } = await import("../../src/plugin/config.js");
+    const config = buildDefaultOpenCodeJson("/tmp/opencode", buildAgentConfigs()) as { agent: Record<string, { description: string; mode: string; prompt: string }> };
+
+    expect(config.agent.android).toBeDefined();
+    expect(config.agent.android.mode).toBe("all");
+    expect(config.agent.android.description).toContain("Native Android specialist");
+    expect(config.agent.android.prompt).toContain("android_logcat");
+  });
+
   test("docs and installers report the stable MCP server count", () => {
     const repoRoot = process.cwd();
     const read = (relativePath: string) => readFileSync(join(repoRoot, relativePath), "utf-8");
@@ -209,6 +219,14 @@ describe("audit fixes", () => {
     expect(source).toContain("AGENTS.md.backup.");
     expect(source).not.toContain('join(configDir, "AGENTS.md.backup")');
     expect(source).toContain("AGENTS.md changed — backup saved to");
+  });
+
+  test("update refreshes existing bundled skills with timestamped backups", () => {
+    const source = readFileSync(join(process.cwd(), "src", "commands", "update.ts"), "utf-8");
+
+    expect(source).toContain("SKILL.md.backup.");
+    expect(source).toContain("await cp(sourcePath, destPath, { recursive: true, force: true });");
+    expect(source).toContain("if (existing === content) continue;");
   });
 
   test("update counts individual directory file fetch failures", () => {

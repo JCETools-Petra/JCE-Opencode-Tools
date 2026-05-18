@@ -9,7 +9,7 @@
 
 export type TaskNodeStatus = "pending" | "ready" | "running" | "verifying" | "done" | "failed" | "blocked" | "cancelled";
 export type TaskNodeType = "code" | "research" | "review" | "shell" | "config" | "verify" | "plan";
-export type AgentRole = "self" | "oracle" | "jce-researcher" | "explorer" | "frontend";
+export type AgentRole = "self" | "oracle" | "jce-researcher" | "explorer" | "frontend" | "android";
 
 export type RetryStrategy = "same" | "different_approach" | "different_agent" | "escalate_user";
 

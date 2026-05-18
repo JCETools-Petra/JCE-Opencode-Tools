@@ -17,6 +17,7 @@ import { resolvePolicyProfile } from "./lib/policy-profile.js";
 import { applyWorkflowIntentRoute } from "./lib/workflow.js";
 import type { WorkflowIntentRouteSource } from "./lib/workflow.js";
 import { buildWorkflowTool } from "./tools/workflow.js";
+import { buildAndroidLogcatTool } from "./tools/android-logcat.js";
 import { createWorkflowRun } from "./lib/workflow.js";
 import { isRecord } from "./lib/shared-predicates.js";
 import { determineSkillsForMessage, resolveSkills } from "./lib/skill-loader.js";
@@ -59,8 +60,8 @@ function hasDelegatedWork(memory: ExecutionMemory): boolean {
   return [...memory.completedSummaries, ...memory.verificationEvidence].some((entry) => isRecord(entry) && typeof entry.reviewStatus === "string" && entry.reviewStatus !== "not_applicable");
 }
 
-function isJceWorkerAgentHint(value: string): value is "oracle" | "jce-researcher" | "explorer" | "frontend" {
-  return value === "oracle" || value === "jce-researcher" || value === "explorer" || value === "frontend";
+function isJceWorkerAgentHint(value: string): value is "oracle" | "jce-researcher" | "explorer" | "frontend" | "android" {
+  return value === "oracle" || value === "jce-researcher" || value === "explorer" || value === "frontend" || value === "android";
 }
 
 function extractTranslationText(result: unknown): string | undefined {
@@ -327,6 +328,7 @@ const jcePlugin: Plugin = async (input) => {
         }
       }, chineseTranslator),
       jce_workflow: buildWorkflowTool(),
+      android_logcat: buildAndroidLogcatTool(),
     },
 
     "chat.message": async (_input, output) => {

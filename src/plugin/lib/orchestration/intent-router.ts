@@ -78,6 +78,7 @@ const FRAMEWORK_RULES: FrameworkRule[] = [
   { patterns: [/\brails\b/i, /\bruby on rails\b/i, /\bactive\s*record\b/i], skills: ["rails"] },
   { patterns: [/\btailwind\b/i, /\butility.first\b/i], skills: ["tailwind"] },
   { patterns: [/\bdocker\b/i, /\bci\/cd\b/i, /\bkubernetes\b/i, /\bhelm\b/i], skills: ["devops"] },
+  { patterns: [/\bjetpack compose\b/i, /\bandroidmanifest\.xml\b/i, /\bandroidx\b/i, /\bhilt\b/i, /\broom\b/i, /\bworkmanager\b/i, /\badb\b/i, /\blogcat\b/i], skills: ["android-kotlin"], agentHint: "android" },
   { patterns: [/\bflutter\b/i, /\briverpod\b/i, /\bwidget/i], skills: ["flutter-dart"] },
   { patterns: [/\breact\s*native\b/i, /\bexpo\b/i], skills: ["react-native"] },
   { patterns: [/\bswiftui\b/i, /\buikit\b/i], skills: ["swift-ios"] },
@@ -296,6 +297,10 @@ function resolveAgentHint(intent: IntentType, message: string): AgentRole | unde
   }
 
   // Architecture decisions → oracle
+  if (/\bandroid\b|\bandroidmanifest\b|\bgradle android plugin\b|\blogcat\b|\badb\b|\bbundlerelease\b|\bassemblerelease\b/.test(lower)) {
+    return "android";
+  }
+
   if (/\barchitecture\b|\bdesign\s*decision\b|\btrade.?off\b/.test(lower)) {
     return "oracle";
   }

@@ -580,8 +580,19 @@ async function mergeSkillsFromLocal(localDir: string, sourceDir: string): Promis
     const destPath = join(localDir, entry);
 
     // Only process directories that contain SKILL.md
-    if (!existsSync(join(sourcePath, "SKILL.md"))) continue;
-    if (existsSync(destPath)) continue;
+    const sourceSkillPath = join(sourcePath, "SKILL.md");
+    const destSkillPath = join(destPath, "SKILL.md");
+    if (!existsSync(sourceSkillPath)) continue;
+    if (existsSync(destPath)) {
+      const sourceContent = await readFile(sourceSkillPath, "utf-8");
+      const destContent = existsSync(destSkillPath) ? await readFile(destSkillPath, "utf-8") : "";
+      if (sourceContent === destContent) continue;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      if (destContent) await writeTextFile(join(destPath, `SKILL.md.backup.${timestamp}`), destContent);
+      await cp(sourcePath, destPath, { recursive: true, force: true });
+      addedCount++;
+      continue;
+    }
 
     await cp(sourcePath, destPath, { recursive: true });
     addedCount++;
@@ -608,9 +619,6 @@ async function mergeSkillsFromApi(localDir: string): Promise<DirectoryMergeResul
 
   for (const skillName of remoteSkills) {
     const localSkillDir = join(localDir, skillName);
-    if (existsSync(localSkillDir)) {
-      continue;
-    }
 
     const skillFiles = await fetchDirectoryListing(`skills/${skillName}`);
     if (skillFiles.length === 0) {
@@ -624,7 +632,14 @@ async function mergeSkillsFromApi(localDir: string): Promise<DirectoryMergeResul
     for (const fileName of skillFiles) {
       const content = await fetchRemoteFile(`skills/${skillName}/${fileName}`);
       if (content) {
-        await writeTextFile(join(localSkillDir, fileName), content);
+        const targetPath = join(localSkillDir, fileName);
+        if (existsSync(targetPath)) {
+          const existing = await readFile(targetPath, "utf-8");
+          if (existing === content) continue;
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          await writeTextFile(join(localSkillDir, `${fileName}.backup.${timestamp}`), existing);
+        }
+        await writeTextFile(targetPath, content);
         skillAdded = true;
       }
     }

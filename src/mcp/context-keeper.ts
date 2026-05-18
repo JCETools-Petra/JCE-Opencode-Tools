@@ -39,6 +39,14 @@ import {
   formatRelatedSummary,
 } from "../lib/context-cross-project.js";
 import { detectConflict, mergeContexts } from "../lib/context-lock.js";
+import {
+  applyContextAutocapture,
+  buildSessionSummary,
+  compactContextContent,
+  PROJECT_FACTS_FILENAME,
+  writeProjectFacts,
+  type ContextCaptureInput,
+} from "../lib/context-autocapture.js";
 
 // ─── Re-export section utilities (extracted to prevent circular deps) ────
 export { countLines, getSection, replaceSection } from "../lib/context-sections.js";
@@ -215,7 +223,7 @@ async function appendArchive(content: string): Promise<void> {
 const server = new McpServer(
   {
     name: "context-keeper",
-    version: "2.0.16",
+    version: "3.1.0",
   },
   {
     instructions: [
@@ -509,6 +517,100 @@ server.tool(
       ],
     };
   }
+);
+
+const contextCaptureSchema = {
+  changedFiles: z.array(z.string()).optional().describe("Files changed/touched in this session"),
+  summary: z.string().optional().describe("High-confidence session/task summary to persist"),
+  verification: z.array(z.string()).optional().describe("Commands/results verified in this session"),
+  blockers: z.array(z.string()).optional().describe("Current blockers that future sessions must know"),
+  nextSteps: z.array(z.string()).optional().describe("Concrete next steps for future sessions"),
+  android: z.object({
+    module: z.string().optional(),
+    packageName: z.string().optional(),
+    commands: z.array(z.string()).optional(),
+    logcatAvailable: z.boolean().optional(),
+  }).optional().describe("Android-specific durable project/session facts"),
+};
+
+// ─── Tool: context_autocapture ────────────────────────────────
+
+server.tool(
+  "context_autocapture",
+  "Automatically capture high-confidence session continuity facts into .opencode-context.md and structured project facts.",
+  contextCaptureSchema,
+  async (input: ContextCaptureInput) => {
+    let content = await readContext();
+    if (!content) content = getContextTemplate();
+
+    const captured = applyContextAutocapture(content, input);
+    let updated = markUpdated(captured.content);
+    updated = refreshContentHash(updated);
+    await writeContext(updated);
+    const facts = await writeProjectFacts(getProjectRoot(), input);
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: [
+          "Context autocapture complete:",
+          ...captured.entries.map((entry) => `  - ${entry.section}: ${entry.line} (${entry.confidence})`),
+          `Structured facts updated: ${PROJECT_FACTS_FILENAME}`,
+          `Project type: ${facts.projectType ?? "unknown"}`,
+        ].join("\n"),
+      }],
+    };
+  },
+);
+
+// ─── Tool: context_session_summary ────────────────────────────
+
+server.tool(
+  "context_session_summary",
+  "Write a compact continuity summary for the next session, including touched files, verification, blockers, and next steps.",
+  contextCaptureSchema,
+  async (input: ContextCaptureInput) => {
+    let content = await readContext();
+    if (!content) content = getContextTemplate();
+    const lines = buildSessionSummary(input);
+    if (lines.length === 0) {
+      return { content: [{ type: "text" as const, text: "No session summary lines generated; provide summary, files, verification, blockers, or nextSteps." }] };
+    }
+    const existing = getSection(content, "Current Status");
+    let updated = replaceSection(content, "Current Status", [...existing, ...lines.filter((line) => !existing.includes(line))]);
+    updated = markUpdated(refreshContentHash(updated));
+    await writeContext(updated);
+    await writeProjectFacts(getProjectRoot(), input);
+    return { content: [{ type: "text" as const, text: `Session summary captured:\n${lines.map((line) => `  - ${line}`).join("\n")}` }] };
+  },
+);
+
+// ─── Tool: context_compact ────────────────────────────────────
+
+server.tool(
+  "context_compact",
+  "Compact duplicate or verbose Current Status and Important Notes entries while preserving durable continuity facts.",
+  {
+    dryRun: z.boolean().optional().describe("Preview compaction without writing changes"),
+  },
+  async ({ dryRun }) => {
+    const content = await readContext();
+    if (!content) return { content: [{ type: "text" as const, text: `No ${CONTEXT_FILENAME} found. Nothing to compact.` }] };
+    const compacted = compactContextContent(content);
+    if (!dryRun && compacted.actions.length > 0) {
+      const updated = markUpdated(refreshContentHash(compacted.content));
+      await writeContext(updated);
+    }
+    return {
+      content: [{
+        type: "text" as const,
+        text: [
+          dryRun ? "Context compact dry run:" : "Context compact complete:",
+          ...(compacted.actions.length ? compacted.actions.map((action) => `  - ${action}`) : ["  - No compaction needed"]),
+        ].join("\n"),
+      }],
+    };
+  },
 );
 
 // ─── Tool: context_history ───────────────────────────────────

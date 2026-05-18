@@ -201,7 +201,7 @@ export function buildDispatchTool(
         .string()
         .describe("The full prompt/instructions for the background agent"),
       agent: z
-        .enum(["oracle", "jce-researcher", "explorer", "frontend"])
+        .enum(["oracle", "jce-researcher", "explorer", "frontend", "android"])
         .describe("Which agent to use"),
       category: z
         .enum(["architecture", "frontend", "research", "exploration", "quick", "deep", "default"])

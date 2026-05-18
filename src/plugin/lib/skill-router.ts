@@ -5,7 +5,7 @@
  */
 
 export type JceWorkerIntent = "bugfix" | "feature" | "completion_claim" | "review" | "branch_completion" | "parallel_work" | "general";
-export type JceWorkerAgentHint = "oracle" | "jce-researcher" | "explorer" | "frontend";
+export type JceWorkerAgentHint = "oracle" | "jce-researcher" | "explorer" | "frontend" | "android";
 
 export interface SkillRoute {
   intent: JceWorkerIntent;

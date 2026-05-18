@@ -138,6 +138,9 @@ If the `context-keeper` MCP server is available, you MUST use its tools:
 | REST/GraphQL/OpenAPI | `api-designer` |
 | AWS/GCP/Azure/IaC | `cloud-architect` |
 | iOS/Android/React Native/Flutter | `mobile-dev` |
+| Android/Gradle Android Plugin/Jetpack Compose/ADB/logcat/APK/AAB | `android` |
+
+Android runtime/crash analysis can use the `android_logcat` tool when adb has an authorized device/emulator. Prefer passing `packageName` when known.
 | ML/AI/model/training/dataset | `ml-engineer` |
 | docs/README/changelog | `technical-writer` |
 | git/branch/rebase/merge conflict | `git-expert` |
@@ -237,6 +240,12 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | File | Load When |
 |------|-----------|
 | `react-native.md` | React Native, Expo, mobile apps |
+| `android-kotlin.md` | Android, Kotlin, Java, Gradle Android Plugin, Jetpack Compose, XML Views, AndroidManifest.xml, Room, Hilt, WorkManager, adb/logcat, APK/AAB |
+| `android-gradle.md` | Android Gradle, AGP, KSP/KAPT, dependency resolution, version catalogs |
+| `android-testing.md` | Android unit/instrumented/Compose tests, Room migration tests |
+| `android-release.md` | Android release builds, signing, R8/ProGuard, APK/AAB, Play Console |
+| `android-compose.md` | Jetpack Compose state, side effects, recomposition, accessibility |
+| `android-security.md` | AndroidManifest, permissions, exported components, deep links, WebView, network security |
 | `flutter-dart.md` | Flutter, Dart, widgets, Riverpod |
 | `swift-ios.md` | Swift, SwiftUI, iOS development |
 
@@ -278,6 +287,8 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | "Set up Docker and CI/CD" | `devops.md` |
 | "Optimize database queries" | `sql-database.md` + `architecture.md` |
 | "Build a Next.js app" | `nextjs.md` + `react.md` + `typescript.md` |
+| "Build an Android app" | `android-kotlin.md` + `software-engineering.md` |
+| "Fix Android Gradle build" | `android-kotlin.md` + `android-gradle.md` + `software-engineering.md` |
 | "Flutter mobile app" | `flutter-dart.md` + `software-engineering.md` |
 | "Fix this Rust code" | `software-engineering.md` + `rust.md` |
 | "Style with Tailwind" | `tailwind.md` + `frontend.md` |
@@ -293,6 +304,8 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | "Setup Docker dan CI/CD" | `devops.md` |
 | "Optimasi query database" | `sql-database.md` + `architecture.md` |
 | "Buat aplikasi Next.js" | `nextjs.md` + `react.md` + `typescript.md` |
+| "Buat aplikasi Android" | `android-kotlin.md` + `software-engineering.md` |
+| "Perbaiki build Gradle Android" | `android-kotlin.md` + `android-gradle.md` + `software-engineering.md` |
 | "Buat app mobile Flutter" | `flutter-dart.md` + `software-engineering.md` |
 | "Fix bug di kode Rust" | `software-engineering.md` + `rust.md` |
 | "Styling pakai Tailwind" | `tailwind.md` + `frontend.md` |

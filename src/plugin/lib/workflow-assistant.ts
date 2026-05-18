@@ -1,3 +1,5 @@
+import { buildAndroidVerificationRecipe, classifyAndroidFailure } from "./android/index.js";
+
 export type WorkflowRecipeTaskType = "agent_prompt" | "config" | "installer" | "release" | "docs" | "tests" | "unknown";
 export type CodeTaskType = "bugfix" | "feature" | "refactor" | "tests" | "docs" | "config" | "installer" | "release" | "unknown";
 
@@ -67,6 +69,42 @@ export function buildVerificationRecipe(taskType: WorkflowRecipeTaskType): strin
   ].join("\n");
 }
 
+export function buildAndroidVerificationRecipeReport(input: { scope?: string; changedFiles?: string[]; prompt?: string }): string {
+  const recipe = buildAndroidVerificationRecipe({ prompt: input.prompt ?? input.scope, files: input.changedFiles ?? [] });
+  if (!recipe.detected) return "Android Verification Recipe\n- No Android-specific signals detected.";
+  return [
+    "Android Verification Recipe",
+    `Module: ${recipe.module ?? "unknown"}`,
+    `Change Kinds: ${recipe.changeKinds.join(", ")}`,
+    "",
+    "Commands",
+    ...(recipe.commands.length ? recipe.commands.map((item) => `- ${item.command} — ${item.reason}${item.requiresDevice ? " (device/emulator)" : ""}${item.optional ? " [optional]" : ""}`) : ["- none"]),
+    "",
+    "Notes",
+    ...(recipe.notes.length ? recipe.notes.map((item) => `- ${item}`) : ["- none"]),
+    "",
+    "Risks",
+    ...(recipe.risks.length ? recipe.risks.map((item) => `- ${item}`) : ["- none"]),
+  ].join("\n");
+}
+
+export function buildAndroidFailureTriage(log: string): string {
+  const result = classifyAndroidFailure(log);
+  if (!result.detected) return "Android Failure Triage\n- No Android-specific failure signal detected.";
+  return [
+    "Android Failure Triage",
+    `Kind: ${result.kind}`,
+    `Confidence: ${result.confidence}`,
+    `Summary: ${result.summary}`,
+    "",
+    "Evidence",
+    ...(result.evidence.length ? result.evidence.map((item) => `- ${item}`) : ["- none"]),
+    "",
+    "Next Commands",
+    ...(result.recommendedNextCommands.length ? result.recommendedNextCommands.map((item) => `- ${item}`) : ["- none"]),
+  ].join("\n");
+}
+
 function inferFocusedTestCommand(path: string): string | undefined {
   const normalized = path.replace(/\\/g, "/");
   if (normalized.startsWith("tests/") && /\.test\.ts$/.test(normalized)) return `bun test ${normalized}`;
@@ -112,6 +150,8 @@ export function buildCodeTaskPlan(input: CodeTaskPlanInput = {}): string {
         ? ["Refactor Protocol", "- state preserved behavior", "- avoid feature changes", "- keep public contracts stable", "- run regression checks"]
         : ["General Protocol", "- classify task", "- inspect code", "- plan safe change", "- verify relevant behavior"];
 
+  const androidRecipe = buildAndroidVerificationRecipe({ prompt: input.scope, files: changedFiles });
+
   return [
     "Coding Brain v3.1",
     `Scope: ${input.scope?.trim() || "current coding task"}`,
@@ -130,6 +170,7 @@ export function buildCodeTaskPlan(input: CodeTaskPlanInput = {}): string {
     "",
     "Verification Brain v3.2",
     ...bulletList(verificationCommandsForFiles(changedFiles)),
+    ...(androidRecipe.detected ? ["- Android-specific verification:", ...androidRecipe.commands.map((item) => `  - ${item.command} (${item.reason})`)] : []),
     "",
     "Risk Review",
     ...bulletList(["diff scope", "missing tests", "backward compatibility", "release/version impact", "residual unknowns"]),

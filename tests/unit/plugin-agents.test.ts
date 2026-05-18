@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe("plugin agents", () => {
-  test("builds 5 agent configs with correct IDs", () => {
+  test("builds 6 agent configs with correct IDs", () => {
     const agents = buildAgentConfigs();
     const ids = Object.keys(agents);
     expect(ids).toContain("jce-worker");
@@ -37,7 +37,17 @@ describe("plugin agents", () => {
     expect(ids).toContain("jce-researcher");
     expect(ids).toContain("explorer");
     expect(ids).toContain("frontend");
-    expect(ids).toHaveLength(5);
+    expect(ids).toContain("android");
+    expect(ids).toHaveLength(6);
+  });
+
+  test("android agent defines Android specialist protocols", () => {
+    const agents = buildAgentConfigs();
+    const prompt = agents.android.systemPrompt;
+    expect(prompt).toContain("Android Specialist");
+    expect(prompt).toContain("Build Failure Protocol");
+    expect(prompt).toContain("Release Protocol");
+    expect(prompt).toContain("Verification Requirements");
   });
 
   test("jce-worker agent has boulder/todo system prompt", () => {

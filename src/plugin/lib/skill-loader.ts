@@ -67,6 +67,12 @@ const SKILL_NAME_TO_FILE: Record<string, string> = {
   "wasm": "wasm.md",
 
   // Mobile
+  "android-kotlin": "android-kotlin.md",
+  "android-gradle": "android-gradle.md",
+  "android-testing": "android-testing.md",
+  "android-release": "android-release.md",
+  "android-compose": "android-compose.md",
+  "android-security": "android-security.md",
   "react-native": "react-native.md",
   "flutter-dart": "flutter-dart.md",
   "swift-ios": "swift-ios.md",
@@ -110,7 +116,10 @@ function detectContextSkills(text: string): string[] {
   else if (/\.rs\b/.test(text)) skills.push("rust");
   else if (/\.go\b/.test(text)) skills.push("go");
   else if (/\.cs\b/.test(text)) skills.push("csharp");
-  else if (/\.(java|kt|kts)\b/.test(text)) skills.push("java-kotlin");
+  else if (/\.(java|kt|kts)\b/.test(text)) {
+    if (/\b(android|androidx|jetpack|compose|gradle|manifest|room|hilt|workmanager|viewmodel|ksp)\b/i.test(lower)) skills.push("android-kotlin");
+    skills.push("java-kotlin");
+  }
   else if (/\.php\b/.test(text)) skills.push("php");
   else if (/\.rb\b/.test(text)) skills.push("ruby");
   else if (/\.(c|cpp|cc|cxx|h|hpp)\b/.test(text)) skills.push("cpp");
@@ -123,7 +132,13 @@ function detectContextSkills(text: string): string[] {
   else if (/\.astro\b/.test(text)) skills.push("astro-remix");
 
   // Framework detection from keywords (mutually exclusive — pick best match)
-  if (/\b(react[\s-]native|expo\s+(router|sdk|go))\b/i.test(lower)) skills.push("react-native");
+  if (/\b(android|androidx|androidmanifest|jetpack\s*compose|compose\s*(ui|navigation|material)|gradle\s*android\s*plugin|agp|room|hilt|dagger|workmanager|datastore|viewmodel|lifecycle-runtime|navigation\s*compose|ksp|kapt|adb|logcat|aab|apk)\b/i.test(lower)) skills.push("android-kotlin");
+  if (/\b(agp|build\.gradle|build\.gradle\.kts|settings\.gradle|libs\.versions\.toml|dependencyinsight|duplicate class|no matching variant|could not resolve)\b/i.test(lower)) skills.push("android-gradle");
+  if (/\b(testdebugunittest|connecteddebugandroidtest|androidtest|robolectric|compose test|migration test|instrumented)\b/i.test(lower)) skills.push("android-testing");
+  if (/\b(bundlerelease|assemblerelease|aab|apk|r8|proguard|signingconfig|keystore|play console|versioncode|versionname|mapping\.txt)\b/i.test(lower)) skills.push("android-release");
+  if (/\b(@composable|launchedeffect|remember|lazycolumn|collectasstatewithlifecycle|navigation compose|materialtheme)\b/i.test(lower)) skills.push("android-compose");
+  if (/\b(android:exported|permission|deep link|deeplink|network security config|cleartext|webview|biometric|backup rules)\b/i.test(lower)) skills.push("android-security");
+  else if (/\b(react[\s-]native|expo\s+(router|sdk|go))\b/i.test(lower)) skills.push("react-native");
   else if (/\b(next\.?js|app\s*router|server\s*actions|server\s*components|getServerSideProps|getStaticProps)\b/i.test(lower)) skills.push("nextjs");
   else if (/\b(react|jsx|tsx|hooks?|useState|useEffect|useRef|useMemo|useCallback|useReducer|useContext)\b/i.test(lower)) skills.push("react");
   else if (/\b(vue|nuxt|pinia|composition\s*api|defineComponent|defineModel|v-model|v-if)\b/i.test(lower)) skills.push("vue");
@@ -160,7 +175,28 @@ function detectContextSkills(text: string): string[] {
   if (/\b(chaos\s*engineering|error\s*budget|incident|postmortem|sre|load\s*test|k6|gatling)\b/i.test(lower)) skills.push("reliability-engineering");
   if (/\b(backstage|crossplane|argocd|flux|gitops|internal\s*developer\s*platform)\b/i.test(lower)) skills.push("platform-engineering");
 
-  return [...new Set(skills)];
+  if (skills.some((skill) => skill.startsWith("android-")) && !skills.includes("android-kotlin")) skills.push("android-kotlin");
+  return prioritizeSkills([...new Set(skills)]);
+}
+
+function prioritizeSkills(skills: string[]): string[] {
+  const priorities = new Map<string, number>([
+    ["software-engineering", 0],
+    ["android-kotlin", 1],
+    ["android-release", 2],
+    ["android-gradle", 3],
+    ["android-compose", 4],
+    ["android-testing", 5],
+    ["android-security", 6],
+    ["java-kotlin", 7],
+  ]);
+
+  const hasAndroid = skills.includes("android-kotlin");
+  const filtered = hasAndroid
+    ? skills.filter((skill) => skill !== "frontend" || skills.includes("android-compose"))
+    : skills;
+
+  return [...filtered].sort((a, b) => (priorities.get(a) ?? 99) - (priorities.get(b) ?? 99));
 }
 
 /**
@@ -234,13 +270,13 @@ export function determineSkillsForMessage(text: string): string[] {
 
   // Combine: base + router skills + context skills, deduplicated
   const combined = [...baseSkills, ...route.skills, ...contextSkills];
-  return [...new Set(combined)];
+  return prioritizeSkills([...new Set(combined)]).slice(0, 4);
 }
 
 // ─── Sub-Agent Skill Injection ───────────────────────────────
 
 /** Agents eligible for skill injection when dispatched as sub-agents. */
-const SKILL_ELIGIBLE_AGENTS = new Set(["oracle", "frontend", "jce-researcher"]);
+const SKILL_ELIGIBLE_AGENTS = new Set(["oracle", "frontend", "jce-researcher", "android"]);
 
 /** Max skills to inject into sub-agent prompts (lower than main chat to preserve token budget). */
 const MAX_SUBAGENT_SKILLS = 2;
@@ -259,7 +295,7 @@ export async function resolveSubAgentSkills(agent: string, delegationPrompt: str
   const scored = scoreIntent(delegationPrompt);
   const route = toLegacyRoute(scored);
   const contextSkills = detectContextSkills(delegationPrompt);
-  const combined = [...new Set([...route.skills, ...contextSkills])];
+  const combined = prioritizeSkills([...new Set([...route.skills, ...contextSkills])]);
 
   if (combined.length === 0) return "";
 

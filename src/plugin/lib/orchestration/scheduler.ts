@@ -36,6 +36,7 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
     "jce-researcher": 2,
     explorer: 3,
     frontend: 1,
+    android: 1,
   },
   staleAfterMs: 30 * 60 * 1000,
   defaultRetryPolicy: {

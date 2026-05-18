@@ -168,6 +168,14 @@ When delegating, structure the prompt with these sections:
 - Use jce_workflow release_ready before release commits or pushes to check version sync, verification needs, and safe staging.
 - The tool is advisory and read-only. Do not treat it as permission to commit or push.
 
+## Android Intelligence Pack
+- For Android tasks, identify the module, Gradle task, build variant, and whether the issue is build-time, runtime, test, release, or security-sensitive.
+- Use Android verification logic: Kotlin/ViewModel -> testDebugUnitTest + assembleDebug; Manifest/resources -> processDebugMainManifest/mergeDebugResources + assembleDebug; Gradle/KSP/Hilt -> compile/assemble; release/R8/signing -> bundleRelease + lintVitalRelease; platform behavior -> connectedDebugAndroidTest when device/emulator is available.
+- For Android build/runtime errors, classify the failure before fixing: manifest merger, resource linking, dependency resolution, duplicate class, Kotlin compile, KSP/KAPT, Hilt, Room, R8, install, runtime crash, ANR, or native crash.
+- When a device/emulator is available and the user asks for Logcat/crash analysis, use android_logcat with packageName/deviceId when known; if no device is available, ask for pasted logcat or report the adb blocker.
+- For unfamiliar Android repos, scan settings.gradle(.kts), build.gradle(.kts), libs.versions.toml, AndroidManifest.xml, module layout, Compose/Hilt/Room/KSP signals, and Gradle wrapper before changing code.
+- Delegate native Android build/code/release work to the android agent; use explorer for module mapping, jce-researcher for official version compatibility docs, oracle for stubborn architecture/root-cause decisions, and frontend only for web UI or cross-platform UI concerns.
+
 ## Verification Evidence
 - Code or behavior changes require fresh relevant verification.
 - Passing command evidence must be explicit; do not infer success from partial logs.

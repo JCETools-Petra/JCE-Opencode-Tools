@@ -288,12 +288,12 @@ describe("config/skills/", () => {
     expect(existsSync(skillsDir)).toBe(true);
   });
 
-  test("has exactly 50 skill directories with SKILL.md", () => {
+  test("has exactly 64 skill directories with SKILL.md", () => {
     const skillDirs = readdirSync(skillsDir).filter((f) => {
       const fullPath = join(skillsDir, f);
       return statSync(fullPath).isDirectory() && existsSync(join(fullPath, "SKILL.md"));
     });
-    expect(skillDirs).toHaveLength(58);
+    expect(skillDirs).toHaveLength(64);
   });
 
   test("all SKILL.md files are non-empty and have frontmatter", () => {

@@ -234,18 +234,25 @@ describe("plugin integration", () => {
     expect(status).toBe("No background tasks.");
   });
 
-  test("config hook injects 5 agents", async () => {
+  test("config hook injects 6 agents", async () => {
     const mod = await import("../../src/plugin/index.ts");
     const hooks = await mod.default.server(mockInput);
 
     const config: any = { agent: {} };
     await hooks.config!(config);
-    expect(Object.keys(config.agent)).toHaveLength(5);
+    expect(Object.keys(config.agent)).toHaveLength(6);
     expect(config.agent["jce-worker"]).toBeDefined();
     expect(config.agent.oracle).toBeDefined();
     expect(config.agent["jce-researcher"]).toBeDefined();
     expect(config.agent.explorer).toBeDefined();
     expect(config.agent.frontend).toBeDefined();
+    expect(config.agent.android).toBeDefined();
+  });
+
+  test("plugin exposes android_logcat tool", async () => {
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server(mockInput);
+    expect(hooks.tool!.android_logcat).toBeDefined();
   });
 
   test("config hook does not overwrite existing agents", async () => {
@@ -265,7 +272,7 @@ describe("plugin integration", () => {
 
     const config: any = {};
     await hooks.config!(config);
-    expect(Object.keys(config.agent)).toHaveLength(5);
+    expect(Object.keys(config.agent)).toHaveLength(6);
   });
 
   test("tool.execute.after appends warning for excessive comments", async () => {

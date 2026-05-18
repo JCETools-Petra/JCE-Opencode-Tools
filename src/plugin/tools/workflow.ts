@@ -7,6 +7,8 @@ import {
   buildReleaseReadyReport,
   buildCodeTaskPlan,
   buildProjectLearningReport,
+  buildAndroidFailureTriage,
+  buildAndroidVerificationRecipeReport,
   buildSafeCommitPlan,
   buildVerificationRecipe,
   buildWorkflowSummary,
@@ -53,7 +55,7 @@ export function buildWorkflowTool(): ToolDefinition {
   return tool({
     description: "Read-only JCE workflow helper for summaries, verification recipes, safe commit plans, and release readiness.",
     args: {
-      action: z.enum(["summary", "verification_recipe", "safe_commit_plan", "release_ready", "code_task_plan", "project_learning"]),
+      action: z.enum(["summary", "verification_recipe", "safe_commit_plan", "release_ready", "code_task_plan", "project_learning", "android_verification_recipe", "android_failure_triage"]),
       scope: z.string().optional(),
       taskType: z.enum(["agent_prompt", "bugfix", "feature", "refactor", "config", "installer", "release", "docs", "tests", "unknown"]).optional(),
       includeDocs: z.boolean().optional(),
@@ -96,6 +98,13 @@ export function buildWorkflowTool(): ToolDefinition {
           files: statusFiles,
         });
       }
+      case "android_verification_recipe":
+        return buildAndroidVerificationRecipeReport({
+          scope: args.scope as string | undefined,
+          changedFiles: statusFiles.map((file) => file.path),
+        });
+      case "android_failure_triage":
+        return buildAndroidFailureTriage((args.scope as string | undefined) ?? "");
       default:
         return "Unknown jce_workflow action.";
       }

@@ -124,8 +124,8 @@ describe("plugin settings", () => {
     expect(isModelAvailable("openai/gpt-4o-mini")).toBe(false);
   });
 
-  test("exports the five JCE agent IDs", () => {
-    expect(AGENT_IDS).toEqual(["jce-worker", "oracle", "jce-researcher", "explorer", "frontend"]);
+  test("exports the six JCE agent IDs", () => {
+    expect(AGENT_IDS).toEqual(["jce-worker", "oracle", "jce-researcher", "explorer", "frontend", "android"]);
     expect(getJcePluginSettingsPath()).toContain("jce-plugin.json");
   });
 
