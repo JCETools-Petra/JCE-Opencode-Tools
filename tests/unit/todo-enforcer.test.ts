@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { shouldEnforceContinuation, CONTINUATION_PROMPT } from "../../src/plugin/hooks/todo-enforcer.ts";
+import { evaluateOpenWork, extractTodoState } from "../../src/plugin/hooks/open-work-enforcer.ts";
+import { createEmptyExecutionMemory } from "../../src/plugin/lib/execution-memory.ts";
 
 describe("todo enforcer", () => {
   test("returns true when incomplete todos exist", () => {
@@ -34,5 +36,19 @@ describe("todo enforcer", () => {
   test("CONTINUATION_PROMPT contains boulder reference", () => {
     expect(CONTINUATION_PROMPT).toContain("BOULDER");
     expect(CONTINUATION_PROMPT).toContain("bouldering");
+  });
+
+  test("extracts pending TodoWrite state from tool output", () => {
+    const state = extractTodoState(JSON.stringify([{ content: "Finish verification", status: "pending" }]));
+    expect(state.hasOpenTodos).toBe(true);
+    expect(state.openItems).toContain("Finish verification");
+  });
+
+  test("open work blocks confirmation stop when todos remain", () => {
+    const memory = createEmptyExecutionMemory();
+    const result = evaluateOpenWork(memory, "balanced", { hasOpenTodos: true, openItems: ["Run tests"] });
+    expect(result.blocked).toBe(true);
+    expect(result.prompt).toContain("BOULDER CONTINUATION");
+    expect(result.prompt).toContain("Run tests");
   });
 });

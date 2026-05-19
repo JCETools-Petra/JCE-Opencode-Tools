@@ -396,6 +396,45 @@ describe("plugin integration", () => {
     expect(output.output).not.toContain("FINAL REVIEW GATE");
   });
 
+  test("tool.execute.after blocks confirmation stop when TodoWrite has pending items", async () => {
+    const root = tempRoot();
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root, worktree: root });
+
+    const todoOutput = { title: "TodoWrite", output: JSON.stringify([{ content: "Run verification", status: "pending" }]), metadata: {} };
+    await hooks["tool.execute.after"]!({ tool: "TodoWrite", sessionID: "s", callID: "todo", args: {} }, todoOutput);
+
+    const finalOutput = { title: "Task", output: "Sisanya tinggal dikonfirmasi dulu ya.", metadata: {} };
+    await hooks["tool.execute.after"]!({ tool: "Task", sessionID: "s", callID: "final", args: {} }, finalOutput);
+
+    expect(finalOutput.output).toContain("BOULDER CONTINUATION");
+    expect(finalOutput.output).toContain("Run verification");
+  });
+
+  test("tool.execute.after final gate blocks review route completion without accepted review", async () => {
+    const root = tempRoot();
+    const memory = createEmptyExecutionMemory("2026-05-06T00:00:00.000Z");
+    memory.activeWorkflow = {
+      ...createWorkflowRun({ id: "wf-review-block", goal: "Complete reviewed work", acceptanceCriteria: ["review accepted"] }),
+      route: {
+        intent: "review",
+        skills: ["codebase-intelligence"],
+        reason: "Review route requires accepted review evidence before completion.",
+        source: "message",
+      },
+    };
+    saveExecutionMemory(root, memory, "2026-05-06T00:01:00.000Z");
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root });
+    const output = { title: "Task", output: "Implemented and complete.", metadata: {} };
+
+    await hooks["tool.execute.after"]!({ tool: "Task", sessionID: "s", callID: "c", args: {} }, output);
+
+    expect(output.output).toContain("FINAL REVIEW GATE");
+    expect(output.output).toContain("Review route requires accepted review evidence");
+  });
+
   test("tool.execute.after uses session policy profile for final review gate", async () => {
     const root = tempRoot();
     saveSessionPolicyProfile(root, "strict");
@@ -549,7 +588,7 @@ describe("plugin integration", () => {
     expect(output.output).toContain("FINAL REVIEW GATE");
   });
 
-  test("completion claim does not overwrite review route without accepted review evidence", async () => {
+  test("completion claim preserves review route and blocks without accepted review evidence", async () => {
     const root = tempRoot();
     const memory = createEmptyExecutionMemory("2026-05-06T00:00:00.000Z");
     memory.activeWorkflow = {
@@ -570,8 +609,9 @@ describe("plugin integration", () => {
     await hooks["tool.execute.after"]!({ tool: "Task", sessionID: "s", callID: "c", args: {} }, output);
     const persisted = loadExecutionMemory(root).memory;
 
-    expect(output.output).not.toContain("EXECUTION POLICY: blocked");
-    expect(output.output).not.toContain("FINAL REVIEW GATE");
+    expect(output.output).toContain("EXECUTION POLICY: blocked");
+    expect(output.output).toContain("FINAL REVIEW GATE");
+    expect(output.output).toContain("Review route requires accepted review evidence");
     expect(persisted.activeWorkflow?.route?.intent).toBe("review");
   });
 

@@ -153,6 +153,9 @@ verify_jce_cli_payload() {
     local required=(
         "src/index.ts"
         "src/plugin/index.ts"
+        "src/plugin/hooks/jce-worker-guard.ts"
+        "src/plugin/hooks/open-work-enforcer.ts"
+        "src/plugin/hooks/todo-enforcer.ts"
         "src/commands/analytics.ts"
         "src/commands/capabilities.ts"
         "src/commands/docs.ts"

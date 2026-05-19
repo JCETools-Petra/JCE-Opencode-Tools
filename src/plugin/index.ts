@@ -5,8 +5,9 @@ import type { OpenCodeClient } from "./background/types.js";
 import { buildDispatchTool, buildStatusTool, buildCollectTool } from "./tools/dispatch.js";
 import { buildAgentConfigs } from "./config.js";
 import { analyzeCommentDensity, COMMENT_WARNING } from "./hooks/comment-checker.js";
-import { looksLikeCompletionClaim, shouldWarnForMissingVerification, VERIFICATION_WARNING } from "./hooks/jce-worker-guard.js";
+import { looksLikeCompletionClaim, looksLikeStopEarlyOrConfirmation, shouldWarnForMissingVerification, VERIFICATION_WARNING } from "./hooks/jce-worker-guard.js";
 import { shouldEnforceContinuation, detectPrematureStop, CONTINUATION_PROMPT } from "./hooks/todo-enforcer.js";
+import { evaluateOpenWork, extractTodoState, type TodoState } from "./hooks/open-work-enforcer.js";
 import { loadExecutionMemory, mergeExecutionMemorySnapshot, saveExecutionMemory } from "./lib/execution-memory.js";
 import type { ExecutionMemory } from "./lib/execution-memory.js";
 import { buildChineseTranslationPrompt, filterChineseOutput, type ChineseTranslator } from "./lib/chinese-output-filter.js";
@@ -142,6 +143,7 @@ const jcePlugin: Plugin = async (input) => {
   let currentMemory = loadedMemory.memory;
   let lastUserMessage = "";
   let workflowRuntimeActive = currentMemory.activeTasks.length > 0;
+  let lastTodoState: TodoState | undefined;
 
   // Initialize orchestration controller (v2 system — runs alongside BackgroundManager)
   const orchestrator = new OrchestrationController({ projectRoot });
@@ -160,7 +162,6 @@ const jcePlugin: Plugin = async (input) => {
     currentMemory = saveExecutionMemory(projectRoot, {
       ...currentMemory,
       blockers: [],
-      activeWorkflow: undefined,
     }, undefined, { preserveWorkflowRuntime: false }).memory;
   }
 
@@ -323,7 +324,10 @@ const jcePlugin: Plugin = async (input) => {
           if (lastCompleted?.result) {
             const context = { sessionID: "", messageID: "" };
             // Feed result through orchestration bridge (async, fire-and-forget for loop continuation)
-            bridge.collectAndContinue(lastCompleted.id, lastCompleted.result, lastCompleted.parentSessionId ?? "", lastCompleted.parentMessageId ?? "").catch(() => {});
+            bridge.collectAndContinue(lastCompleted.id, lastCompleted.result, lastCompleted.parentSessionId ?? "", lastCompleted.parentMessageId ?? "").catch((err) => {
+              currentMemory.blockers = [...currentMemory.blockers, { id: `orchestration-${Date.now()}`, failureReason: err instanceof Error ? err.message : String(err) }];
+              currentMemory = saveExecutionMemory(projectRoot, currentMemory).memory;
+            });
           }
         }
       }, chineseTranslator),
@@ -443,6 +447,10 @@ const jcePlugin: Plugin = async (input) => {
         }
       }
 
+      if (typeof output.output === "string" && input.tool === "TodoWrite") {
+        lastTodoState = extractTodoState(output.output);
+      }
+
       let routeUpdatePolicy: ExecutionPolicyDecision | undefined;
       if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool)) {
         ensureActiveWorkflow(output.output, looksLikeCompletionClaim(output.output) ? "completion" : "message");
@@ -452,8 +460,11 @@ const jcePlugin: Plugin = async (input) => {
       }
 
       const shouldEnforceWorkflowGates = workflowRuntimeActive && (!hadActiveWorkflow || hadWorkflowRuntimeActive);
+      const openWork = typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeStopEarlyOrConfirmation(output.output)
+        ? evaluateOpenWork(currentMemory, currentPolicyProfile(), lastTodoState, { includeWorkflowGate: hadActiveWorkflow || hadWorkflowRuntimeActive })
+        : undefined;
 
-      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeCompletionClaim(output.output) && currentMemory.activeWorkflow && shouldEnforceWorkflowGates) {
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && looksLikeCompletionClaim(output.output) && currentMemory.activeWorkflow && (shouldEnforceWorkflowGates || currentMemory.activeWorkflow.route?.intent === "review")) {
         const executionPolicy = evaluateExecutionPolicy({
           action: "completion_claim",
           profile: currentPolicyProfile(),
@@ -478,6 +489,10 @@ const jcePlugin: Plugin = async (input) => {
         if (reasons.length > 0) {
           output.output = `${output.output}\n\n${policyText}FINAL REVIEW GATE: Completion is blocked.\n${Array.from(new Set(reasons)).map((reason) => `- ${reason}`).join("\n")}`;
         }
+      }
+
+      if (typeof output.output === "string" && openWork?.blocked && !output.output.includes("BOULDER CONTINUATION")) {
+        output.output = `${output.output}\n\n${openWork.prompt}`;
       }
 
       if (typeof output.output === "string" && shouldInspectCompletionOutput(input.tool) && shouldWarnForMissingVerification(output.output)) {

@@ -12,6 +12,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 - Hardened install, reinstall, and update payload verification so JCE intelligence commands and Web/API/DevOps/Security flow modules are explicitly required before CLI source swaps.
 - Added update-path payload validation in `opencode-jce update`, matching installer safety checks.
 - Stopped stale OpenCode/plugin processes after install, reinstall, and update so macOS/Linux sessions do not keep running the old plugin/CLI payload.
+- Hardened JCE-Worker stop-early behavior so pending/in-progress TodoWrite items, confirmation prompts, Indonesian stop phrases, review-route completions, and orchestration continuation failures block premature stopping.
+- Added installer/update payload checks for JCE-Worker hook files so install, reinstall, and update deliver the stop-early guard implementation.
 
 ### Changed
 - Bumped project, installer, config, MCP, README, and release workflow test versions to `3.3.1`.
@@ -19,8 +21,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 ### Verified
 - `bun test tests/unit/install-payload-verification.test.ts` (`3 pass`, `0 fail`)
 - `bun test tests/unit/update-process-cleanup.test.ts` (`2 pass`, `0 fail`)
+- `bun test tests/unit/plugin-guard.test.ts tests/unit/todo-enforcer.test.ts tests/unit/plugin-integration.test.ts tests/unit/plugin-final-review-gate.test.ts tests/unit/plugin-execution-policy.test.ts` (`98 pass`, `0 fail`)
 - `bun run typecheck`
-- `bun test` (`941 pass`, `0 fail`)
+- `bun test` (`946 pass`, `0 fail`)
 
 ---
 
