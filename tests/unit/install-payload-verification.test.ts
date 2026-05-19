@@ -15,6 +15,16 @@ const androidPayloadFiles = [
   "orchestration-plan.ts",
   "device-flow.ts",
 ];
+const flutterPayloadFiles = [
+  "project-scanner.ts",
+  "verification-recipe.ts",
+  "failure-classifier.ts",
+  "environment-probe.ts",
+  "advanced-flow.ts",
+  "command-planner.ts",
+  "evidence-gate.ts",
+  "release-readiness.ts",
+];
 
 describe("installer CLI payload verification", () => {
   test("PowerShell installer verifies Android advanced modules before swapping CLI", () => {
@@ -24,6 +34,9 @@ describe("installer CLI payload verification", () => {
     for (const file of androidPayloadFiles) {
       expect(text).toContain(`src\\plugin\\lib\\android\\${file}`);
     }
+    for (const file of flutterPayloadFiles) {
+      expect(text).toContain(`src\\plugin\\lib\\flutter\\${file}`);
+    }
   });
 
   test("Unix installer verifies Android advanced modules before swapping CLI", () => {
@@ -32,6 +45,9 @@ describe("installer CLI payload verification", () => {
     expect(text).toContain("verify_jce_cli_payload \"$staging_dir\"");
     for (const file of androidPayloadFiles) {
       expect(text).toContain(`src/plugin/lib/android/${file}`);
+    }
+    for (const file of flutterPayloadFiles) {
+      expect(text).toContain(`src/plugin/lib/flutter/${file}`);
     }
   });
 });

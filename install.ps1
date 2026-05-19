@@ -112,7 +112,15 @@ function Test-JceCliPayload($dir) {
         "src\plugin\lib\android\release-readiness.ts",
         "src\plugin\lib\android\build-optimizer.ts",
         "src\plugin\lib\android\orchestration-plan.ts",
-        "src\plugin\lib\android\device-flow.ts"
+        "src\plugin\lib\android\device-flow.ts",
+        "src\plugin\lib\flutter\project-scanner.ts",
+        "src\plugin\lib\flutter\verification-recipe.ts",
+        "src\plugin\lib\flutter\failure-classifier.ts",
+        "src\plugin\lib\flutter\environment-probe.ts",
+        "src\plugin\lib\flutter\advanced-flow.ts",
+        "src\plugin\lib\flutter\command-planner.ts",
+        "src\plugin\lib\flutter\evidence-gate.ts",
+        "src\plugin\lib\flutter\release-readiness.ts"
     )
     $missing = @()
     foreach ($file in $required) {
