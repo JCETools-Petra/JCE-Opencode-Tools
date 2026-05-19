@@ -19,6 +19,12 @@ import { dashboardCommand } from "./commands/dashboard.js";
 import { fallbackCommand } from "./commands/fallback.js";
 import { contextCommand } from "./commands/context.js";
 import { jceWorkerCommand } from "./commands/jce-worker.js";
+import { skillsCommand } from "./commands/skills.js";
+import { capabilitiesCommand } from "./commands/capabilities.js";
+import { evidenceCommand } from "./commands/evidence.js";
+import { docsCommand } from "./commands/docs.js";
+import { analyticsCommand } from "./commands/analytics.js";
+import { flowCommand } from "./commands/flow.js";
 import { VERSION } from "./lib/constants.js";
 
 const program = new Command();
@@ -46,5 +52,11 @@ program.addCommand(dashboardCommand);
 program.addCommand(fallbackCommand);
 program.addCommand(contextCommand);
 program.addCommand(jceWorkerCommand);
+program.addCommand(skillsCommand);
+program.addCommand(capabilitiesCommand);
+program.addCommand(evidenceCommand);
+program.addCommand(docsCommand);
+program.addCommand(analyticsCommand);
+program.addCommand(flowCommand);
 
 program.parse(process.argv);

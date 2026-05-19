@@ -9,6 +9,7 @@ import { summarizeToolDiscipline } from "../plugin/lib/tool-discipline.js";
 import { buildProjectBrain } from "../plugin/lib/project-brain.js";
 import { formatEvalScenarios } from "../plugin/lib/phase3-eval.js";
 import { checkSkillSync, formatSkillSync } from "../plugin/lib/skill-sync.js";
+import { assessJceDoctor } from "../plugin/lib/jce-intelligence.js";
 import { error, info, success, warn } from "../lib/ui.js";
 import { EXIT_ERROR, EXIT_SUCCESS } from "../types.js";
 
@@ -178,8 +179,10 @@ export function createJceWorkerCommand(options: CreateJceWorkerCommandOptions = 
       const loaded = loadExecutionMemory(cwd());
       const issues = summarizeToolDiscipline(opts.path ?? []);
       const skillOutput = opts.skills ? `\n\n${formatSkillSync(checkSkillSync(cwd()))}` : "";
-      write([formatDoctor(loaded.memory), issues.length ? "\nTool discipline issues:" : "\nTool discipline issues: none", ...issues.map((issue) => `- ${issue.severity.toUpperCase()}: ${issue.path}: ${issue.reason}`)].join("\n") + skillOutput);
-      exitIfEnabled(options, issues.some((issue) => issue.severity === "block") ? EXIT_ERROR : EXIT_SUCCESS);
+      const jceDoctor = assessJceDoctor(cwd());
+      const intelligenceOutput = ["", "JCE Intelligence Checks", ...jceDoctor.checks.map((check) => `- ${check.status.toUpperCase()}: ${check.name}: ${check.message}`)].join("\n");
+      write([formatDoctor(loaded.memory), intelligenceOutput, issues.length ? "\nTool discipline issues:" : "\nTool discipline issues: none", ...issues.map((issue) => `- ${issue.severity.toUpperCase()}: ${issue.path}: ${issue.reason}`)].join("\n") + skillOutput);
+      exitIfEnabled(options, issues.some((issue) => issue.severity === "block") || jceDoctor.summary.fail > 0 ? EXIT_ERROR : EXIT_SUCCESS);
     });
 
   const learnCommand = new Command("learn")

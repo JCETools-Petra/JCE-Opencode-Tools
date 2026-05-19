@@ -1,0 +1,62 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { auditSkills, resolveSkillConflicts, buildCapabilityRegistry, appendEvidence, loadEvidence, summarizeTelemetry, assessJceDoctor } from "../../src/plugin/lib/jce-intelligence.ts";
+import { buildWebAdvancedFlow } from "../../src/plugin/lib/web/index.ts";
+import { buildApiAdvancedFlow } from "../../src/plugin/lib/api/index.ts";
+import { buildDevopsAdvancedFlow } from "../../src/plugin/lib/devops/index.ts";
+import { buildSecurityAdvancedFlow } from "../../src/plugin/lib/security-flow/index.ts";
+
+function fixture(): string { return mkdtempSync(join(tmpdir(), "opencode-jce-intel-")); }
+
+describe("JCE priorities 1-10 intelligence", () => {
+  test("audits skill quality and reports weak guidance", () => {
+    const root = fixture();
+    const skillDir = join(root, "skills", "demo-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: demo-skill\ndescription: Use when testing demo skill routing and verification guidance.\n---\n# Demo\nWorkflow: inspect, implement, verify with tests.\n", "utf8");
+    const report = auditSkills(join(root, "skills"));
+    expect(report.total).toBe(1);
+    expect(report.results[0]?.score).toBeGreaterThanOrEqual(85);
+  });
+
+  test("resolves skill conflicts by preferring specific skills", () => {
+    const result = resolveSkillConflicts(["frontend", "nextjs", "react", "typescript", "software-engineering"], 3);
+    expect(result.selected).toContain("nextjs");
+    expect(result.selected).toContain("typescript");
+    expect(result.suppressed.some((item) => item.skill === "frontend")).toBe(true);
+  });
+
+  test("registers priority capabilities", () => {
+    const ids = buildCapabilityRegistry().capabilities.map((capability) => capability.id);
+    expect(ids).toContain("jce.skill-audit");
+    expect(ids).toContain("nextjs.advanced-flow");
+    expect(ids).toContain("security.advanced-flow");
+  });
+
+  test("stores evidence records", () => {
+    const root = fixture();
+    const record = appendEvidence(root, { taskId: "task-1", type: "command", summary: "tests passed", status: "pass", command: "bun test" });
+    expect(record.id).toStartWith("ev-");
+    expect(loadEvidence(root)).toHaveLength(1);
+  });
+
+  test("summarizes telemetry locally", () => {
+    const summary = summarizeTelemetry([{ kind: "skill_selected", name: "react", at: "now" }, { kind: "skill_selected", name: "react", at: "now" }]);
+    expect(summary["skill_selected:react"]).toBe(2);
+  });
+
+  test("doctor reports repository intelligence checks", () => {
+    const report = assessJceDoctor(process.cwd());
+    expect(report.checks.length).toBeGreaterThan(0);
+    expect(report.summary.fail).toBe(0);
+  });
+
+  test("advanced flow baselines detect web api devops and security surfaces", () => {
+    expect(buildWebAdvancedFlow(["app/page.tsx", "next.config.js"]).framework).toBe("nextjs");
+    expect(buildApiAdvancedFlow(["src/user.controller.ts", "jwt auth", "zod schema"]).surfaces).toContain("auth boundary");
+    expect(buildDevopsAdvancedFlow([".github/workflows/ci.yml", "Dockerfile"]).surfaces).toContain("ci");
+    expect(buildSecurityAdvancedFlow(["auth jwt token sql query"]).threatModel).toContain("identity/session assets");
+  });
+});

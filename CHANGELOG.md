@@ -6,6 +6,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.3.0] - 2026-05-19
+
+### Added
+- Added JCE intelligence capabilities: skill quality audit/scoring, skill conflict resolution, capability registry, local evidence store, docs generator, and analytics CLI.
+- Added new CLI surfaces: `skills`, `capabilities`, `evidence`, `docs`, `analytics`, and `flow`.
+- Added JCE-Worker doctor intelligence checks for agent, skill, capability, and context-keeper alignment.
+- Added Web/Next.js/React, API, DevOps/CI, and Security advanced flow packs with filesystem scanners and verification recommendations.
+- Added security findings with severity, evidence, remediation, and candidate-risk reporting.
+- Added regression tests for JCE intelligence priorities and advanced flow filesystem scanners.
+
+### Changed
+- Bumped project, installer, config, MCP, README, and release workflow test versions to `3.3.0`.
+
+### Verified
+- `bun run typecheck`
+- `bun test tests/unit/advanced-flow-scanners.test.ts tests/unit/jce-intelligence-priorities.test.ts` (`11 pass`, `0 fail`)
+- `bun test` (`938 pass`, `0 fail`)
+- `bun run src/index.ts capabilities list --json`
+- `bun run src/index.ts skills resolve frontend,nextjs,react,typescript --json`
+- `bun run src/index.ts flow security --json`
+
+---
+
 ## [3.2.0] - 2026-05-18
 
 ### Added
