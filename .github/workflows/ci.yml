@@ -67,12 +67,11 @@ jobs:
       - name: CLI validate
         shell: bash
         run: |
-          bun ./src/index.ts validate
-          exit_code=$?
-          if [ $exit_code -eq 1 ]; then
+          bun ./src/index.ts validate || exit_code=$?
+          if [ "${exit_code:-0}" -eq 1 ]; then
             echo "Expected: config not deployed in CI"
-          elif [ $exit_code -ne 0 ]; then
-            exit $exit_code
+          elif [ "${exit_code:-0}" -ne 0 ]; then
+            exit "$exit_code"
           fi
 
   lint-shell:
