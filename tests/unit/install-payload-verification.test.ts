@@ -44,6 +44,16 @@ const jceIntelligencePayloadFiles = [
   "src/plugin/lib/security-flow/index.ts",
   "src/plugin/lib/web/index.ts",
 ];
+const workflowSkillPayloadFiles = [
+  "config/AGENTS.md",
+  "config/skills/git-guardrails/SKILL.md",
+  "config/skills/grill-with-docs/SKILL.md",
+  "config/skills/prototype/SKILL.md",
+  "config/skills/to-issues/SKILL.md",
+  "config/skills/to-prd/SKILL.md",
+  "config/skills/triage/SKILL.md",
+  "config/skills/write-a-skill/SKILL.md",
+];
 
 describe("installer CLI payload verification", () => {
   test("TypeScript update verifies JCE intelligence payload before swapping CLI", () => {
@@ -51,6 +61,9 @@ describe("installer CLI payload verification", () => {
     expect(text).toContain("REQUIRED_CLI_PAYLOAD_FILES");
     expect(text).toContain("assertCliPayloadComplete(stagingDir)");
     for (const file of jceIntelligencePayloadFiles) {
+      expect(text).toContain(file);
+    }
+    for (const file of workflowSkillPayloadFiles) {
       expect(text).toContain(file);
     }
   });
@@ -68,6 +81,10 @@ describe("installer CLI payload verification", () => {
     for (const file of jceIntelligencePayloadFiles) {
       expect(text).toContain(file.split("/").join("\\"));
     }
+    for (const file of workflowSkillPayloadFiles) {
+      expect(text).toContain(file.split("/").join("\\"));
+    }
+    expect(text).toContain('Copy-Item (Join-Path $TempDir "config") (Join-Path $stagingDir "config") -Recurse');
   });
 
   test("Unix installer verifies Android advanced modules before swapping CLI", () => {
@@ -83,6 +100,10 @@ describe("installer CLI payload verification", () => {
     for (const file of jceIntelligencePayloadFiles) {
       expect(text).toContain(file);
     }
+    for (const file of workflowSkillPayloadFiles) {
+      expect(text).toContain(file);
+    }
+    expect(text).toContain('cp -r "$TEMP_DIR/config" "$staging_dir/config"');
   });
 
   test("Unix installer configures Fish PATH for Bun global binaries", () => {

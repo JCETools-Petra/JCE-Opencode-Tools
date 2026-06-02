@@ -28,6 +28,13 @@ const SKILL_NAME_TO_FILE: Record<string, string> = {
   "release-engineering": "release-engineering.md",
   "verification-discipline": "verification-discipline.md",
   "delegation-quality": "delegation-quality.md",
+  "grill-with-docs": "grill-with-docs.md",
+  "to-prd": "to-prd.md",
+  "to-issues": "to-issues.md",
+  "triage": "triage.md",
+  "prototype": "prototype.md",
+  "write-a-skill": "write-a-skill.md",
+  "git-guardrails": "git-guardrails.md",
 
   // Distributed & Platform
   "distributed-systems": "distributed-systems.md",
@@ -174,6 +181,13 @@ function detectContextSkills(text: string): string[] {
   if (/\b(design\s*system|storybook|design\s*tokens?|component\s*library|chromatic)\b/i.test(lower)) skills.push("design-systems");
   if (/\b(chaos\s*engineering|error\s*budget|incident|postmortem|sre|load\s*test|k6|gatling)\b/i.test(lower)) skills.push("reliability-engineering");
   if (/\b(backstage|crossplane|argocd|flux|gitops|internal\s*developer\s*platform)\b/i.test(lower)) skills.push("platform-engineering");
+  if (/\b(prd|product\s*requirements?|requirements?\s*doc|acceptance\s*criteria|product\s*spec|scope\s*doc)\b/i.test(lower)) skills.push("to-prd");
+  if (/\b(github\s*issues?|create\s*issues?|break\s*(this|it)?\s*down|task\s*breakdown|vertical\s*slices?|milestones?)\b/i.test(lower)) skills.push("to-issues");
+  if (/\b(triage|severity|issue\s*priority|bug\s*priority|bug\s*report|needs\s*info|repro\s*steps?|duplicate\s*issue)\b/i.test(lower)) skills.push("triage");
+  if (/\b(prototype|spike|proof\s*of\s*concept|poc|throwaway|explore\s*design|ui\s*variants?)\b/i.test(lower)) skills.push("prototype");
+  if (/\b(write\s*a\s*skill|create\s*a\s*skill|skill\s*author|skill\s*frontmatter|SKILL\.md)\b/i.test(text)) skills.push("write-a-skill");
+  if (/\b(git\s*guardrails?|git\s*reset|git\s*clean|force\s*push|git\s*push|git\s*tag|pre-commit|commit\s*safety)\b/i.test(lower)) skills.push("git-guardrails");
+  if (/\b(grill\s*(with\s*docs)?|challenge\s*(my\s*)?plan|adr|domain\s*model|decision\s*record|context\.md|architecture\s*decision)\b/i.test(lower)) skills.push("grill-with-docs");
 
   if (skills.some((skill) => skill.startsWith("android-")) && !skills.includes("android-kotlin")) skills.push("android-kotlin");
   return prioritizeSkills([...new Set(skills)]);
@@ -189,6 +203,13 @@ function prioritizeSkills(skills: string[]): string[] {
     ["android-testing", 5],
     ["android-security", 6],
     ["java-kotlin", 7],
+    ["git-guardrails", 8],
+    ["grill-with-docs", 9],
+    ["to-prd", 10],
+    ["to-issues", 11],
+    ["triage", 12],
+    ["prototype", 13],
+    ["write-a-skill", 14],
   ]);
 
   const hasAndroid = skills.includes("android-kotlin");

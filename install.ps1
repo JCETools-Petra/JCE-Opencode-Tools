@@ -5,7 +5,7 @@
 # ===================================================================
 
 $ErrorActionPreference = "Stop"
-$Version = "3.4.0"
+$Version = "3.4.1"
 $RepoUrl = "https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 $TempDir = Join-Path $env:TEMP "opencode-jce-install-$([System.IO.Path]::GetRandomFileName())"
 $JceBinDir = Join-Path $env:USERPROFILE ".opencode-jce\bin"
@@ -137,7 +137,15 @@ function Test-JceCliPayload($dir) {
         "src\plugin\lib\flutter\advanced-flow.ts",
         "src\plugin\lib\flutter\command-planner.ts",
         "src\plugin\lib\flutter\evidence-gate.ts",
-        "src\plugin\lib\flutter\release-readiness.ts"
+        "src\plugin\lib\flutter\release-readiness.ts",
+        "config\AGENTS.md",
+        "config\skills\git-guardrails\SKILL.md",
+        "config\skills\grill-with-docs\SKILL.md",
+        "config\skills\prototype\SKILL.md",
+        "config\skills\to-issues\SKILL.md",
+        "config\skills\to-prd\SKILL.md",
+        "config\skills\triage\SKILL.md",
+        "config\skills\write-a-skill\SKILL.md"
     )
     $missing = @()
     foreach ($file in $required) {
@@ -542,6 +550,7 @@ function Deploy-Config {
         New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
         Copy-Item (Join-Path $TempDir "src") (Join-Path $stagingDir "src") -Recurse
         Copy-Item (Join-Path $TempDir "schemas") (Join-Path $stagingDir "schemas") -Recurse
+        Copy-Item (Join-Path $TempDir "config") (Join-Path $stagingDir "config") -Recurse
         $scriptsDir = Join-Path $TempDir "scripts"
         if (Test-Path $scriptsDir) { Copy-Item $scriptsDir (Join-Path $stagingDir "scripts") -Recurse }
         Copy-Item (Join-Path $TempDir "package.json") $stagingDir

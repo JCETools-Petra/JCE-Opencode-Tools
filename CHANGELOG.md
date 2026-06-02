@@ -6,6 +6,30 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.4.1] - 2026-06-02
+
+### Added
+- Added zero-config workflow skills: `grill-with-docs`, `to-prd`, `to-issues`, `triage`, `prototype`, `write-a-skill`, and `git-guardrails`.
+- Added automatic routing for PRDs, GitHub issue slicing, triage, prototypes, skill authoring, git safety, and ADR/context plan reviews.
+
+### Fixed
+- Tightened `triage` skill activation so generic `priority` wording no longer triggers issue triage accidentally.
+- Ensured fresh installers carry `config/` into CLI staging so local update paths can refresh bundled skills without relying on the GitHub API fallback.
+- Added payload verification for `config/AGENTS.md` and all new workflow skill files in PowerShell, Unix, and TypeScript update flows.
+- Added a `qs@^6.15.2` override to resolve a moderate transitive audit finding from the MCP SDK Express stack.
+
+### Changed
+- Updated skill inventory in `config/AGENTS.md` to list 71 bundled skills and include examples for PRD/issues and ADR/git guardrail workflows.
+- Bumped project, installer, config, MCP, README, and release workflow test versions to `3.4.1`.
+
+### Verified
+- `bun test tests/unit/install-payload-verification.test.ts tests/unit/config.test.ts tests/unit/plugin-skill-loader.test.ts tests/unit/plugin-skill-sync.test.ts`
+- `bun run typecheck`
+- `bun audit`
+- `bun test` (`965 pass`, `0 fail`)
+
+---
+
 ## [3.4.0] - 2026-06-02
 
 ### Added

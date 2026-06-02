@@ -1,5 +1,5 @@
 # OpenCode JCE — Global AI Instructions
-# Version: 3.4.0 (Modular + Context Preservation)
+# Version: 3.4.1 (Modular + Context Preservation)
 # This file is always loaded. Skills in ./skills/ are loaded on-demand.
 # Customize freely — the installer will NOT overwrite your changes.
 
@@ -182,7 +182,7 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 
 **You have access to specialized skill files in the OpenCode config directory (`~/.config/opencode/skills/` on all platforms, including Windows).** Load the relevant ones based on the current task. Read the file content when you need the detailed guidance.
 
-### Available Skills (50 files)
+### Available Skills (71 files)
 
 **Core Engineering:**
 | File | Load When |
@@ -200,6 +200,17 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | `context-preservation.md` | Maintaining project context across sessions, .opencode-context.md |
 | `testing-strategies.md` | Property-based, mutation, contract, visual regression, load testing |
 | `api-design-patterns.md` | REST maturity, GraphQL schema, gRPC, versioning, pagination, OpenAPI |
+
+**Workflow Skills:**
+| File | Load When |
+|------|-----------|
+| `grill-with-docs.md` | Challenge plans against context, domain docs, and ADRs |
+| `to-prd.md` | Convert ideas/conversations into PRDs and acceptance criteria |
+| `to-issues.md` | Break PRDs/plans into GitHub issues and vertical slices |
+| `triage.md` | Classify issues, bug reports, severity, repro state, and readiness |
+| `prototype.md` | Build throwaway prototypes, spikes, POCs, or UI variants |
+| `write-a-skill.md` | Create or audit JCE/OpenCode skills and SKILL.md frontmatter |
+| `git-guardrails.md` | Safe commit, push, tag, branch, merge, and destructive-git guardrails |
 
 **Distributed & Platform:**
 | File | Load When |
@@ -300,6 +311,8 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | "Fix this Rust code" | `software-engineering.md` + `rust.md` |
 | "Style with Tailwind" | `tailwind.md` + `frontend.md` |
 | "Spring Boot microservice" | `spring-boot.md` + `architecture.md` + `java-kotlin.md` |
+| "Convert this plan into a PRD and GitHub issues" | `to-prd.md` + `to-issues.md` |
+| "Challenge my ADR before git push" | `git-guardrails.md` + `grill-with-docs.md` |
 
 ### Contoh (Bahasa Indonesia)
 
@@ -320,6 +333,8 @@ If message doesn't match any → use default Identity (staff engineer). Still lo
 | "Deploy ke server" | `devops.md` |
 | "Tambah fitur login" | `security.md` + `software-engineering.md` |
 | "Refactor kode ini" | `software-engineering.md` |
+| "Ubah rencana ini jadi PRD dan GitHub issues" | `to-prd.md` + `to-issues.md` |
+| "Audit ADR ini sebelum git push" | `git-guardrails.md` + `grill-with-docs.md` |
 
 ---
 

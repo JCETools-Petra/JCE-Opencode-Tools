@@ -6,7 +6,7 @@ set -euo pipefail
 # One command to install everything you need for OpenCode CLI
 # ═══════════════════════════════════════════════════════════════
 
-VERSION="3.4.0"
+VERSION="3.4.1"
 REPO_URL="https://github.com/JCETools-Petra/JCE-Opencode-Tools.git"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/opencode-jce-install.XXXXXXXXXX")"
 # CONFIG_DIR is set by detect_opencode_config() in main()
@@ -215,6 +215,14 @@ verify_jce_cli_payload() {
         "src/plugin/lib/flutter/command-planner.ts"
         "src/plugin/lib/flutter/evidence-gate.ts"
         "src/plugin/lib/flutter/release-readiness.ts"
+        "config/AGENTS.md"
+        "config/skills/git-guardrails/SKILL.md"
+        "config/skills/grill-with-docs/SKILL.md"
+        "config/skills/prototype/SKILL.md"
+        "config/skills/to-issues/SKILL.md"
+        "config/skills/to-prd/SKILL.md"
+        "config/skills/triage/SKILL.md"
+        "config/skills/write-a-skill/SKILL.md"
     )
     local missing=()
     local file
@@ -476,6 +484,7 @@ deploy_config() {
     mkdir -p "$staging_dir"
     cp -r "$TEMP_DIR/src" "$staging_dir/src"
     cp -r "$TEMP_DIR/schemas" "$staging_dir/schemas"
+    cp -r "$TEMP_DIR/config" "$staging_dir/config"
     [ -d "$TEMP_DIR/scripts" ] && cp -r "$TEMP_DIR/scripts" "$staging_dir/scripts"
     cp "$TEMP_DIR/package.json" "$staging_dir/"
     cp "$TEMP_DIR/tsconfig.json" "$staging_dir/"

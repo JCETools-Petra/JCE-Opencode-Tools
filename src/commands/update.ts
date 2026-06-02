@@ -55,6 +55,14 @@ const REQUIRED_CLI_PAYLOAD_FILES = [
   "src/plugin/lib/flutter/command-planner.ts",
   "src/plugin/lib/flutter/evidence-gate.ts",
   "src/plugin/lib/flutter/release-readiness.ts",
+  "config/AGENTS.md",
+  "config/skills/git-guardrails/SKILL.md",
+  "config/skills/grill-with-docs/SKILL.md",
+  "config/skills/prototype/SKILL.md",
+  "config/skills/to-issues/SKILL.md",
+  "config/skills/to-prd/SKILL.md",
+  "config/skills/triage/SKILL.md",
+  "config/skills/write-a-skill/SKILL.md",
 ];
 
 function assertCliPayloadComplete(dir: string): void {

@@ -35,4 +35,24 @@ describe("plugin skill loader", () => {
     expect(skills).toContain("java-kotlin");
     expect(skills).not.toContain("android-kotlin");
   });
+
+  test("routes planning workflow prompts to PRD and issue skills", () => {
+    const skills = determineSkillsForMessage("Convert this plan into a PRD, acceptance criteria, and GitHub issues with vertical slices");
+
+    expect(skills).toContain("to-prd");
+    expect(skills).toContain("to-issues");
+  });
+
+  test("routes safety and decision prompts to guardrail skills", () => {
+    const skills = determineSkillsForMessage("Challenge my ADR plan with docs before git push and tag release");
+
+    expect(skills).toContain("git-guardrails");
+    expect(skills).toContain("grill-with-docs");
+  });
+
+  test("does not route generic priority wording to triage", () => {
+    const skills = determineSkillsForMessage("Update priority terbaik saja for workflow skills");
+
+    expect(skills).not.toContain("triage");
+  });
 });
