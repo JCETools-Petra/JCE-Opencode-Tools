@@ -28,7 +28,7 @@
     },
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@0.0.28"],
+      "args": ["-y", "@playwright/mcp@latest"],
       "description": "Browser automation — testing, scraping, screenshots, PDF generation"
     },
     "sequential-thinking": {

@@ -125,7 +125,7 @@ export function buildDefaultMcpConfig(configDir: string): Record<string, unknown
     },
     "playwright": {
       type: "local",
-      command: ["npx", "-y", "@playwright/mcp@0.0.28"],
+      command: ["npx", "-y", "@playwright/mcp@latest"],
       enabled: true,
     },
     "sequential-thinking": {

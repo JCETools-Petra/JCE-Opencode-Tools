@@ -54,7 +54,7 @@ describe("audit fixes", () => {
       "sequential-thinking",
     ]);
     expect(config.mcp["sequential-thinking"].command).toEqual(["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]);
-    expect(config.mcp.playwright.command).toEqual(["npx", "-y", "@playwright/mcp@0.0.28"]);
+    expect(config.mcp.playwright.command).toEqual(["npx", "-y", "@playwright/mcp@latest"]);
     expect(config.mcp["github-search"].command).toEqual(["npx", "-y", "@modelcontextprotocol/server-github"]);
     expect(config.mcp.memory.command).toEqual(["npx", "-y", "@modelcontextprotocol/server-memory"]);
     expect(config.mcp["context-keeper"].env?.PROJECT_ROOT).toBe("${PROJECT_ROOT}");

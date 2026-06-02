@@ -6,6 +6,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.3.6] - 2026-06-02
+
+### Changed
+- Updated Playwright MCP installer/config defaults from pinned `@playwright/mcp@0.0.28` to `@playwright/mcp@latest` so new installs use the current browser automation server.
+- Bumped project, installer, config, MCP, README, and release workflow test versions to `3.3.6`.
+
+### Verified
+- `bun test tests/unit/audit-fixes.test.ts tests/unit/plugin-workflow-tool.test.ts tests/unit/ui.test.ts`
+- `bun test` (`959 pass`, `0 fail`) with `safe.directory` env for this workspace ownership.
+- `bun run typecheck`
+
+---
+
 ## [3.3.5] - 2026-05-19
 
 ### Fixed
