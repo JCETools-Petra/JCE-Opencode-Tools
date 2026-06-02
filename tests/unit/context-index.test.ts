@@ -67,4 +67,23 @@ describe("context index", () => {
 
     await expect(listContextBuckets(root)).resolves.toEqual(["agents", "testing"]);
   });
+
+  test("sanitizes custom bucket names", async () => {
+    const root = await tempRoot();
+    const result = await writeContextIndex(root, { bucket: "Release Notes!!", summary: "Recorded release notes" });
+
+    expect(result!.bucket).toBe("release-notes");
+    await expect(readContextIndex(root, "Release Notes!!")).resolves.toContain("Recorded release notes");
+    await expect(listContextBuckets(root)).resolves.toEqual(["release-notes"]);
+  });
+
+  test("keeps duplicate summaries as separate notes", async () => {
+    const root = await tempRoot();
+    const first = await writeContextIndex(root, { bucket: "testing", summary: "Repeated smoke verification" });
+    const second = await writeContextIndex(root, { bucket: "testing", summary: "Repeated smoke verification" });
+
+    expect(first!.notePath).not.toBe(second!.notePath);
+    const index = await readContextIndex(root, "testing");
+    expect(index.match(/Repeated smoke verification/g)?.length).toBe(2);
+  });
 });

@@ -6,6 +6,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.4.2] - 2026-06-02
+
+### Fixed
+- Replaced synchronous `existsSync` calls in `context-index.ts` with async `stat` checks to avoid blocking the event loop during context index reads and writes.
+- Applied atomic writes (`tmp + rename`) to session master index, bucket indexes, and note files so partial writes cannot corrupt runtime context state.
+
+### Changed
+- Note filenames now include seconds and milliseconds (`YYYY-MM-DD-HHMMSS-mmm`) and auto-suffix (`-1`, `-2`, ...) to eliminate collision when multiple context updates happen within the same minute.
+- Added bucket name sanitization and duplicate-summary collision tests for context index write path.
+
+### Verified
+- `bun test tests/unit/context-index.test.ts tests/unit/context-keeper.test.ts tests/unit/context-autocapture.test.ts` (`46 pass`, `0 fail`)
+- `bun run typecheck`
+
+---
+
 ## [3.4.1] - 2026-06-02
 
 ### Added

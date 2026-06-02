@@ -1,5 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ContextCaptureInput } from "./context-autocapture.js";
 
@@ -71,7 +70,8 @@ export function inferContextBucket(input: ContextIndexInput): ContextBucket {
 
 function nowStamp(date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
+  const millis = String(date.getMilliseconds()).padStart(3, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${millis}`;
 }
 
 function today(date = new Date()): string {
@@ -86,6 +86,17 @@ function firstSentence(input: string | undefined, fallback: string): string {
 function noteFilename(bucket: string, summary: string, date = new Date()): string {
   const slug = summary.toLowerCase().replace(/`/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "context-note";
   return `${nowStamp(date)}-${bucket}-${slug}.md`;
+}
+
+async function uniqueNoteFilename(projectRoot: string, bucket: string, summary: string): Promise<string> {
+  const base = noteFilename(bucket, summary);
+  let candidate = base;
+  let suffix = 1;
+  while (await exists(join(projectRoot, CONTEXT_NOTES_DIR, candidate))) {
+    candidate = base.replace(/\.md$/, `-${suffix}.md`);
+    suffix += 1;
+  }
+  return candidate;
 }
 
 function renderSession(bucket: string, date = new Date()): string {
@@ -150,13 +161,28 @@ async function readIfExists(path: string): Promise<string | null> {
   }
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeFileAtomic(path: string, content: string): Promise<void> {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await writeFile(tmp, content, "utf8");
+  await rename(tmp, path);
+}
+
 export async function ensureContextIndex(projectRoot: string, bucket: string = "general"): Promise<void> {
   await mkdir(join(projectRoot, CONTEXT_INDEX_DIR), { recursive: true });
   await mkdir(join(projectRoot, CONTEXT_NOTES_DIR), { recursive: true });
   const sessionPath = join(projectRoot, CONTEXT_INDEX_SESSION);
-  if (!existsSync(sessionPath)) await writeFile(sessionPath, renderSession(bucket), "utf8");
+  if (!(await exists(sessionPath))) await writeFileAtomic(sessionPath, renderSession(bucket));
   const indexPath = join(projectRoot, CONTEXT_INDEX_DIR, `${bucket}.md`);
-  if (!existsSync(indexPath)) await writeFile(indexPath, renderIndex(bucket), "utf8");
+  if (!(await exists(indexPath))) await writeFileAtomic(indexPath, renderIndex(bucket));
 }
 
 export async function writeContextIndex(projectRoot: string, input: ContextIndexInput): Promise<ContextIndexWriteResult | null> {
@@ -169,19 +195,19 @@ export async function writeContextIndex(projectRoot: string, input: ContextIndex
 
   const sessionPath = join(projectRoot, CONTEXT_INDEX_SESSION);
   const indexPath = join(projectRoot, CONTEXT_INDEX_DIR, `${bucket}.md`);
-  const noteName = noteFilename(bucket, summary);
+  const noteName = await uniqueNoteFilename(projectRoot, bucket, summary);
   const noteRel = `../notes/${noteName}`;
   const notePath = join(projectRoot, CONTEXT_NOTES_DIR, noteName);
   const entry = `- ${new Date().toISOString()} - ${input.agent ?? "JCE-Worker"}: ${summary} -> ${noteRel}`;
 
   const sessionContent = await readIfExists(sessionPath);
-  await writeFile(sessionPath, upsertBucketInSession(sessionContent ?? renderSession(bucket), bucket), "utf8");
+  await writeFileAtomic(sessionPath, upsertBucketInSession(sessionContent ?? renderSession(bucket), bucket));
 
   const indexContent = await readIfExists(indexPath);
   const baseIndex = indexContent ?? renderIndex(bucket);
   const updatedIndex = baseIndex.includes(entry) ? baseIndex : baseIndex.replace("## Entries\n", `## Entries\n${entry}\n`);
-  await writeFile(indexPath, updatedIndex, "utf8");
-  await writeFile(notePath, renderNote(input, bucket, summary), "utf8");
+  await writeFileAtomic(indexPath, updatedIndex);
+  await writeFileAtomic(notePath, renderNote(input, bucket, summary));
 
   return { bucket, sessionPath: CONTEXT_INDEX_SESSION, indexPath: `${CONTEXT_INDEX_DIR}/${bucket}.md`, notePath: `${CONTEXT_NOTES_DIR}/${noteName}`, entry };
 }
@@ -189,10 +215,10 @@ export async function writeContextIndex(projectRoot: string, input: ContextIndex
 export async function readContextIndex(projectRoot: string, bucket?: string): Promise<string> {
   const cleanBucket = bucket ? cleanBucketName(bucket) : undefined;
   const sessionPath = join(projectRoot, CONTEXT_INDEX_SESSION);
-  if (!existsSync(sessionPath)) return `No ${CONTEXT_INDEX_SESSION} found. Call context_index_update or context_checkpoint with summary first.`;
+  if (!(await exists(sessionPath))) return `No ${CONTEXT_INDEX_SESSION} found. Call context_index_update or context_checkpoint with summary first.`;
   if (!cleanBucket) return await readFile(sessionPath, "utf8");
   const indexPath = join(projectRoot, CONTEXT_INDEX_DIR, `${cleanBucket}.md`);
-  if (!existsSync(indexPath)) return `No context bucket "${cleanBucket}" found under ${CONTEXT_INDEX_DIR}.`;
+  if (!(await exists(indexPath))) return `No context bucket "${cleanBucket}" found under ${CONTEXT_INDEX_DIR}.`;
   return await readFile(indexPath, "utf8");
 }
 
