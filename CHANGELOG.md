@@ -6,6 +6,31 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.5.4] - 2026-06-06
+
+### Added
+- **Automatic human frontend flow**: JCE-Worker now applies human UI design workflow automatically for frontend/UI/design/page/component tasks without requiring users to run a separate command.
+- **Frontend design intake**: JCE-Worker asks up to three concise direction questions when target user, visual feel, or must-avoid style is unclear, then proceeds by inference if the user skips answers.
+- **Design Taste Gate**: Frontend work now defines visual thesis, density, hierarchy, content model, signature motif, and explicit anti-patterns before implementation.
+- **Generic AI Risk Gate**: Frontend handoffs now include a 1-5 generic-AI risk score and require one revision pass when risk is 3 or higher.
+- **Anti-AI frontend scanner findings**: Web scanner now flags generic SaaS copy, decorative gradient risk, and oversoft card styling with remediation guidance.
+
+### Changed
+- Strengthened `human-ui-design` skill with automatic JCE-Worker mode, max-three-question intake, signature motif guidance, no-placeholder final rule, and Generic AI Risk scoring.
+- Updated frontend scanner guidance to prefer automatic intake, taste review, backend state mapping, and visual QA without creating a new user-facing command.
+
+### Verified
+- `bun test tests/unit/plugin-agents.test.ts tests/unit/advanced-flow-scanners.test.ts`
+- `bun run typecheck`
+- `bun test` — 984 pass, 0 fail
+- `bun ./src/index.ts validate`
+- `bun audit` — no vulnerabilities found
+- `bun ./src/index.ts --version` — 3.5.4
+- `bun ./src/index.ts flow frontend --root . --json`
+- `install.ps1` PowerShell parser check
+
+---
+
 ## [3.5.3] - 2026-06-06
 
 ### Added

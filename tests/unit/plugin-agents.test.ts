@@ -121,13 +121,17 @@ describe("plugin agents", () => {
     const agents = buildAgentConfigs();
     const prompt = agents["jce-worker"].systemPrompt;
 
-    expect(prompt).toContain("Frontend Product Design Brain v1");
+    expect(prompt).toContain("Frontend Product Design Brain v2");
     expect(prompt).toContain("single front door for frontend work");
+    expect(prompt).toContain("No extra user command");
+    expect(prompt).toContain("ask up to 3 concise questions");
+    expect(prompt).toContain("Generic AI Risk Gate");
     expect(prompt).toContain("human-ui-design");
     expect(prompt).toContain("ui-pattern-library");
     expect(prompt).toContain("visual-qa-rubric");
     expect(prompt).toContain("Pattern Choice");
     expect(prompt).toContain("Human UI Review");
+    expect(prompt).toContain("Generic AI Risk score");
     expect(prompt).toContain("Visual QA");
   });
 

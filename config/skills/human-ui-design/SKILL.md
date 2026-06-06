@@ -9,6 +9,16 @@ Gunakan skill ini saat membuat, memperbaiki, atau review UI: landing page, dashb
 
 Tujuan: UI terlihat seperti dibuat tim produk nyata, bukan hasil template AI.
 
+## Mode Otomatis JCE-Worker
+
+- User tidak perlu menjalankan command khusus seperti `flow frontend-human`.
+- Jika request menyebut UI/frontend/design/page/component, aktifkan workflow ini otomatis.
+- Jika arah produk belum jelas, tanya maksimal 3 hal sebelum desain:
+  1. target user + pekerjaan utama yang ingin selesai,
+  2. rasa visual/brand yang diinginkan,
+  3. contoh gaya yang disukai atau wajib dihindari.
+- Jika user tidak mau menjawab, infer dari repo, domain, copy, route, schema, dan existing design system; lalu lanjut.
+
 ## Prinsip Utama
 
 1. **Produk dulu, dekorasi belakangan**
@@ -31,12 +41,17 @@ Tujuan: UI terlihat seperti dibuat tim produk nyata, bukan hasil template AI.
    - Semua radius terlalu besar, shadow terlalu lembut, spacing terlalu simetris.
    - Copy marketing kosong: “seamless”, “powerful”, “unlock”, “revolutionize”.
 
-4. **Kekhususan domain wajib terlihat**
+4. **Gate risiko generic wajib lulus**
+   - Beri skor **Generic AI Risk 1-5** sebelum final.
+   - Jika skor 3+, revisi sekali: perjelas hierarchy, kurangi dekorasi, ganti copy generic, tambah state nyata, dan beri motif visual yang spesifik produk.
+   - Final tidak boleh mengandung placeholder generik kecuali user minta mockup kasar.
+
+5. **Kekhususan domain wajib terlihat**
    - Pakai istilah domain, data shape, status, tindakan, dan constraint nyata.
    - Empty/loading/error/success state harus menyebut objek produk nyata.
    - Microcopy harus membantu keputusan pengguna, bukan mengisi ruang.
 
-5. **Design system menang atas selera baru**
+6. **Design system menang atas selera baru**
    - Reuse token, spacing, typography, component, icon, dan interaction yang sudah ada.
    - Jika belum ada sistem, buat sistem kecil: color roles, type scale, spacing scale, radius, border, surface, focus.
 
@@ -54,6 +69,7 @@ Tujuan: UI terlihat seperti dibuat tim produk nyata, bukan hasil template AI.
 3. **Direction**
    - Tulis satu visual thesis: “UI ini harus terasa seperti ___ karena user perlu ___”.
    - Tentukan density, navigation, hierarchy, tone, dan primary action.
+   - Tentukan satu signature motif yang terkendali: status rail, data stamp, command affordance, editorial labels, tactile cards, atau pattern lain yang masuk akal untuk domain.
 
 4. **Backend-State Mapping**
    - Petakan loading, empty, partial, validation, permission, conflict, rate-limit, offline, success.
@@ -65,6 +81,7 @@ Tujuan: UI terlihat seperti dibuat tim produk nyata, bukan hasil template AI.
 
 6. **Human UI Review**
    - Jalankan checklist di bawah sebelum selesai.
+   - Hitung Generic AI Risk. Jika 3+, revisi sebelum final.
 
 ## Human UI Review Checklist
 
@@ -78,6 +95,7 @@ Wajib jawab saat membuat/review UI:
 - **Accessibility:** keyboard, focus, label, contrast, reduced motion aman?
 - **Responsive behavior:** layout berubah karena konten, bukan breakpoint asal?
 - **Remaining visual QA risks:** apa yang masih perlu dicek di browser/designer?
+- **Generic AI Risk score:** 1-5 dan alasan singkat.
 
 ## Output Contract
 
@@ -96,6 +114,7 @@ Wajib jawab saat membuat/review UI:
 |-------------------|----------|-------------|
 
 ## Human UI Review
+- Generic AI Risk: 1/5 - ...
 - Generic AI patterns avoided:
 - Domain-specific details:
 - Visual hierarchy:

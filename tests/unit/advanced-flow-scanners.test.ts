@@ -22,7 +22,9 @@ describe("advanced flow filesystem scanners", () => {
     expect(scan.envKeys).toContain("NEXT_PUBLIC_API");
     expect(scan.accessibilityRisks.length).toBeGreaterThan(0);
     expect(scan.visualQa.required).toBe(true);
+    expect(scan.frontendFlow).toContain("Ask up to 3 concise product-direction questions when target user, brand feel, or must-avoid style is unclear; otherwise infer and continue.");
     expect(scan.frontendFlow).toContain("Run visual-qa-rubric with browser screenshots when a runnable app is available.");
+    expect(scan.designIntakeQuestions).toHaveLength(3);
   });
 
   test("recommends frontend UI patterns from route and form signals", () => {
@@ -32,6 +34,16 @@ describe("advanced flow filesystem scanners", () => {
     const scan = scanWebProject(root);
 
     expect(scan.patternRecommendations.map((item) => item.recommendedPattern)).toEqual(expect.arrayContaining(["Data Dashboard", "Forms / Onboarding"]));
+  });
+
+  test("flags generic AI-looking frontend patterns automatically", () => {
+    const root = fixture();
+    mkdirSync(join(root, "app"), { recursive: true });
+    writeFileSync(join(root, "app", "page.tsx"), "export default()=> <section className='bg-gradient-to-r from-purple-500 to-blue-500'><div className='rounded-3xl shadow-2xl'>Unlock seamless powerful workflows</div></section>", "utf8");
+    const scan = scanWebProject(root);
+
+    expect(scan.antiAiFindings.map((finding) => finding.pattern)).toEqual(expect.arrayContaining(["generic SaaS/placeholder copy", "decorative gradient risk", "oversoft card styling"]));
+    expect(scan.frontendFlow).toContain("Use human-ui-design checklist and Generic AI Risk Gate; revise once if risk is 3 or higher.");
   });
 
   test("scans API endpoints with auth validation and database signals", () => {

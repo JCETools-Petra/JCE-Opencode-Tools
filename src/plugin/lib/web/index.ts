@@ -5,7 +5,8 @@ export interface WebProjectProfile { detected: boolean; framework: "nextjs" | "r
 export interface WebRouteInfo { path: string; kind: "page" | "layout" | "route" | "component"; dynamic: boolean; serverAction: boolean; clientComponent: boolean }
 export interface WebVisualQaPlan { required: boolean; tools: string[]; viewports: string[]; checks: string[]; evidence: string[] }
 export interface WebPatternRecommendation { surface: string; recommendedPattern: string; rationale: string }
-export interface WebProjectScan extends WebProjectProfile { routes: WebRouteInfo[]; stateHooks: string[]; accessibilityRisks: string[]; envKeys: string[]; visualQa: WebVisualQaPlan; patternRecommendations: WebPatternRecommendation[]; frontendFlow: string[] }
+export interface WebAntiAiFinding { path: string; pattern: string; remediation: string }
+export interface WebProjectScan extends WebProjectProfile { routes: WebRouteInfo[]; stateHooks: string[]; accessibilityRisks: string[]; envKeys: string[]; visualQa: WebVisualQaPlan; patternRecommendations: WebPatternRecommendation[]; frontendFlow: string[]; designIntakeQuestions: string[]; antiAiFindings: WebAntiAiFinding[] }
 
 export function buildWebAdvancedFlow(files: string[]): WebProjectProfile {
   const corpus = files.join("\n").toLowerCase();
@@ -39,6 +40,7 @@ export function scanWebProject(root: string): WebProjectScan {
   const routes: WebRouteInfo[] = [];
   const stateHooks = new Set<string>();
   const accessibilityRisks: string[] = [];
+  const antiAiFindings: WebAntiAiFinding[] = [];
   const envKeys = new Set<string>();
   let hasForms = false;
   for (const path of paths) {
@@ -52,6 +54,9 @@ export function scanWebProject(root: string): WebProjectScan {
     for (const hook of text.matchAll(/\b(useState|useEffect|useReducer|useMemo|useCallback|useContext)\b/g)) stateHooks.add(hook[1]!);
     if (/\.(tsx|jsx)$/.test(rel) && /<img\b(?![^>]*\balt=)/i.test(text)) accessibilityRisks.push(`${rel}: img without alt`);
     if (/\.(tsx|jsx)$/.test(rel) && /<button\b(?![^>]*>|[^<]*<\/button>)/i.test(text)) accessibilityRisks.push(`${rel}: button content should be verified`);
+    if (/\.(tsx|jsx|ts|js)$/.test(rel) && /seamless|powerful|unlock|revolutionize|transform your workflow|lorem ipsum/i.test(text)) antiAiFindings.push({ path: rel, pattern: "generic SaaS/placeholder copy", remediation: "Replace vague copy with domain-specific user actions, object names, constraints, and recovery guidance." });
+    if (/\.(tsx|jsx)$/.test(rel) && /from-(purple|violet|indigo|blue)-\d{2,3}\s+to-(purple|violet|indigo|blue)-\d{2,3}|bg-gradient-to-[trbl]/i.test(text)) antiAiFindings.push({ path: rel, pattern: "decorative gradient risk", remediation: "Use gradients only when they encode product meaning; otherwise prefer tokenized surfaces, contrast, and hierarchy." });
+    if (/\.(tsx|jsx)$/.test(rel) && /(rounded-2xl|rounded-3xl).*(shadow-xl|shadow-2xl)|(shadow-xl|shadow-2xl).*(rounded-2xl|rounded-3xl)/i.test(text)) antiAiFindings.push({ path: rel, pattern: "oversoft card styling", remediation: "Vary hierarchy with content density, borders, type scale, and restrained elevation instead of uniform large cards." });
     if (!hasForms && /<form\b|react-hook-form|zod|yup|valibot/i.test(text)) hasForms = true;
     for (const env of text.matchAll(/process\.env\.([A-Z0-9_]+)/g)) envKeys.add(env[1]!);
   }
@@ -72,12 +77,19 @@ export function scanWebProject(root: string): WebProjectScan {
     evidence: ["screenshot or browser snapshot", "console/network result", "visual QA rubric score", "remaining visual risks"],
   };
   const frontendFlow = [
+    "Ask up to 3 concise product-direction questions when target user, brand feel, or must-avoid style is unclear; otherwise infer and continue.",
     "Inspect existing UI tokens/components before introducing visual language.",
+    "Run Design Taste Gate: visual thesis, density, hierarchy, content model, signature motif, and anti-patterns.",
     "Select UI pattern from ui-pattern-library based on domain and route/data shape.",
     "Map backend contracts and async states before implementation.",
-    "Use human-ui-design checklist to avoid generic AI-looking UI.",
+    "Use human-ui-design checklist and Generic AI Risk Gate; revise once if risk is 3 or higher.",
     "Run visual-qa-rubric with browser screenshots when a runnable app is available.",
   ];
-  const risks = [...base.risks, ...accessibilityRisks, routes.some((r) => r.serverAction) ? "Server Actions require auth/input validation review." : undefined, routes.length ? "Visual QA needs browser screenshot evidence before UI completion claims." : undefined].filter(Boolean) as string[];
-  return { ...base, detected: base.detected || routes.length > 0, routes, stateHooks: [...stateHooks], accessibilityRisks, envKeys: [...envKeys], visualQa, patternRecommendations, frontendFlow, risks };
+  const designIntakeQuestions = [
+    "Who is the target user and what job must this screen help them finish?",
+    "What should the UI feel like: premium, utilitarian, calm, playful, editorial, enterprise, or another direction?",
+    "What visual examples or generic AI patterns should be avoided?",
+  ];
+  const risks = [...base.risks, ...accessibilityRisks, ...antiAiFindings.map((finding) => `${finding.path}: ${finding.pattern}`), routes.some((r) => r.serverAction) ? "Server Actions require auth/input validation review." : undefined, routes.length ? "Visual QA needs browser screenshot evidence before UI completion claims." : undefined].filter(Boolean) as string[];
+  return { ...base, detected: base.detected || routes.length > 0, routes, stateHooks: [...stateHooks], accessibilityRisks, envKeys: [...envKeys], visualQa, patternRecommendations, frontendFlow, designIntakeQuestions, antiAiFindings, risks };
 }
