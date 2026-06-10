@@ -453,6 +453,20 @@ describe("plugin integration", () => {
     expect(finalOutput.output).toContain("Run verification");
   });
 
+  test("tool.execute.after appends autonomy guard when user requested continue-until-done mode", async () => {
+    const root = tempRoot();
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root, worktree: root });
+
+    await hooks["chat.message"]!({} as any, { message: "kerjakan sampai selesai dan jangan berhenti sebelum selesai", parts: [{ type: "text", text: "kerjakan sampai selesai dan jangan berhenti sebelum selesai" }] } as any);
+
+    const finalOutput = { title: "Task", output: "Sisanya tinggal dikonfirmasi dulu ya.", metadata: {} };
+    await hooks["tool.execute.after"]!({ tool: "task", sessionID: "s", callID: "final", args: {} }, finalOutput);
+
+    expect(finalOutput.output).toContain("AUTONOMY GUARD:");
+    expect(finalOutput.output).toContain("continue-until-done mode");
+  });
+
   test("tool.execute.after final gate blocks review route completion without accepted review", async () => {
     const root = tempRoot();
     const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
@@ -1028,5 +1042,17 @@ describe("plugin integration", () => {
     const out = { text: "The fix is complete." };
     await hooks["experimental.text.complete"]!({ sessionID: "s", messageID: "m", partID: "p" } as any, out);
     expect(out.text).not.toContain("VERIFICATION CHECK");
+  });
+
+  test("chat.message persists continue-until-done mode in runtime state", async () => {
+    const root = tempRoot();
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root, worktree: root });
+
+    await hooks["chat.message"]!({} as any, { message: "continue until done", parts: [{ type: "text", text: "continue until done" }] } as any);
+
+    const loaded = loadRuntimeState(root, "2026-05-06T00:02:00.000Z");
+    expect(loaded.runtime.autonomousExecutionSession?.continueUntilDone).toBe(true);
+    expect(loaded.runtime.autonomousExecutionSession?.reason).toContain("continue until done");
   });
 });

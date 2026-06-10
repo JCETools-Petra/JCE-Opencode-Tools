@@ -51,6 +51,14 @@ describe("skill sync", () => {
     expect(formatRegistryHealth(report)).toContain("Status: pass");
   });
 
+  test("skill doctor report flags no low-confidence or broken sample prompts", () => {
+    const { buildSkillDoctorReport } = require("../../src/plugin/lib/jce-intelligence.ts");
+    const report = buildSkillDoctorReport();
+
+    expect(report.lowConfidencePrompts).toEqual(expect.arrayContaining(["game-development", "sql-database", "verification-discipline"]));
+    expect(report.samplePromptFailures).toEqual([]);
+  });
+
   test("parses machine-readable routing frontmatter (inline and block lists)", () => {
     const inline = parseSkillFrontmatter("---\nname: demo\nroutingMode: auto\nintents: [bugfix, config]\n---\n");
     expect(inline?.routingMode).toBe("auto");

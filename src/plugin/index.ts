@@ -191,6 +191,8 @@ const jcePlugin: Plugin = async (input) => {
         reason: "restored from session memory",
       }
     : null;
+  const CONTINUE_UNTIL_DONE_PATTERN = /\b(kerjakan sampai selesai|jangan berhenti sebelum selesai|lanjut(?:kan)? sampai selesai|finish (?:it )?(?:fully|completely)?|continue until done|handle everything|do not stop until done|work until complete)\b/i;
+  const isContinueUntilDoneMode = () => currentMemory.autonomousExecutionSession?.continueUntilDone === true;
 
   // Initialize orchestration controller (v2 system — runs alongside BackgroundManager)
   const orchestrator = new OrchestrationController({ projectRoot });
@@ -468,6 +470,19 @@ const jcePlugin: Plugin = async (input) => {
             if (correction.agent) appendTelemetry(projectRoot, { kind: "user_correction", name: correction.agent, metadata: { agent: correction.agent, action: "agent_override", reason: correction.reason } });
           }, undefined, orchestrationLogger);
         }
+        if (CONTINUE_UNTIL_DONE_PATTERN.test(text)) {
+          currentMemory.autonomousExecutionSession = {
+            continueUntilDone: true,
+            reason: text.trim().slice(0, 200),
+            updatedAt: new Date().toISOString(),
+          };
+          withErrorBoundary(() => {
+            currentMemory = saveSessionState(projectRoot, {
+              runtime: currentMemory,
+              orchestration: loadedMemory.state.orchestration,
+            }, undefined, { runtime: { preserveWorkflowRuntime: true }, saveOrchestration: false }).runtime;
+          }, undefined, orchestrationLogger);
+        }
         withErrorBoundary(() => {
           const routing = explainSkillRouting(text);
           appendTelemetry(projectRoot, {
@@ -705,6 +720,10 @@ const jcePlugin: Plugin = async (input) => {
       if (typeof output.output === "string" && openWork?.blocked && !output.output.includes("BOULDER CONTINUATION")) {
         withErrorBoundary(() => appendTelemetry(projectRoot, { kind: "task_outcome", name: "followup_needed", metadata: { outcome: "followup", skills: applySkillCorrection(determineSkillsForMessage(lastUserMessage), sessionSkillCorrection), blockers: openWork.reasons } }), undefined, orchestrationLogger);
         output.output = `${output.output}\n\n${openWork.prompt}`;
+      }
+
+      if (typeof output.output === "string" && shouldInspectCompletionOutput(toolName) && isContinueUntilDoneMode() && looksLikeStopEarlyOrConfirmation(output.output) && !output.output.includes("AUTONOMY GUARD:")) {
+        output.output = `${output.output}\n\nAUTONOMY GUARD: User explicitly requested continue-until-done mode. Do not stop after partial progress. Continue remaining in-scope work unless blocked by missing external input, safety risk, or irreversible approval boundary.`;
       }
 
       if (typeof output.output === "string" && shouldInspectCompletionOutput(toolName) && shouldWarnForMissingVerification(output.output)) {

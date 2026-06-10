@@ -6,6 +6,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.7.0] - 2026-06-11
+
+### Added
+- **Workflow summary intelligence**: `jce_workflow summary` now reports inferred changed areas and suggested verification checks so the next action is explicit instead of only descriptive.
+- **Release delta report**: Added `release_delta` workflow action to summarize changed subsystems, likely user-visible changes, migration notes, and risk notes between previous and target versions.
+- **Failure memory foundation**: Runtime state now persists structured `failureMemories` entries, and the operator report surfaces recent failure patterns with root-cause and fix-note context.
+- **Autonomy hard guard**: Explicit “continue until done” requests now persist an autonomous execution session and append an `AUTONOMY GUARD` if output tries to stop early while in-scope work remains.
+
+### Changed
+- **Release readiness gate** now separates `Hard Blockers` from `Warnings` and scores evidence strength as `weak`, `medium`, or `strong` based on release verification coverage.
+- **Skill routing doctor** now flags low-confidence sample prompts and sample prompts that fail to select their expected skill.
+- **Routing fallback** now uses a safer low-signal heuristic so ambiguous prompts prefer a minimal safe fallback set instead of over-routing.
+- Release version synced to `3.7.0` across package metadata, installers, constants, MCP version, README badge, and version tests.
+
+### Fixed
+- **Annotated-tag updater compatibility** remains protected by the v3.6.1 integrity fix while v3.7.0 expands orchestration and runtime safety around release and completion behavior.
+- Reduced repeated “continue?” interruptions by tightening JCE-Worker autonomous completion rules after explicit continue-until-done requests.
+
+### Difference from previous release
+- `3.6.1` was a focused self-update hotfix for annotated tag integrity mismatches.
+- `3.7.0` upgrades JCE-Worker into a more advanced orchestration runtime with smarter workflow summaries, stronger release policy gating, explainable release delta reporting, failure memory, safer routing fallbacks, and autonomous-completion enforcement.
+
+### Verified
+- `bun test` — 1042 pass, 0 fail
+- `rtk tsc --noEmit`
+- `bun ./src/index.ts validate`
+
+---
+
 ## [3.6.1] - 2026-06-10
 
 ### Fixed

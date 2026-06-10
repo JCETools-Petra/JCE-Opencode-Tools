@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  addFailureMemory,
   createEmptyRuntimeState,
+  createFailureMemoryEntry,
   createRuntimeWisdomEntry,
   addRuntimeWisdom,
   createRuntimeTaskLearning,
@@ -265,5 +267,16 @@ describe("runtime state", () => {
 
     expect(updated.taskLearnings).toHaveLength(1);
     expect(updated.taskLearnings[0]).toMatchObject({ successfulRecipe: ["new"], verificationCommands: ["bun audit"], touchedAreas: ["lockfile"] });
+  });
+
+  test("adds failure memory and deduplicates by signature", () => {
+    const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
+    const first = createFailureMemoryEntry({ signature: "integrity-check-failed", summary: "old summary", failedCommands: ["old cmd"], now: "2026-05-06T00:00:00.000Z" });
+    const second = createFailureMemoryEntry({ signature: "integrity-check-failed", summary: "new summary", rootCause: "bad sha", fixNote: "use peeled tag", failedCommands: ["opencode-jce update"], now: "2026-05-06T00:01:00.000Z" });
+
+    const updated = addFailureMemory(addFailureMemory(memory, first), second);
+
+    expect(updated.failureMemories).toHaveLength(1);
+    expect(updated.failureMemories[0]).toMatchObject({ summary: "new summary", rootCause: "bad sha", fixNote: "use peeled tag" });
   });
 });

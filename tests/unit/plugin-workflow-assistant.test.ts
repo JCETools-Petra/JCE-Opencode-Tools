@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCodeTaskPlan, buildProjectLearningReport, buildReleaseReadyReport, buildSafeCommitPlan, buildVerificationRecipe, buildWorkflowSummary, parseGitStatusPorcelain } from "../../src/plugin/lib/workflow-assistant.ts";
+import { buildCodeTaskPlan, buildProjectLearningReport, buildReleaseDeltaReport, buildReleaseReadyReport, buildSafeCommitPlan, buildVerificationRecipe, buildWorkflowSummary, parseGitStatusPorcelain } from "../../src/plugin/lib/workflow-assistant.ts";
 
 const syncedVersions = {
   "package.json": '{ "version": "2.0.16" }',
@@ -25,6 +25,10 @@ describe("workflow assistant", () => {
     expect(result).toContain("Current version: 2.0.16");
     expect(result).toContain("Changed Files");
     expect(result).toContain("package.json");
+    expect(result).toContain("Detected Areas");
+    expect(result).toContain("release/versioning");
+    expect(result).toContain("Suggested Checks");
+    expect(result).toContain("bun ./src/index.ts validate");
     expect(result).toContain("Local-Only / Excluded Files");
     expect(result).toContain(".opencode-jce/cache.json");
     expect(result).toContain("notes.txt");
@@ -206,6 +210,11 @@ describe("workflow assistant", () => {
     expect(result).toContain("Version Sync");
     expect(result).toContain("package.json: ok");
     expect(result).toContain("Required Verification");
+    expect(result).toContain("Warnings");
+    expect(result).toContain("Verification evidence missing.");
+    expect(result).toContain("CHANGELOG.md not included in release candidate changes.");
+    expect(result).toContain("Evidence Strength");
+    expect(result).toContain("- weak");
   });
 
   test("release readiness is ready when versions sync and verification passes", () => {
@@ -217,6 +226,8 @@ describe("workflow assistant", () => {
     });
 
     expect(result).toContain("Status\nREADY");
+    expect(result).toContain("Evidence Strength");
+    expect(result).toContain("- strong");
   });
 
   test("release readiness safe commit plan includes changed release files", () => {
@@ -244,6 +255,25 @@ describe("workflow assistant", () => {
 
     expect(result).toContain("Status\nNOT_READY");
     expect(result).toContain(".env.local excluded from safe commit plan");
+    expect(result).toContain("Hard Blockers");
+  });
+
+  test("release readiness separates warnings from hard blockers when verification is partial", () => {
+    const result = buildReleaseReadyReport({
+      targetVersion: "2.0.16",
+      files: syncedVersions,
+      statusFiles: parseGitStatusPorcelain(" M package.json\n M CHANGELOG.md\n"),
+      verificationEvidence: "bun run typecheck exit 0; bun test 623 pass 0 fail",
+    });
+
+    expect(result).toContain("Status\nNEEDS_VERIFICATION");
+    expect(result).toContain("Hard Blockers\n- none");
+    expect(result).toContain("Warnings");
+    expect(result).toContain("Missing config validation evidence.");
+    expect(result).toContain("Missing install.sh syntax evidence.");
+    expect(result).toContain("Missing CLI version evidence.");
+    expect(result).toContain("Evidence Strength");
+    expect(result).toContain("- medium");
   });
 
   test("release readiness rejects docs plans without includeDocs", () => {
@@ -358,5 +388,31 @@ describe("workflow assistant", () => {
 
     expect(result).toContain("NOT_READY");
     expect(result).toContain("Invalid targetVersion");
+  });
+
+  test("release delta summarizes changed subsystems and migration notes", () => {
+    const result = buildReleaseDeltaReport({
+      previousVersion: "2.0.15",
+      targetVersion: "2.0.16",
+      files: parseGitStatusPorcelain([
+        " M src/commands/update.ts",
+        " M src/plugin/index.ts",
+        " M package.json",
+        " M CHANGELOG.md",
+        " M tests/unit/plugin-integration.test.ts",
+      ].join("\n")),
+    });
+
+    expect(result).toContain("Release Delta");
+    expect(result).toContain("From: 2.0.15");
+    expect(result).toContain("To: 2.0.16");
+    expect(result).toContain("Changed Subsystems");
+    expect(result).toContain("cli/commands");
+    expect(result).toContain("plugin/runtime");
+    expect(result).toContain("release/versioning");
+    expect(result).toContain("Likely User-Visible Changes");
+    expect(result).toContain("CLI or JCE-Worker behavior changed in runtime/command paths.");
+    expect(result).toContain("Migration Notes");
+    expect(result).toContain("Updater behavior changed; older installed CLIs may need retest against tagged releases.");
   });
 });

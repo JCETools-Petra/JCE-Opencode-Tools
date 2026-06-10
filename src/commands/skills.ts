@@ -35,9 +35,13 @@ export const skillsCommand = new Command("skills")
       info(`Total skills: ${report.totalSkills}`);
       info(`Missing metadata: ${report.missingMetadata.length || 0}`);
       info(`Weak prompts: ${report.weakPrompts.length || 0}`);
+      info(`Low-confidence prompts: ${report.lowConfidencePrompts.length || 0}`);
+      info(`Sample prompt failures: ${report.samplePromptFailures.length || 0}`);
       info(`Manual/internal routes: ${report.manualOnly.join(", ") || "none"}`);
       if (report.missingMetadata.length) for (const skill of report.missingMetadata) warn(`Missing metadata: ${skill}`);
       if (report.weakPrompts.length) for (const skill of report.weakPrompts) warn(`Weak sample prompt: ${skill}`);
+      if (report.lowConfidencePrompts.length) for (const skill of report.lowConfidencePrompts) warn(`Low-confidence sample prompt: ${skill}`);
+      if (report.samplePromptFailures.length) for (const skill of report.samplePromptFailures) warn(`Sample prompt did not select expected skill: ${skill}`);
     }))
   .addCommand(new Command("audit")
     .description("Score installed repository skills for routing quality")

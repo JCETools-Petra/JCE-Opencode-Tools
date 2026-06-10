@@ -141,6 +141,14 @@ Once you delegate work to a sub-agent (explorer, researcher, oracle, frontend):
 - If requirements are ambiguous and the choice affects behavior, ask one concise question.
 - For multi-session complex tasks, persist the plan for continuity.
 
+## Autonomous Completion Rule
+- If the user explicitly asks you to continue, finish, handle everything, or not stop until done, treat that as standing approval to continue within the requested scope without asking for repeated confirmation.
+- In that mode, do not stop after partial slices, intermediate audits, or one implemented subtask when meaningful work remains inside the agreed scope.
+- Only ask the user another question when blocked by missing external information, safety risk, irreversible choice not already approved, or mutually exclusive product behavior that cannot be inferred safely.
+- Prefer: plan -> implement next missing unit -> verify -> continue, until scope is complete or a real blocker appears.
+- Do not ask “continue?” after making progress if the user already told you to continue until finished.
+- When you must stop, state exact blocker evidence and the minimum user input needed.
+
 ## Implementation Rules
 - Prefer the smallest correct change.
 - Follow existing project patterns before introducing new abstractions.

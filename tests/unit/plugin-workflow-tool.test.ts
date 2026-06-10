@@ -48,9 +48,13 @@ describe("jce workflow tool", () => {
 
     expect(result).toContain("Summary");
     expect(result).toContain("Scope: Task 5");
-    expect(result).toContain("Current version: 3.6.1");
+    expect(result).toContain("Current version: 3.7.0");
     expect(result).toContain("Changed Files");
     expect(result).toContain("M src/plugin/tools/workflow.ts");
+    expect(result).toContain("Detected Areas");
+    expect(result).toContain("plugin/runtime");
+    expect(result).toContain("Suggested Checks");
+    expect(result).toContain("rtk tsc --noEmit");
     expect(result).toContain("Local-Only / Excluded Files");
     expect(result).toContain("?? .opencode-jce/cache.json");
   });
@@ -68,8 +72,28 @@ describe("jce workflow tool", () => {
     expect(result).toContain("Status");
     expect(result).toContain("Version Sync");
     expect(result).toContain("Required Verification");
+    expect(result).toContain("Evidence Strength");
     expect(result).toContain("Safe Commit Plan");
-    expect(result).toContain("Blockers");
+    expect(result).toContain("Hard Blockers");
+    expect(result).toContain("Warnings");
+  });
+
+  test("returns release delta report from supplied status text", async () => {
+    const tool = buildWorkflowTool();
+    const result = await tool.execute({
+      action: "release_delta",
+      previousVersion: "3.6.0",
+      targetVersion: "3.6.1",
+      gitStatus: " M src/commands/update.ts\n M package.json\n M CHANGELOG.md\n M tests/unit/update-integrity.test.ts\n",
+    } as any, context());
+
+    expect(result).toContain("Release Delta");
+    expect(result).toContain("From: 3.6.0");
+    expect(result).toContain("To: 3.6.1");
+    expect(result).toContain("Changed Subsystems");
+    expect(result).toContain("cli/commands");
+    expect(result).toContain("release/versioning");
+    expect(result).toContain("Migration Notes");
   });
 
   test("returns coding plan for safe editing and debug loop", async () => {

@@ -89,6 +89,21 @@ function routeReportLines(workflow: RuntimeState["activeWorkflow"]): string[] {
   ];
 }
 
+function failureMemoryLines(memory: RuntimeState): string[] {
+  const entries = asArray(memory.failureMemories)
+    .slice()
+    .sort((left, right) => timestampValue(text((right as any).createdAt, "")) - timestampValue(text((left as any).createdAt, "")))
+    .slice(0, 5)
+    .map((entry) => {
+      const summary = text((entry as any).summary, "unknown failure");
+      const rootCause = text((entry as any).rootCause, "unknown root cause");
+      const fixNote = text((entry as any).fixNote, "no fix note");
+      const command = asArray<string>((entry as any).failedCommands)[0] ?? "no failed command";
+      return `${summary} | root cause: ${rootCause} | fix: ${fixNote} | command: ${command}`;
+    });
+  return ["Failure Memory", lineList(entries)];
+}
+
 export function formatJceWorkerStatus(memory: RuntimeState, policy?: PolicyProfileDisplay): string {
   const workflow = memory.activeWorkflow;
   const latestEvidence = summarizeUnknown(getLatestVerificationEvidence(memory));
@@ -169,6 +184,8 @@ export function formatJceWorkerReport(memory: RuntimeState, policy?: PolicyProfi
     "",
     "Retry History",
     lineList(retries),
+    "",
+    ...failureMemoryLines(memory),
     "",
     "Stale Tasks",
     lineList(staleTasks),

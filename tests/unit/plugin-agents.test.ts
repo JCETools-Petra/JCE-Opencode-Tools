@@ -66,6 +66,16 @@ describe("plugin agents", () => {
     expect(agents["jce-worker"].systemPrompt).toContain("verify delegated work");
   });
 
+  test("jce-worker prompt requires autonomous completion after explicit continue-until-done requests", () => {
+    const agents = buildAgentConfigs();
+    const prompt = agents["jce-worker"].systemPrompt;
+
+    expect(prompt).toContain("Autonomous Completion Rule");
+    expect(prompt).toContain("do not stop after partial slices");
+    expect(prompt).toContain("Do not ask “continue?” after making progress");
+    expect(prompt).toContain("Only ask the user another question when blocked");
+  });
+
   test("jce-worker prompt defines v3 full hybrid execution contract", () => {
     const agents = buildAgentConfigs();
     const prompt = agents["jce-worker"].systemPrompt;

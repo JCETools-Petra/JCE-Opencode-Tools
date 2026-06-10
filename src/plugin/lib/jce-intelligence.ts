@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { basename, dirname, join } from "path";
-import { INTENTIONAL_SKILL_ALIASES, SKILL_NAME_TO_FILE, SKILL_REGISTRY } from "./skill-loader.js";
+import { INTENTIONAL_SKILL_ALIASES, SKILL_NAME_TO_FILE, SKILL_REGISTRY, explainSkillRouting } from "./skill-loader.js";
 
 export type SkillTier = "framework" | "language" | "domain" | "workflow" | "generic";
 
@@ -351,16 +351,38 @@ export function summarizeTelemetry(events: TelemetryEvent[]): Record<string, num
   return events.reduce<Record<string, number>>((acc, event) => { const key = `${event.kind}:${event.name}`; acc[key] = (acc[key] ?? 0) + 1; return acc; }, {});
 }
 
-export function buildSkillDoctorReport(): { totalSkills: number; missingMetadata: string[]; weakPrompts: string[]; manualOnly: string[] } {
+export function buildSkillDoctorReport(): {
+  totalSkills: number;
+  missingMetadata: string[];
+  weakPrompts: string[];
+  manualOnly: string[];
+  lowConfidencePrompts: string[];
+  samplePromptFailures: string[];
+} {
   const missingMetadata: string[] = [];
   const weakPrompts: string[] = [];
   const manualOnly: string[] = [];
+  const lowConfidencePrompts: string[] = [];
+  const samplePromptFailures: string[] = [];
   for (const [skill, entry] of Object.entries(SKILL_REGISTRY)) {
     if (!entry.intents.length || !entry.signals.length || !entry.files.length || !entry.samplePrompts.length) missingMetadata.push(skill);
     if ((entry.samplePrompts[0] ?? "").length < 20) weakPrompts.push(skill);
     if (entry.routingMode !== "auto") manualOnly.push(skill);
+    if (entry.routingMode === "auto") {
+      const report = explainSkillRouting(entry.samplePrompts[0] ?? "");
+      const selected = report.selected.map((item) => item.skill);
+      if (!selected.includes(skill)) samplePromptFailures.push(skill);
+      if (report.confidence < 35) lowConfidencePrompts.push(skill);
+    }
   }
-  return { totalSkills: Object.keys(SKILL_REGISTRY).length, missingMetadata: missingMetadata.sort(), weakPrompts: weakPrompts.sort(), manualOnly: manualOnly.sort() };
+  return {
+    totalSkills: Object.keys(SKILL_REGISTRY).length,
+    missingMetadata: missingMetadata.sort(),
+    weakPrompts: weakPrompts.sort(),
+    manualOnly: manualOnly.sort(),
+    lowConfidencePrompts: lowConfidencePrompts.sort(),
+    samplePromptFailures: samplePromptFailures.sort(),
+  };
 }
 
 export function summarizeSkillTelemetry(events: TelemetryEvent[]): SkillTelemetrySummary {

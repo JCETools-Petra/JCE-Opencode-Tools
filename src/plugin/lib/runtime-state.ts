@@ -10,6 +10,12 @@ export interface SkillCorrectionSession {
   updatedAt: string;
 }
 
+export interface AutonomousExecutionSession {
+  continueUntilDone: boolean;
+  reason: string;
+  updatedAt: string;
+}
+
 export interface RuntimeState {
   version: 1;
   updatedAt: string;
@@ -24,7 +30,9 @@ export interface RuntimeState {
   contextBudgetSummary?: ContextBudgetSummary;
   wisdom: WisdomEntry[];
   taskLearnings: TaskLearning[];
+  failureMemories: FailureMemoryEntry[];
   skillCorrectionSession?: SkillCorrectionSession;
+  autonomousExecutionSession?: AutonomousExecutionSession;
 }
 
 export interface WisdomEntry {
@@ -43,6 +51,17 @@ export interface TaskLearning {
   successfulRecipe: string[];
   verificationCommands: string[];
   touchedAreas: string[];
+  createdAt: string;
+}
+
+export interface FailureMemoryEntry {
+  id: string;
+  signature: string;
+  summary: string;
+  rootCause?: string;
+  fixNote?: string;
+  failedCommands: string[];
+  tags: string[];
   createdAt: string;
 }
 
@@ -91,6 +110,7 @@ export function createEmptyRuntimeState(now = new Date().toISOString()): Runtime
     workflowRuns: [],
     wisdom: [],
     taskLearnings: [],
+    failureMemories: [],
   };
 }
 
@@ -135,6 +155,33 @@ export function createRuntimeTaskLearning(input: Omit<TaskLearning, "id" | "crea
 export function addRuntimeTaskLearning(runtime: RuntimeState, entry: TaskLearning): RuntimeState {
   const deduped = (runtime.taskLearnings ?? []).filter((item) => item.taskType !== entry.taskType || item.trigger.toLowerCase() !== entry.trigger.toLowerCase());
   return pruneRuntimeState({ ...runtime, taskLearnings: [...deduped, entry] });
+}
+
+export function createFailureMemoryEntry(input: {
+  signature: string;
+  summary: string;
+  rootCause?: string;
+  fixNote?: string;
+  failedCommands?: string[];
+  tags?: string[];
+  now?: string;
+}): FailureMemoryEntry {
+  const createdAt = input.now ?? new Date().toISOString();
+  return {
+    id: `failure-memory-${Date.parse(createdAt) || Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    signature: input.signature.trim().toLowerCase(),
+    summary: input.summary.trim(),
+    rootCause: input.rootCause?.trim(),
+    fixNote: input.fixNote?.trim(),
+    failedCommands: (input.failedCommands ?? []).map((item) => item.trim()).filter(Boolean),
+    tags: [...new Set((input.tags ?? []).map((item) => item.trim()).filter(Boolean))].slice(0, 8),
+    createdAt,
+  };
+}
+
+export function addFailureMemory(runtime: RuntimeState, entry: FailureMemoryEntry): RuntimeState {
+  const existing = (runtime.failureMemories ?? []).filter((item) => item.signature !== entry.signature);
+  return pruneRuntimeState({ ...runtime, failureMemories: [...existing, entry] });
 }
 
 function newest<T>(items: T[], max: number): T[] {
@@ -194,6 +241,8 @@ export function pruneRuntimeState(runtime: RuntimeState): RuntimeState {
     contextBudgetSummary: runtime.contextBudgetSummary,
     wisdom: newest(runtime.wisdom ?? [], 50),
     taskLearnings: newest(runtime.taskLearnings ?? [], 25),
+    failureMemories: newest(runtime.failureMemories ?? [], 25),
+    autonomousExecutionSession: runtime.autonomousExecutionSession,
   };
 }
 
@@ -208,6 +257,8 @@ export function mergeRuntimeStateSnapshot(previous: RuntimeState, next: RuntimeS
     workflowRuns: options.clearWorkflowRuntime ? next.workflowRuns : next.workflowRuns.length > 0 ? next.workflowRuns : previous.workflowRuns,
     contextBudgetSummary: mergeContextBudgetSummary(previous.contextBudgetSummary, next.contextBudgetSummary),
     wisdom: [...(previous.wisdom ?? []), ...(next.wisdom ?? [])],
+    failureMemories: mergeById(previous.failureMemories ?? [], next.failureMemories ?? []) as FailureMemoryEntry[],
+    autonomousExecutionSession: next.autonomousExecutionSession ?? previous.autonomousExecutionSession,
   });
 }
 
@@ -234,7 +285,7 @@ export function loadRuntimeState(projectRoot: string, now = new Date().toISOStri
 
   try {
     const parsed = JSON.parse(readFileSync(path, "utf-8")) as RuntimeState;
-    return { path, runtime: pruneRuntimeState({ ...createEmptyRuntimeState(now), ...parsed, workflowRuns: parsed.workflowRuns ?? [], wisdom: parsed.wisdom ?? [], taskLearnings: parsed.taskLearnings ?? [] }), recoveredFromInvalid: false };
+    return { path, runtime: pruneRuntimeState({ ...createEmptyRuntimeState(now), ...parsed, workflowRuns: parsed.workflowRuns ?? [], wisdom: parsed.wisdom ?? [], taskLearnings: parsed.taskLearnings ?? [], failureMemories: parsed.failureMemories ?? [], autonomousExecutionSession: parsed.autonomousExecutionSession }), recoveredFromInvalid: false };
   } catch {
     const backupPath = `${path}.invalid-${Date.now()}`;
     renameSync(path, backupPath);

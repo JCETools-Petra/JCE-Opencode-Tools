@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applySkillCorrection, determineSkillsForMessage, explainSkillsForMessage, getSubAgentSkillProfile, matchSkillBundles, parseSkillCorrection, SKILL_REGISTRY, SKILL_NAME_TO_FILE } from "../../src/plugin/lib/skill-loader.ts";
+import { applySkillCorrection, applySkillHistoryAdjustments, determineSkillsForMessage, explainSkillRouting, explainSkillsForMessage, getSubAgentSkillProfile, matchSkillBundles, parseSkillCorrection, SKILL_REGISTRY, SKILL_NAME_TO_FILE } from "../../src/plugin/lib/skill-loader.ts";
 
 describe("plugin skill loader", () => {
   test("routes native Android requests to Android Kotlin skill", () => {
@@ -137,6 +137,21 @@ describe("plugin skill loader", () => {
       reason: "pakai react",
     });
     expect(corrected).toEqual(["react", "software-engineering"]);
+  });
+
+  test("history adjustments can influence future routing suggestions", () => {
+    applySkillHistoryAdjustments({ frontend: -20, react: 15 }, {});
+    const report = explainSkillRouting("Fix React hooks bug in TSX component with frontend polish");
+    const selected = report.selected.map((item) => item.skill);
+
+    expect(selected).toContain("react");
+    expect(report.candidates.find((item) => item.skill === "react")?.contributions.some((entry) => entry.source === "history")).toBe(true);
+  });
+
+  test("low-confidence routing falls back to safest core plus domain skill", () => {
+    const report = explainSkillRouting("zzz qqq ambiguous maybe");
+    expect(report.selected.length).toBeLessThanOrEqual(2);
+    expect(report.selected[0]?.reason).toContain("low-confidence fallback");
   });
 
   test("multi-skill bundles fire for known task families", () => {

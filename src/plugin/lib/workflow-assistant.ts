@@ -341,6 +341,45 @@ export interface WorkflowSummaryInput {
   currentVersion?: string;
 }
 
+function inferChangedAreas(files: GitStatusFile[]): string[] {
+  const labels = new Set<string>();
+
+  for (const file of files) {
+    const normalized = file.path.replace(/\\/g, "/").toLowerCase();
+    if (normalized.startsWith("src/plugin/")) labels.add("plugin/runtime");
+    if (normalized.startsWith("src/commands/")) labels.add("cli/commands");
+    if (normalized.startsWith("src/mcp/")) labels.add("mcp");
+    if (normalized === "package.json" || normalized.startsWith("src/lib/constants") || normalized.startsWith("src/lib/version") || normalized === "install.sh" || normalized === "install.ps1") {
+      labels.add("release/versioning");
+    }
+    if (normalized.startsWith("tests/")) labels.add("tests");
+    if (normalized === "changelog.md" || normalized === "readme.md" || normalized.startsWith("docs/")) labels.add("docs");
+    if (normalized.startsWith("config/")) labels.add("config");
+  }
+
+  return [...labels];
+}
+
+function inferSuggestedChecks(files: GitStatusFile[]): string[] {
+  const normalized = files.map((file) => file.path.replace(/\\/g, "/").toLowerCase());
+  const checks = new Set<string>();
+
+  if (normalized.some((path) => path.startsWith("src/") || path.startsWith("tests/"))) {
+    checks.add("rtk tsc --noEmit");
+    checks.add("bun test");
+  }
+
+  if (normalized.some((path) => path === "install.sh" || path === "install.ps1" || path === "package.json" || path.startsWith("src/lib/constants") || path.startsWith("src/lib/version") || path.startsWith("src/mcp/"))) {
+    checks.add("bun ./src/index.ts validate");
+    checks.add("bun ./src/index.ts --version");
+  }
+
+  if (normalized.includes("install.sh")) checks.add("bash -n install.sh");
+  if (normalized.includes("install.ps1")) checks.add("PowerShell parser check for install.ps1");
+
+  return [...checks];
+}
+
 export function buildWorkflowSummary(input: WorkflowSummaryInput): string {
   const changed = input.files
     .filter((file) => !isExcludedPath(file.path))
@@ -348,6 +387,9 @@ export function buildWorkflowSummary(input: WorkflowSummaryInput): string {
   const excluded = input.files
     .filter((file) => isExcludedPath(file.path))
     .map((file) => `${file.status} ${file.path}`);
+  const changedFiles = input.files.filter((file) => !isExcludedPath(file.path));
+  const areas = inferChangedAreas(changedFiles);
+  const checks = inferSuggestedChecks(changedFiles);
   const nextStep = changed.length
     ? "Run relevant verification, review diff, then commit only if user asks."
     : "No tracked work detected; clarify next task or inspect untracked files.";
@@ -359,6 +401,12 @@ export function buildWorkflowSummary(input: WorkflowSummaryInput): string {
     "",
     "Changed Files",
     ...bulletList(changed),
+    "",
+    "Detected Areas",
+    ...bulletList(areas),
+    "",
+    "Suggested Checks",
+    ...bulletList(checks),
     "",
     "Local-Only / Excluded Files",
     ...bulletList(excluded),
@@ -385,6 +433,12 @@ export interface ReleaseReadyInput {
   statusFiles: GitStatusFile[];
   verificationEvidence?: string;
   includeDocs?: boolean;
+}
+
+export interface ReleaseDeltaInput {
+  previousVersion: string;
+  targetVersion: string;
+  files: GitStatusFile[];
 }
 
 function isSemver(value: string): boolean {
@@ -415,8 +469,60 @@ function hasFreshVerificationEvidence(value: string | undefined, targetVersion: 
   return hasTypecheck && hasTests && hasValidate && hasInstallCheck && hasVersionCheck;
 }
 
+function collectVerificationWarnings(value: string | undefined, targetVersion: string): string[] {
+  if (!value?.trim()) return ["Verification evidence missing."];
+  const lower = value.toLowerCase();
+  const warnings: string[] = [];
+  if (!(lower.includes("typecheck") || lower.includes("tsc"))) warnings.push("Missing typecheck evidence.");
+  if (!((lower.includes("bun test") || /\btests?\b/.test(lower)) && lower.includes("0 fail"))) warnings.push("Missing passing test evidence.");
+  if (!(lower.includes("validate") || lower.includes("config valid"))) warnings.push("Missing config validation evidence.");
+  if (!lower.includes("bash -n install.sh")) warnings.push("Missing install.sh syntax evidence.");
+  if (!(lower.includes(targetVersion) || lower.includes("--version") || lower.includes("version command"))) warnings.push("Missing CLI version evidence.");
+  return warnings;
+}
+
+function scoreVerificationEvidence(value: string | undefined, targetVersion: string): { strength: "weak" | "medium" | "strong"; reasons: string[] } {
+  if (!value?.trim()) {
+    return { strength: "weak", reasons: ["No verification evidence provided."] };
+  }
+
+  const lower = value.toLowerCase();
+  const reasons: string[] = [];
+  let score = 0;
+
+  if (lower.includes("typecheck") || lower.includes("tsc")) {
+    score += 1;
+    reasons.push("Typecheck evidence present.");
+  }
+  if ((lower.includes("bun test") || /\btests?\b/.test(lower)) && lower.includes("0 fail")) {
+    score += 1;
+    reasons.push("Passing test evidence present.");
+  }
+  if (lower.includes("validate") || lower.includes("config valid")) {
+    score += 1;
+    reasons.push("Config validation evidence present.");
+  }
+  if (lower.includes("bash -n install.sh")) {
+    score += 1;
+    reasons.push("Installer shell syntax evidence present.");
+  }
+  if (lower.includes(targetVersion) || lower.includes("--version") || lower.includes("version command")) {
+    score += 1;
+    reasons.push("Version check evidence present.");
+  }
+
+  if (lower.includes("failed") || lower.includes("error") || lower.includes("wrong") || lower.includes("non-zero exit")) {
+    return { strength: "weak", reasons: ["Verification evidence contains failure markers."] };
+  }
+
+  if (score >= 5) return { strength: "strong", reasons };
+  if (score >= 2) return { strength: "medium", reasons };
+  return { strength: "weak", reasons: reasons.length ? reasons : ["Evidence does not cover required release checks."] };
+}
+
 export function buildReleaseReadyReport(input: ReleaseReadyInput): string {
   const blockers: string[] = [];
+  const warnings: string[] = [];
   const versionLines: string[] = [];
 
   if (!isSemver(input.targetVersion)) {
@@ -458,6 +564,15 @@ export function buildReleaseReadyReport(input: ReleaseReadyInput): string {
 
   const safePlan = buildSafeCommitPlan(input.statusFiles, safePlanOptions);
   const hasVerification = hasFreshVerificationEvidence(input.verificationEvidence, input.targetVersion);
+  warnings.push(...collectVerificationWarnings(input.verificationEvidence, input.targetVersion));
+  const evidenceScore = scoreVerificationEvidence(input.verificationEvidence, input.targetVersion);
+
+  const changedPaths = new Set(input.statusFiles.map((file) => file.path.replace(/\\/g, "/")));
+  const hasReleaseCandidateFiles = [...changedPaths].some((path) => RELEASE_VERSION_FILES.includes(path as typeof RELEASE_VERSION_FILES[number]));
+  if (hasReleaseCandidateFiles && !changedPaths.has("CHANGELOG.md")) {
+    warnings.push("CHANGELOG.md not included in release candidate changes.");
+  }
+
   const status = blockers.length ? "NOT_READY" : hasVerification ? "READY" : "NEEDS_VERIFICATION";
 
   return [
@@ -470,10 +585,66 @@ export function buildReleaseReadyReport(input: ReleaseReadyInput): string {
     "Required Verification",
     ...bulletList(RECIPES.release.commands),
     "",
+    "Evidence Strength",
+    `- ${evidenceScore.strength}`,
+    ...bulletList(evidenceScore.reasons),
+    "",
     "Safe Commit Plan",
     safePlan,
     "",
-    "Blockers",
+    "Hard Blockers",
     ...bulletList(blockers),
+    "",
+    "Warnings",
+    ...bulletList([...new Set(warnings)]),
+  ].join("\n");
+}
+
+export function buildReleaseDeltaReport(input: ReleaseDeltaInput): string {
+  const changedPaths = input.files.map((file) => file.path.replace(/\\/g, "/"));
+  const subsystems = inferChangedAreas(input.files);
+  const releasePaths = changedPaths.filter((path) => [
+    "package.json",
+    "install.sh",
+    "install.ps1",
+    "src/lib/constants.ts",
+    "src/lib/version.ts",
+    "src/mcp/context-keeper.ts",
+    "README.md",
+    "CHANGELOG.md",
+  ].includes(path));
+  const runtimePaths = changedPaths.filter((path) => path.startsWith("src/plugin/") || path.startsWith("src/commands/"));
+  const testPaths = changedPaths.filter((path) => path.startsWith("tests/"));
+  const userVisible: string[] = [];
+  const migrationNotes: string[] = [];
+  const risks: string[] = [];
+
+  if (runtimePaths.length) userVisible.push("CLI or JCE-Worker behavior changed in runtime/command paths.");
+  if (releasePaths.length) userVisible.push("Release/install/versioning surfaces changed.");
+  if (changedPaths.some((path) => path === "README.md" || path === "CHANGELOG.md")) userVisible.push("Documentation/release notes updated.");
+
+  if (changedPaths.some((path) => path === "src/commands/update.ts")) migrationNotes.push("Updater behavior changed; older installed CLIs may need retest against tagged releases.");
+  if (releasePaths.length) migrationNotes.push("Version sync required across release metadata and installer surfaces.");
+
+  if (testPaths.length && !runtimePaths.length) risks.push("Changes appear test/docs-heavy; confirm user-visible delta is intentional.");
+  if (runtimePaths.length && !testPaths.length) risks.push("Runtime/command changes detected without test file changes in diff.");
+  if (!releasePaths.length) risks.push("No release metadata files detected in diff; verify this is not a release-candidate diff.");
+
+  return [
+    "Release Delta",
+    `From: ${input.previousVersion}`,
+    `To: ${input.targetVersion}`,
+    "",
+    "Changed Subsystems",
+    ...bulletList(subsystems),
+    "",
+    "Likely User-Visible Changes",
+    ...bulletList(userVisible),
+    "",
+    "Migration Notes",
+    ...bulletList(migrationNotes),
+    "",
+    "Risk Notes",
+    ...bulletList(risks),
   ].join("\n");
 }

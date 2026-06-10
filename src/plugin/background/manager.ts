@@ -382,6 +382,7 @@ export class BackgroundManager {
       workflowRuns: [],
       wisdom: [...this.wisdom],
       taskLearnings: [...this.taskLearnings],
+      failureMemories: [],
       contextBudgetSummary: budgets.length > 0 ? {
         originalChars,
         compressedChars,

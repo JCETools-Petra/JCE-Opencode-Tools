@@ -5,6 +5,7 @@ import { tool } from "@opencode-ai/plugin";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import {
   buildReleaseReadyReport,
+  buildReleaseDeltaReport,
   buildCodeTaskPlan,
   buildProjectLearningReport,
   buildAndroidFailureTriage,
@@ -55,7 +56,7 @@ export function buildWorkflowTool(): ToolDefinition {
   return tool({
     description: "Read-only JCE workflow helper for summaries, verification recipes, safe commit plans, and release readiness.",
     args: {
-      action: z.enum(["summary", "verification_recipe", "safe_commit_plan", "release_ready", "code_task_plan", "project_learning", "android_verification_recipe", "android_failure_triage"]),
+      action: z.enum(["summary", "verification_recipe", "safe_commit_plan", "release_ready", "release_delta", "code_task_plan", "project_learning", "android_verification_recipe", "android_failure_triage"]),
       scope: z.string().optional(),
       taskType: z.enum(["agent_prompt", "bugfix", "feature", "refactor", "config", "installer", "release", "docs", "tests", "unknown"]).optional(),
       includeDocs: z.boolean().optional(),
@@ -63,6 +64,7 @@ export function buildWorkflowTool(): ToolDefinition {
       targetVersion: z.string().optional(),
       verificationEvidence: z.string().optional(),
       gitStatus: z.string().optional().describe("Optional git status --porcelain text for tests or explicit input"),
+      previousVersion: z.string().optional(),
     },
     async execute(args, context) {
       const cwd = context.directory || context.worktree || process.cwd();
@@ -84,6 +86,15 @@ export function buildWorkflowTool(): ToolDefinition {
           statusFiles,
           includeDocs: Boolean(args.includeDocs),
           verificationEvidence: args.verificationEvidence as string | undefined,
+        });
+      case "release_delta":
+        if (typeof args.targetVersion !== "string" || typeof args.previousVersion !== "string") {
+          return "Release Delta\n\nRisk Notes\n- previousVersion and targetVersion are required";
+        }
+        return buildReleaseDeltaReport({
+          previousVersion: args.previousVersion,
+          targetVersion: args.targetVersion,
+          files: statusFiles,
         });
       case "code_task_plan":
         return buildCodeTaskPlan({

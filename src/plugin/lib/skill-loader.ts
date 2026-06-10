@@ -517,14 +517,6 @@ export function buildAdaptiveSubAgentProfile(
   return { base, telemetryBoost: boosted, telemetryPenalize: penalized };
 }
 
-function normalizeSkillToken(token: string): string | undefined {
-  const lower = token.trim().toLowerCase().replace(/["'`,.]/g, "");
-  if (REAL_SKILLS.includes(lower)) return lower;
-  const compact = lower.replace(/\s+/g, "-");
-  if (REAL_SKILLS.includes(compact)) return compact;
-  return undefined;
-}
-
 export function parseSkillCorrection(text: string): SkillCorrection | null {
   const lower = text.toLowerCase();
   const forbid = new Set<string>();
@@ -631,6 +623,14 @@ function computeRoutingConfidence(ranked: SkillScoreBreakdown[]): number {
 
 const LOW_CONFIDENCE_THRESHOLD = 20;
 
+function shouldUseLowConfidenceFallback(ranked: SkillScoreBreakdown[], confidence = computeRoutingConfidence(ranked)): boolean {
+  if (confidence < LOW_CONFIDENCE_THRESHOLD) return true;
+  const top = ranked[0];
+  if (!top) return false;
+  const meaningful = top.contributions.filter((item) => item.source !== "priority" && item.source !== "history");
+  return meaningful.length === 0;
+}
+
 function applyRegistryConflictRules(ranked: SkillScoreBreakdown[]): SkillSelectionExplanation {
   const selected: SkillSelectionItem[] = [];
   const rejected: SkillSelectionItem[] = [];
@@ -638,7 +638,7 @@ function applyRegistryConflictRules(ranked: SkillScoreBreakdown[]): SkillSelecti
   const confidence = computeRoutingConfidence(ranked);
 
   // Low-confidence fallback: prefer 1 core + 1 safest domain skill (plan.md step 11)
-  if (confidence < LOW_CONFIDENCE_THRESHOLD && ranked.length > 0) {
+  if (shouldUseLowConfidenceFallback(ranked, confidence) && ranked.length > 0) {
     const core = ranked.find((item) => item.skill === "software-engineering" || item.skill === "codebase-intelligence");
     const domain = ranked.find((item) => item.skill !== core?.skill);
     if (core) selected.push({ skill: core.skill, reason: `low-confidence fallback (confidence=${confidence})` });
@@ -685,13 +685,15 @@ export function explainSkillsForMessage(text: string): SkillSelectionExplanation
 
 export function explainSkillRouting(text: string, agent?: string): SkillExplainReport {
   const ranked = scoreSkillCandidates(text, agent);
+  const confidence = computeRoutingConfidence(ranked);
   const selected = applyRegistryConflictRules(ranked);
+  const fallbackSelected = shouldUseLowConfidenceFallback(ranked, confidence);
   return {
     intent: toLegacyRoute(scoreIntent(text)).intent,
     candidates: ranked,
     selected: selected.selected,
     rejected: selected.rejected,
-    confidence: computeRoutingConfidence(ranked),
+    confidence: fallbackSelected ? Math.min(confidence, LOW_CONFIDENCE_THRESHOLD) : confidence,
   };
 }
 

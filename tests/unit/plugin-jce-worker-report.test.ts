@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEmptyRuntimeState } from "../../src/plugin/lib/runtime-state.ts";
+import { addFailureMemory, createEmptyRuntimeState, createFailureMemoryEntry } from "../../src/plugin/lib/runtime-state.ts";
 import { addWorkflowStep, attachStepEvidence, createWorkflowRun, updateWorkflowStepStatus } from "../../src/plugin/lib/workflow.ts";
 import { formatJceWorkerReport, formatJceWorkerStatus, formatJceWorkerTrace, getJceWorkerNextAction } from "../../src/plugin/lib/jce-worker-report.ts";
 
@@ -186,6 +186,26 @@ describe("JCE-Worker CLI report helpers", () => {
     expect(report).toContain("Intent: parallel_work");
     expect(report).toContain("Source: task");
     expect(report).toContain("Reason: Independent work can be delegated in parallel.");
+  });
+
+  test("formats operator report with recent failure memory", () => {
+    let memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
+    memory = addFailureMemory(memory, createFailureMemoryEntry({
+      signature: "integrity-check-failed",
+      summary: "Updater integrity mismatch on annotated tag",
+      rootCause: "Annotated tag SHA compared as commit SHA",
+      fixNote: "Resolve peeled tag commit or use lightweight tag",
+      failedCommands: ["opencode-jce update"],
+      now: "2026-05-06T00:04:00.000Z",
+    }));
+
+    const output = formatJceWorkerReport(memory);
+
+    expect(output).toContain("Failure Memory");
+    expect(output).toContain("Updater integrity mismatch on annotated tag");
+    expect(output).toContain("Annotated tag SHA compared as commit SHA");
+    expect(output).toContain("Resolve peeled tag commit or use lightweight tag");
+    expect(output).toContain("opencode-jce update");
   });
 
   test("returns conservative next actions for all workflow states", () => {
