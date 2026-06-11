@@ -16,56 +16,10 @@ import {
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 import { GITHUB_RAW_BASE, GITHUB_REPO, VERSION } from "../lib/constants.js";
-
-const REQUIRED_CLI_PAYLOAD_FILES = [
-  "src/index.ts",
-  "src/lib/context-template.ts",
-  "src/lib/context-index.ts",
-  "src/plugin/index.ts",
-  "src/plugin/hooks/jce-worker-guard.ts",
-  "src/plugin/hooks/open-work-enforcer.ts",
-  "src/plugin/hooks/todo-enforcer.ts",
-  "src/plugin/lib/compaction-loop-guard.ts",
-  "src/commands/analytics.ts",
-  "src/commands/capabilities.ts",
-  "src/commands/docs.ts",
-  "src/commands/evidence.ts",
-  "src/commands/flow.ts",
-  "src/commands/skills.ts",
-  "src/plugin/lib/jce-intelligence.ts",
-  "src/plugin/lib/api/index.ts",
-  "src/plugin/lib/devops/index.ts",
-  "src/plugin/lib/security-flow/index.ts",
-  "src/plugin/lib/web/index.ts",
-  "src/plugin/lib/android/advanced-flow.ts",
-  "src/plugin/lib/android/environment-probe.ts",
-  "src/plugin/lib/android/command-planner.ts",
-  "src/plugin/lib/android/evidence-gate.ts",
-  "src/plugin/lib/android/compatibility-matrix.ts",
-  "src/plugin/lib/android/security-auditor.ts",
-  "src/plugin/lib/android/release-readiness.ts",
-  "src/plugin/lib/android/build-optimizer.ts",
-  "src/plugin/lib/android/orchestration-plan.ts",
-  "src/plugin/lib/android/device-flow.ts",
-  "src/plugin/lib/flutter/project-scanner.ts",
-  "src/plugin/lib/flutter/verification-recipe.ts",
-  "src/plugin/lib/flutter/failure-classifier.ts",
-  "src/plugin/lib/flutter/environment-probe.ts",
-  "src/plugin/lib/flutter/advanced-flow.ts",
-  "src/plugin/lib/flutter/command-planner.ts",
-  "src/plugin/lib/flutter/evidence-gate.ts",
-  "src/plugin/lib/flutter/release-readiness.ts",
-  "config/AGENTS.md",
-  "config/skills/git-guardrails/SKILL.md",
-  "config/skills/grill-with-docs/SKILL.md",
-  "config/skills/prototype/SKILL.md",
-  "config/skills/to-issues/SKILL.md",
-  "config/skills/to-prd/SKILL.md",
-  "config/skills/triage/SKILL.md",
-  "config/skills/write-a-skill/SKILL.md",
-];
+import { getRequiredCliPayloadFiles } from "../lib/cli-payload.js";
 
 function assertCliPayloadComplete(dir: string): void {
+  const REQUIRED_CLI_PAYLOAD_FILES = getRequiredCliPayloadFiles(process.cwd());
   const missing = REQUIRED_CLI_PAYLOAD_FILES.filter((file) => !existsSync(join(dir, file)));
   if (missing.length > 0) throw new Error(`Downloaded CLI source is incomplete; missing: ${missing.join(", ")}`);
 }

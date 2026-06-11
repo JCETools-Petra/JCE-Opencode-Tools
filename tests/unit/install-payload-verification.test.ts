@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CLI_PAYLOAD_MANIFEST_PATH, getRequiredCliPayloadFiles } from "../../src/lib/cli-payload.ts";
 
 const root = process.cwd();
 const androidPayloadFiles = [
@@ -25,47 +26,15 @@ const flutterPayloadFiles = [
   "evidence-gate.ts",
   "release-readiness.ts",
 ];
-const jceIntelligencePayloadFiles = [
-  "src/lib/context-template.ts",
-  "src/lib/context-index.ts",
-  "src/plugin/hooks/jce-worker-guard.ts",
-  "src/plugin/hooks/open-work-enforcer.ts",
-  "src/plugin/hooks/todo-enforcer.ts",
-  "src/plugin/lib/compaction-loop-guard.ts",
-  "src/commands/analytics.ts",
-  "src/commands/capabilities.ts",
-  "src/commands/docs.ts",
-  "src/commands/evidence.ts",
-  "src/commands/flow.ts",
-  "src/commands/skills.ts",
-  "src/plugin/lib/jce-intelligence.ts",
-  "src/plugin/lib/api/index.ts",
-  "src/plugin/lib/devops/index.ts",
-  "src/plugin/lib/security-flow/index.ts",
-  "src/plugin/lib/web/index.ts",
-];
-const workflowSkillPayloadFiles = [
-  "config/AGENTS.md",
-  "config/skills/git-guardrails/SKILL.md",
-  "config/skills/grill-with-docs/SKILL.md",
-  "config/skills/prototype/SKILL.md",
-  "config/skills/to-issues/SKILL.md",
-  "config/skills/to-prd/SKILL.md",
-  "config/skills/triage/SKILL.md",
-  "config/skills/write-a-skill/SKILL.md",
-];
+const payloadPaths = getRequiredCliPayloadFiles(root);
+const manifestText = readFileSync(join(root, CLI_PAYLOAD_MANIFEST_PATH), "utf8");
 
 describe("installer CLI payload verification", () => {
   test("TypeScript update verifies JCE intelligence payload before swapping CLI", () => {
     const text = readFileSync(join(root, "src", "commands", "update.ts"), "utf8");
-    expect(text).toContain("REQUIRED_CLI_PAYLOAD_FILES");
+    expect(text).toContain("getRequiredCliPayloadFiles");
     expect(text).toContain("assertCliPayloadComplete(stagingDir)");
-    for (const file of jceIntelligencePayloadFiles) {
-      expect(text).toContain(file);
-    }
-    for (const file of workflowSkillPayloadFiles) {
-      expect(text).toContain(file);
-    }
+    for (const file of getRequiredCliPayloadFiles(root)) expect(manifestText).toContain(file);
   });
 
   test("PowerShell installer verifies Android advanced modules before swapping CLI", () => {
@@ -73,17 +42,13 @@ describe("installer CLI payload verification", () => {
     expect(text).toContain("function Test-JceCliPayload");
     expect(text).toContain("Test-JceCliPayload $stagingDir");
     for (const file of androidPayloadFiles) {
-      expect(text).toContain(`src\\plugin\\lib\\android\\${file}`);
+      expect(manifestText).toContain(`src/plugin/lib/android/${file}`);
     }
     for (const file of flutterPayloadFiles) {
-      expect(text).toContain(`src\\plugin\\lib\\flutter\\${file}`);
+      expect(manifestText).toContain(`src/plugin/lib/flutter/${file}`);
     }
-    for (const file of jceIntelligencePayloadFiles) {
-      expect(text).toContain(file.split("/").join("\\"));
-    }
-    for (const file of workflowSkillPayloadFiles) {
-      expect(text).toContain(file.split("/").join("\\"));
-    }
+    expect(text).toContain('config\\cli-payload.txt');
+    expect(text).toContain('Get-Content $manifest');
     expect(text).toContain('Copy-Item (Join-Path $TempDir "config") (Join-Path $stagingDir "config") -Recurse');
   });
 
@@ -92,17 +57,13 @@ describe("installer CLI payload verification", () => {
     expect(text).toContain("verify_jce_cli_payload()");
     expect(text).toContain("verify_jce_cli_payload \"$staging_dir\"");
     for (const file of androidPayloadFiles) {
-      expect(text).toContain(`src/plugin/lib/android/${file}`);
+      expect(manifestText).toContain(`src/plugin/lib/android/${file}`);
     }
     for (const file of flutterPayloadFiles) {
-      expect(text).toContain(`src/plugin/lib/flutter/${file}`);
+      expect(manifestText).toContain(`src/plugin/lib/flutter/${file}`);
     }
-    for (const file of jceIntelligencePayloadFiles) {
-      expect(text).toContain(file);
-    }
-    for (const file of workflowSkillPayloadFiles) {
-      expect(text).toContain(file);
-    }
+    expect(text).toContain('config/cli-payload.txt');
+    expect(text).toContain('done < "$manifest"');
     expect(text).toContain('cp -r "$TEMP_DIR/config" "$staging_dir/config"');
   });
 

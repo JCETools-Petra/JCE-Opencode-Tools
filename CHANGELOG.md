@@ -6,6 +6,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.7.2] - 2026-06-11
+
+### Fixed
+- **Single-source install/update payload manifest**: New installs and self-update now verify the same shipped `config/cli-payload.txt` manifest, removing drift between updater, Unix installer, and PowerShell installer payload checks.
+
+### Changed
+- **Installer/update payload guarantees**: Runtime-critical JCE-Worker and orchestration files are now audited through one shared manifest reader instead of three separate hardcoded lists.
+- Release version synced to `3.7.2` across package metadata, installers, constants, MCP version, README badge, and version tests.
+
+### Difference from previous release
+- `3.7.1` improved JCE-Worker explainability, planner visibility, analytics, and safe commit support.
+- `3.7.2` is focused patch release to harden install/update delivery guarantees so new users and updating users receive the same verified runtime-critical payload.
+
+### Verified
+- `bun test`
+- `bunx tsc --noEmit`
+- `bun ./src/index.ts validate`
+- `bun ./src/index.ts --version`
+
+---
+
 ## [3.7.1] - 2026-06-11
 
 ### Added
