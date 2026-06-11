@@ -16,12 +16,16 @@ import {
 } from "../lib/version.js";
 import { EXIT_SUCCESS, EXIT_ERROR } from "../types.js";
 import { GITHUB_RAW_BASE, GITHUB_REPO, VERSION } from "../lib/constants.js";
-import { getRequiredCliPayloadFiles } from "../lib/cli-payload.js";
+import { getRequiredCliPayloadFiles, resolveCliPayloadManifestPath } from "../lib/cli-payload.js";
 
 function assertCliPayloadComplete(dir: string): void {
   const REQUIRED_CLI_PAYLOAD_FILES = getRequiredCliPayloadFiles(process.cwd());
   const missing = REQUIRED_CLI_PAYLOAD_FILES.filter((file) => !existsSync(join(dir, file)));
   if (missing.length > 0) throw new Error(`Downloaded CLI source is incomplete; missing: ${missing.join(", ")}`);
+}
+
+export function resolveCliPayloadManifestForInstalledBase(baseDir: string): string {
+  return resolveCliPayloadManifestPath(baseDir);
 }
 
 export interface ProcessSnapshot {

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { planStaleOpenCodeProcessKills, type ProcessSnapshot } from "../../src/commands/update.ts";
+import { planStaleOpenCodeProcessKills, resolveCliPayloadManifestForInstalledBase, type ProcessSnapshot } from "../../src/commands/update.ts";
 
 describe("update stale OpenCode process cleanup", () => {
   test("plans stale OpenCode/plugin processes but excludes the current update process", () => {
@@ -23,5 +24,17 @@ describe("update stale OpenCode process cleanup", () => {
     expect(sh).toContain("OPENCODE_JCE_SKIP_PROCESS_CLEANUP");
     expect(ps).toContain("Stop-StaleOpenCodeProcesses");
     expect(ps).toContain("OPENCODE_JCE_SKIP_PROCESS_CLEANUP");
+  });
+
+  test("payload manifest resolver supports installed cli base dir", () => {
+    const root = mkdtempSync(join(tmpdir(), "update-manifest-"));
+    try {
+      mkdirSync(join(root, "cli", "config"), { recursive: true });
+      const manifest = join(root, "cli", "config", "cli-payload.txt");
+      writeFileSync(manifest, "src/index.ts\n", "utf8");
+      expect(resolveCliPayloadManifestForInstalledBase(root)).toBe(manifest);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
