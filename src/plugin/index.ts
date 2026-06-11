@@ -31,6 +31,11 @@ import { scoreIntent, toLegacyRoute } from "./lib/orchestration/intent-router.js
 import { OrchestrationController } from "./lib/orchestration/controller.js";
 import { OrchestrationBridge } from "./lib/orchestration/bridge.js";
 import { shouldDropPersistedWorkflow } from "./lib/orchestration/staleness.js";
+import { extractProjectFacts } from "./lib/orchestration/fact-extraction.js";
+import { detectWorkstreams } from "./lib/orchestration/workstream-detector.js";
+import { decideAutoActivation } from "./lib/auto-activation.js";
+import { extractChangedFilesFromTool } from "./lib/changed-files.js";
+import { buildPreFinalGuard } from "./lib/pre-final-guard.js";
 import { appendEvidence, appendTelemetry, loadTelemetry, summarizeCommandEvidence, summarizeRoutingQuality } from "./lib/jce-intelligence.js";
 import {
   withErrorBoundary,
@@ -105,12 +110,6 @@ function shouldInspectCompletionOutput(tool: string): boolean {
   return COMPLETION_INSPECTION_TOOLS.has(tool);
 }
 
-function shouldAutoActivateFromUserMessage(message: string): boolean {
-  const trimmed = message.trim();
-  if (!trimmed || trimmed.includes("?")) return false;
-  return /\b(fix|debug|investigate|implement|update|refactor|audit|review|analyze|check|verify|repair|add|remove|clean|lanjutkan|perbaiki|cek|audit|analisis|review|ubah|hapus|rapikan|lanjutkan)\b/i.test(trimmed);
-}
-
 function shouldApplyDirectContextBudget(tool: string): boolean {
   return ["read", "grep", "glob", "ls", "bash"].includes(tool);
 }
@@ -129,33 +128,13 @@ function ensureProjectContextFile(projectRoot: string): boolean {
 
 /**
  * Extract facts from tool outputs into orchestration shared memory.
- * Lightweight heuristic extraction — not exhaustive, just high-value signals.
+ * Delegates to the precision-tuned extractor (execution-output only) to avoid
+ * false positives from file contents that merely mention tool names.
  */
 function extractFactsFromToolOutput(orchestrator: OrchestrationController, tool: string, output: string): void {
-  // Only extract from informational tools (tool is pre-normalized to lowercase)
-  if (!["bash", "read", "grep", "task", "bg_collect"].includes(tool)) return;
-  if (output.length < 20 || output.length > 10000) return;
-
-  // Detect test framework from output
-  if (/\bbun test\b/i.test(output)) orchestrator.addFact("test.runner", "bun test", "tool", 0.9);
-  else if (/\bjest\b/i.test(output) && /\bpass/i.test(output)) orchestrator.addFact("test.runner", "jest", "tool", 0.8);
-  else if (/\bpytest\b/i.test(output)) orchestrator.addFact("test.runner", "pytest", "tool", 0.8);
-  else if (/\bcargo test\b/i.test(output)) orchestrator.addFact("test.runner", "cargo test", "tool", 0.8);
-
-  // Detect build tool
-  if (/\btsc\b.*\b(error|no\s*emit)\b/i.test(output)) orchestrator.addFact("build.typecheck", "tsc", "tool", 0.9);
-  if (/\bvite\b/i.test(output)) orchestrator.addFact("build.bundler", "vite", "tool", 0.7);
-  if (/\bwebpack\b/i.test(output)) orchestrator.addFact("build.bundler", "webpack", "tool", 0.7);
-
-  // Detect package manager
-  if (/\bbun\s+(install|add|remove)\b/i.test(output)) orchestrator.addFact("package.manager", "bun", "tool", 0.9);
-  else if (/\bnpm\s+(install|ci)\b/i.test(output)) orchestrator.addFact("package.manager", "npm", "tool", 0.8);
-  else if (/\bpnpm\s+(install|add)\b/i.test(output)) orchestrator.addFact("package.manager", "pnpm", "tool", 0.8);
-
-  // Detect errors/failures (useful for re-planning)
-  if (/error TS\d+/i.test(output)) orchestrator.addFact("last.error.type", "typescript", "tool", 0.9);
-  else if (/\bSyntaxError\b/i.test(output)) orchestrator.addFact("last.error.type", "syntax", "tool", 0.9);
-  else if (/\bReferenceError\b/i.test(output)) orchestrator.addFact("last.error.type", "reference", "tool", 0.9);
+  for (const fact of extractProjectFacts(tool, output)) {
+    orchestrator.addFact(fact.key, fact.value, fact.source, fact.confidence);
+  }
 }
 
 const jcePlugin: Plugin = async (input) => {
@@ -533,12 +512,18 @@ const jcePlugin: Plugin = async (input) => {
         }
 
         const isNoTaskTurn = shouldSuppressCompactionAutocontinue({ lastUserMessage: text });
+        const autoActivation = decideAutoActivation(text);
+        withErrorBoundary(() => appendTelemetry(projectRoot, {
+          kind: "routing_decision",
+          name: "auto_activation",
+          metadata: { activate: autoActivation.activate, confidence: autoActivation.confidence, reason: autoActivation.reason, signals: autoActivation.signals },
+        }), undefined, orchestrationLogger);
 
         // Auto-activation with rate limiting, approval gate, and error boundary.
         // Greetings/no-op turns must not create plans; they can otherwise become
         // self-perpetuating Build/Compaction loops when OpenCode compacts a full context.
         if (!isNoTaskTurn
-          && shouldAutoActivateFromUserMessage(text)
+          && autoActivation.activate
           && withErrorBoundary(() => orchestrator.shouldAutoActivate(text), false, orchestrationLogger)
           && rateLimiter.canActivate()) {
 
@@ -578,8 +563,18 @@ const jcePlugin: Plugin = async (input) => {
             } else {
               // Safe to auto-dispatch
               rateLimiter.recordActivation();
-              orchestrationLogger.log("info", "plan.auto_activated", `Auto-activated plan: ${goal.slice(0, 80)}`);
-              await withAsyncErrorBoundary(() => bridge.planAndDispatch(goal, "", ""), { dispatched: [], graphStatus: "failed", message: "Auto-dispatch failed" }, orchestrationLogger);
+              // Multi-workstream: if the message explicitly describes several
+              // independent workstreams, drive them as concurrent graphs under
+              // one shared budget. Otherwise use the single-graph loop.
+              const workstreams = withErrorBoundary(() => detectWorkstreams(text), { isMulti: false, workstreams: [], reason: "detector error" }, orchestrationLogger);
+              if (workstreams.isMulti && workstreams.workstreams.length >= 2) {
+                orchestrationLogger.log("info", "plan.auto_activated.concurrent", `Auto-activated ${workstreams.workstreams.length} concurrent workstream(s): ${workstreams.reason}`);
+                withErrorBoundary(() => appendTelemetry(projectRoot, { kind: "routing_decision", name: "concurrent_workstreams", metadata: { count: workstreams.workstreams.length, reason: workstreams.reason } }), undefined, orchestrationLogger);
+                await withAsyncErrorBoundary(() => bridge.planAndDispatchConcurrent(workstreams.workstreams, "", ""), { dispatched: [], graphStatus: "failed", message: "Concurrent auto-dispatch failed" }, orchestrationLogger);
+              } else {
+                orchestrationLogger.log("info", "plan.auto_activated", `Auto-activated plan: ${goal.slice(0, 80)}`);
+                await withAsyncErrorBoundary(() => bridge.planAndDispatch(goal, "", ""), { dispatched: [], graphStatus: "failed", message: "Auto-dispatch failed" }, orchestrationLogger);
+              }
             }
           }
         }
@@ -588,6 +583,8 @@ const jcePlugin: Plugin = async (input) => {
 
     "experimental.chat.system.transform": async (_input, output) => {
       output.system.push(POST_COMPACTION_NO_TASK_GUARD);
+      const preFinalGuard = buildPreFinalGuard(currentMemory);
+      if (preFinalGuard) output.system.push(preFinalGuard);
       if (!lastUserMessage) return;
       const skillNames = applySkillCorrection(determineSkillsForMessage(lastUserMessage), sessionSkillCorrection);
       if (skillNames.length === 0) return;
@@ -641,7 +638,7 @@ const jcePlugin: Plugin = async (input) => {
         const finalGate = looksLikeCompletionClaim(text)
           ? evaluateFinalReviewGate(activeWorkflow, {
             profile: currentPolicyProfile(),
-            changedFiles: [],
+            changedFiles: currentMemory.changedFiles,
             delegatedReviews: delegatedReviewStrings(currentMemory),
             residualRisks: [],
             activeBlockers: currentMemory.blockers,
@@ -720,6 +717,17 @@ const jcePlugin: Plugin = async (input) => {
         }, undefined, orchestrationLogger);
       }
 
+      const changedFilesFromTool = extractChangedFilesFromTool(toolName, input.args, output.output);
+      if (changedFilesFromTool.length > 0) {
+        withErrorBoundary(() => {
+          const next = Array.from(new Set([...(currentMemory.changedFiles ?? []), ...changedFilesFromTool]));
+          if (next.length !== (currentMemory.changedFiles ?? []).length) {
+            currentMemory.changedFiles = next;
+            saveRuntimeOnly(currentMemory);
+          }
+        }, undefined, orchestrationLogger);
+      }
+
       if (toolName === "write" || toolName === "edit") {
         const filePath = input.args?.filePath || input.args?.path || "";
         const content = output.output || "";
@@ -768,7 +776,7 @@ const jcePlugin: Plugin = async (input) => {
         });
         const result = evaluateFinalReviewGate(currentMemory.activeWorkflow, {
           profile: currentPolicyProfile(),
-          changedFiles: [],
+          changedFiles: currentMemory.changedFiles,
           delegatedReviews: delegatedReviewStrings(currentMemory),
           residualRisks: [],
           activeBlockers: currentMemory.blockers,

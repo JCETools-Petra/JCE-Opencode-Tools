@@ -59,6 +59,32 @@ export class OrchestrationBridge {
   }
 
   /**
+   * Create MULTIPLE concurrent workstream graphs and dispatch across all of
+   * them under one shared concurrency budget.
+   *
+   * Reuses dispatchNodes for the actual spawning; only planning + cross-graph
+   * scheduling differ from planAndDispatch.
+   */
+  async planAndDispatchConcurrent(goals: string[], parentSessionId: string, parentMessageId: string): Promise<DispatchLoopResult> {
+    const graphs = this.orchestrator.createConcurrentPlans(goals);
+    if (graphs.length === 0) {
+      return { dispatched: [], graphStatus: "planning", message: "No concurrent plans created." };
+    }
+
+    const toDispatch = this.orchestrator.getNextDispatchAll();
+    if (toDispatch.length === 0) {
+      return { dispatched: [], graphStatus: this.orchestrator.getStatus().graphStatus, message: `Created ${graphs.length} concurrent graph(s) but no nodes ready.` };
+    }
+
+    const dispatched = await this.dispatchNodes(toDispatch, parentSessionId, parentMessageId);
+    return {
+      dispatched,
+      graphStatus: this.orchestrator.getStatus().graphStatus,
+      message: `Created ${graphs.length} concurrent workstream graph(s). Dispatched ${dispatched.length} task(s).`,
+    };
+  }
+
+  /**
    * Create a plan and dispatch the first ready nodes.
    * This is the entry point for orchestrated execution.
    */
@@ -101,11 +127,20 @@ export class OrchestrationBridge {
       };
     }
 
-    // Feed result through orchestration controller (parses, evaluates, re-plans)
-    const collectResult = this.orchestrator.collectResult(nodeId, rawResult);
+    // Feed result through orchestration controller (parses, evaluates, re-plans).
+    // Multi-graph: if this node belongs to a concurrent workstream graph, route
+    // the result to that graph and re-dispatch across ALL graphs under the
+    // shared budget. Otherwise fall back to the single-graph loop.
+    const owningGraphId = this.orchestrator.getGraphForNode(nodeId);
+    const isMultiGraph = owningGraphId !== undefined;
+    const collectResult = isMultiGraph
+      ? this.orchestrator.collectResultForGraph(owningGraphId, nodeId, rawResult)
+      : this.orchestrator.collectResult(nodeId, rawResult);
 
     // Auto-dispatch next ready nodes (the orchestration loop)
-    const nextToDispatch = this.orchestrator.getNextDispatch();
+    const nextToDispatch = isMultiGraph
+      ? this.orchestrator.getNextDispatchAll()
+      : this.orchestrator.getNextDispatch();
     const nextDispatched = nextToDispatch.length > 0
       ? await this.dispatchNodes(nextToDispatch, parentSessionId, parentMessageId)
       : [];

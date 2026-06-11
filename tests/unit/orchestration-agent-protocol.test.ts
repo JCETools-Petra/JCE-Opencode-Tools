@@ -148,7 +148,7 @@ exit code: 0
 - None identified`;
 
       const result = parseAgentResult(raw, request);
-      expect(result.status).toBe("success");
+      expect(result.status).toBe("partial");
       expect(result.summary).toContain("Fixed the login crash");
       expect(result.evidence.length).toBeGreaterThan(0);
       expect(result.confidence).toBeGreaterThan(0.5);
@@ -240,6 +240,131 @@ Deleted src/old-workflow.ts`;
 
       const result = parseAgentResult(raw, request);
       expect(result.artifacts.length).toBeGreaterThanOrEqual(2);
+    });
+
+    test("prefers structured jce-evidence block over free-text regex", () => {
+      const request: AgentRequest = {
+        taskId: "task-n1",
+        nodeId: "n1",
+        agent: "oracle",
+        goal: "Fix the bug",
+        prompt: "Fix it",
+        context: { facts: [], constraints: [], priorArtifacts: [], skills: [] },
+        expectations: { requiredSections: ["Summary", "Verification"], requireEvidence: true, minConfidence: 0.6 },
+      };
+
+      const raw = `## Summary
+Fixed it.
+
+## Verification
+Ran the tests, looks good (no exit codes written in prose).
+
+\`\`\`jce-evidence
+[{"type":"test_result","command":"bun test","exitCode":0,"passed":61,"failed":0},{"type":"type_check","command":"tsc --noEmit","exitCode":0}]
+\`\`\``;
+
+      const result = parseAgentResult(raw, request);
+      expect(result.status).toBe("success");
+      expect(result.evidence.length).toBe(2);
+      const testEv = result.evidence.find((e) => e.type === "test_result");
+      expect(testEv).toBeDefined();
+      expect(testEv!.assertions[0].passed).toBe(true);
+      expect(testEv!.confidence).toBe(1); // 61/61
+      const typeEv = result.evidence.find((e) => e.type === "type_check");
+      expect(typeEv!.exitCode).toBe(0);
+      expect(typeEv!.confidence).toBe(0.9);
+    });
+
+    test("structured block surfaces failing tests with low confidence", () => {
+      const request: AgentRequest = {
+        taskId: "task-n1",
+        nodeId: "n1",
+        agent: "oracle",
+        goal: "Fix the bug",
+        prompt: "Fix it",
+        context: { facts: [], constraints: [], priorArtifacts: [], skills: [] },
+        expectations: { requiredSections: ["Summary", "Verification"], requireEvidence: true, minConfidence: 0.6 },
+      };
+
+      const raw = `## Summary
+Still failing.
+
+\`\`\`jce-evidence
+[{"type":"test_result","command":"bun test","exitCode":1,"passed":58,"failed":3}]
+\`\`\``;
+
+      const result = parseAgentResult(raw, request);
+      const testEv = result.evidence.find((e) => e.type === "test_result");
+      expect(testEv).toBeDefined();
+      expect(testEv!.assertions[0].passed).toBe(false);
+      // A failing run must report LOW confidence in success, not the pass-ratio.
+      expect(testEv!.confidence).toBe(0.1);
+      expect(result.confidence).toBeLessThan(0.7);
+    });
+
+    test("falls back to regex when structured block is malformed JSON", () => {
+      const request: AgentRequest = {
+        taskId: "task-n1",
+        nodeId: "n1",
+        agent: "oracle",
+        goal: "Fix the bug",
+        prompt: "Fix it",
+        context: { facts: [], constraints: [], priorArtifacts: [], skills: [] },
+        expectations: { requiredSections: ["Summary", "Verification"], requireEvidence: true, minConfidence: 0.6 },
+      };
+
+      const raw = `## Summary
+Fixed it.
+
+## Verification
+$ bun test
+61 pass, 0 fail
+exit code: 0
+
+\`\`\`jce-evidence
+{ this is not valid json ]
+\`\`\``;
+
+      const result = parseAgentResult(raw, request);
+      // Malformed block must not crash and must fall back to regex evidence.
+      expect(result.evidence.length).toBeGreaterThan(0);
+      expect(result.evidence.some((e) => e.exitCode === 0)).toBe(true);
+      expect(result.status).toBe("partial");
+    });
+
+    test("parses structured jce-result block for summary files facts and risks", () => {
+      const request: AgentRequest = {
+        taskId: "task-n1",
+        nodeId: "n1",
+        agent: "oracle",
+        goal: "Fix the bug",
+        prompt: "Fix it",
+        context: { facts: [], constraints: [], priorArtifacts: [], skills: [] },
+        expectations: { requiredSections: ["Summary", "Verification", "Files", "Risks"], requireEvidence: true, minConfidence: 0.6 },
+      };
+
+      const raw = [
+        "## Summary",
+        "Legacy summary should be overridden.",
+        "",
+        "## Verification",
+        "ok",
+        "```jce-evidence",
+        '[{"type":"test_result","command":"bun test","exitCode":0,"passed":2,"failed":0}]',
+        "```",
+        "",
+        "```jce-result",
+        '{"summary":"Structured summary","files":[{"path":"src/a.ts","action":"modified"},{"path":"src/new.ts","action":"created"}],"risks":["No risks identified"],"facts":[{"key":"package.manager","value":"bun","confidence":0.9}]}',
+        "```",
+      ].join("\n");
+
+      const result = parseAgentResult(raw, request);
+      expect(result.status).toBe("success");
+      expect(result.summary).toBe("Structured summary");
+      expect(result.artifacts.map((a) => `${a.type}:${a.path}`)).toEqual(["modified:src/a.ts", "created:src/new.ts"]);
+      expect(result.newFacts).toHaveLength(1);
+      expect(result.newFacts[0].key).toBe("package.manager");
+      expect(result.blockers).toHaveLength(0);
     });
   });
 

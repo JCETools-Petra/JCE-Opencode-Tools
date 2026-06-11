@@ -128,6 +128,87 @@ export class Scheduler {
   }
 
   /**
+   * Advance MANY graphs in one pass with a SHARED concurrency budget.
+   *
+   * Agents (and the global slot count) are shared resources across every active
+   * graph, so per-graph ticking would oversubscribe them. This computes running
+   * counts across all graphs, then dispatches fairly (round-robin) so no single
+   * graph starves the others.
+   *
+   * Returns the updated graphs (same order) plus a flat dispatch list tagged
+   * with the owning graphId.
+   */
+  tickAll(graphs: TaskGraph[]): { graphs: TaskGraph[]; toDispatch: Array<{ graphId: string; node: TaskNode }> } {
+    // Step 1: promote ready nodes in every graph first.
+    const promotedGraphs = graphs.map((graph) => {
+      const next = promoteReadyNodes(graph, this.now());
+      for (const node of getReadyNodes(graph)) {
+        this.emit({ type: "node.promoted", nodeId: node.id, timestamp: this.now() });
+      }
+      return next;
+    });
+
+    // Step 2: seed shared running counts from ALL graphs.
+    let globalRunning = 0;
+    const agentCounts = new Map<AgentRole, number>();
+    for (const graph of promotedGraphs) {
+      for (const node of getRunningNodes(graph)) {
+        globalRunning += 1;
+        agentCounts.set(node.agent, (agentCounts.get(node.agent) ?? 0) + 1);
+      }
+    }
+
+    // Step 3: build per-graph candidate queues (priority-sorted).
+    const queues = promotedGraphs.map((graph) => ({
+      graphId: graph.id,
+      candidates: getDispatchableNodes(graph),
+    }));
+
+    // Step 4: round-robin selection across graphs under the shared budget.
+    const selectedByGraph = new Map<string, Set<string>>();
+    const toDispatch: Array<{ graphId: string; node: TaskNode }> = [];
+    let progress = true;
+    while (globalRunning < this.config.maxConcurrency && progress) {
+      progress = false;
+      for (const queue of queues) {
+        if (globalRunning >= this.config.maxConcurrency) break;
+        const chosen = selectedByGraph.get(queue.graphId) ?? new Set<string>();
+        const node = queue.candidates.find((candidate) => {
+          if (chosen.has(candidate.id)) return false;
+          const agentCount = agentCounts.get(candidate.agent) ?? 0;
+          const agentLimit = this.config.maxConcurrencyPerAgent[candidate.agent] ?? this.config.maxConcurrency;
+          return agentCount < agentLimit;
+        });
+        if (!node) continue;
+        chosen.add(node.id);
+        selectedByGraph.set(queue.graphId, chosen);
+        agentCounts.set(node.agent, (agentCounts.get(node.agent) ?? 0) + 1);
+        globalRunning += 1;
+        toDispatch.push({ graphId: queue.graphId, node });
+        progress = true;
+      }
+    }
+
+    // Step 5: transition selected nodes to running and refresh graph status.
+    const resultGraphs = promotedGraphs.map((graph) => {
+      let next = graph;
+      const chosen = selectedByGraph.get(graph.id);
+      if (chosen) {
+        for (const nodeId of chosen) {
+          next = transitionNode(next, nodeId, "running", this.now());
+          this.emit({ type: "node.dispatched", nodeId, timestamp: this.now(), detail: `agent: ${next.nodes.get(nodeId)?.agent}` });
+        }
+      }
+      next = updateGraphStatus(next, this.now());
+      if (next.status === "completed") this.emit({ type: "graph.completed", timestamp: this.now(), metadata: { graphId: next.id } });
+      else if (next.status === "failed") this.emit({ type: "graph.failed", timestamp: this.now(), metadata: { graphId: next.id } });
+      return next;
+    });
+
+    return { graphs: resultGraphs, toDispatch };
+  }
+
+  /**
    * Select nodes to dispatch, respecting global and per-agent concurrency limits.
    */
   private selectForDispatch(graph: TaskGraph): TaskNode[] {

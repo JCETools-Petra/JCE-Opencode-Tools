@@ -25,6 +25,7 @@ export interface RuntimeState {
   verificationEvidence: unknown[];
   retryHistory: unknown[];
   traceEvents: TraceEvent[];
+  changedFiles: string[];
   activeWorkflow?: WorkflowRun;
   workflowRuns: WorkflowRun[];
   contextBudgetSummary?: ContextBudgetSummary;
@@ -144,6 +145,7 @@ export function createEmptyRuntimeState(now = new Date().toISOString()): Runtime
     verificationEvidence: [],
     retryHistory: [],
     traceEvents: [],
+    changedFiles: [],
     workflowRuns: [],
     wisdom: [],
     taskLearnings: [],
@@ -275,6 +277,7 @@ export function pruneRuntimeState(runtime: RuntimeState): RuntimeState {
     verificationEvidence: newest(runtime.verificationEvidence, 100),
     retryHistory: newest(runtime.retryHistory, 100),
     traceEvents: newest(runtime.traceEvents, 200),
+    changedFiles: newest(runtime.changedFiles ?? [], 200),
     activeWorkflow: runtime.activeWorkflow,
     workflowRuns: newest(runtime.workflowRuns ?? [], 10),
     contextBudgetSummary: sanitizeContextBudgetSummary(runtime.contextBudgetSummary),
@@ -292,6 +295,7 @@ export function mergeRuntimeStateSnapshot(previous: RuntimeState, next: RuntimeS
     ...next,
     ...Object.fromEntries(RUNTIME_COLLECTIONS.map((key) => [key, mergeById(previous[key], next[key])])),
     traceEvents: next.traceEvents.length > 0 ? next.traceEvents : previous.traceEvents,
+    changedFiles: Array.from(new Set([...(previous.changedFiles ?? []), ...(next.changedFiles ?? [])])),
     activeWorkflow: options.clearWorkflowRuntime ? next.activeWorkflow : next.activeWorkflow ?? previous.activeWorkflow,
     workflowRuns: options.clearWorkflowRuntime ? next.workflowRuns : next.workflowRuns.length > 0 ? next.workflowRuns : previous.workflowRuns,
     contextBudgetSummary: mergeContextBudgetSummary(previous.contextBudgetSummary, next.contextBudgetSummary),

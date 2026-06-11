@@ -57,6 +57,7 @@ import {
 } from "./execution-memory-v2.js";
 import type { ExecutionMemoryV2 } from "./types.js";
 import { buildFailureSignature } from "../failure-signature.js";
+import { GraphRegistry } from "./graph-registry.js";
 import {
   assessTaskComplexity,
   shouldAutoActivate,
@@ -130,6 +131,7 @@ const DEFAULT_OPERATOR_PREFERENCES: OperatorPreferences = {
 
 export class OrchestrationController {
   private graph: TaskGraph | null = null;
+  private graphRegistry = new GraphRegistry();
   private memory: OrchestrationMemory;
   private execMemory: ExecutionMemoryV2;
   private scheduler: Scheduler;
@@ -139,6 +141,7 @@ export class OrchestrationController {
   private projectRoot: string;
   private now: () => string;
   private nodeToTaskMap: Map<string, string> = new Map(); // nodeId → background taskId
+  private nodeToGraphMap: Map<string, string> = new Map(); // nodeId → owning graphId (multi-graph)
   private autonomyLevel: AutonomyLevel;
   private operatorPreferences: OperatorPreferences;
 
@@ -169,6 +172,11 @@ export class OrchestrationController {
     const restored = restoreOrchestrationFromMemory(this.execMemory, this.now());
     this.memory = restored.memory ?? createOrchestrationMemory(this.now());
     this.graph = restored.graph ?? null;
+    if (this.graph) this.graphRegistry.setActive(this.graph);
+  }
+
+  private syncGraphRegistry(): void {
+    if (this.graph) this.graphRegistry.update(this.graph);
   }
 
   // ─── Intent & Planning ────────────────────────────────────────────────────
@@ -183,11 +191,34 @@ export class OrchestrationController {
   }
 
   /**
+   * Prepare controller state before installing a brand-new graph.
+   *
+   * Clears the node→task mapping so late-completing tasks from a previous graph
+   * cannot resolve to stale node IDs (which would throw "Node not found" in
+   * collectResult and inject a spurious blocker). If an in-flight (incomplete)
+   * graph is being replaced, emit an event so the replacement is never silent.
+   */
+  private prepareForNewGraph(context: string): void {
+    if (this.graph && !this.isComplete()) {
+      this.events.push({
+        type: "graph.replanning",
+        timestamp: this.now(),
+        detail: `Replacing in-flight graph ${this.graph.id} (status=${this.graph.status}) with a new plan (${context}). Prior node→task mappings cleared.`,
+        metadata: { previousGraphId: this.graph.id, previousStatus: this.graph.status, context },
+      });
+      if (this.events.length > 100) this.events = this.events.slice(-100);
+    }
+    this.nodeToTaskMap.clear();
+  }
+
+  /**
    * Create a new task graph from the current intent.
    */
   createPlan(goal: string, intent?: ScoredIntent): TaskGraph {
     const resolvedIntent = intent ?? this.currentIntent ?? scoreIntent(goal);
     this.currentIntent = resolvedIntent;
+
+    this.prepareForNewGraph("createPlan");
 
     // Create graph
     this.graph = createTaskGraph({
@@ -207,6 +238,7 @@ export class OrchestrationController {
     // Promote initial ready nodes
     this.graph = promoteReadyNodes(this.graph, this.now());
     this.graph = updateGraphStatus(this.graph, this.now());
+    this.graphRegistry.setActive(this.graph);
 
     // Record decision
     this.memory = addDecision(this.memory, {
@@ -237,6 +269,7 @@ export class OrchestrationController {
 
   createReleaseCommanderPlan(goal: string, targetVersion: string): TaskGraph {
     this.currentIntent = scoreIntent(`release ${goal}`);
+    this.prepareForNewGraph("createReleaseCommanderPlan");
     this.graph = createTaskGraph({
       id: `graph-release-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       goal,
@@ -262,6 +295,7 @@ export class OrchestrationController {
     }
     this.graph = promoteReadyNodes(this.graph, this.now());
     this.graph = updateGraphStatus(this.graph, this.now());
+    this.graphRegistry.setActive(this.graph);
     return this.graph;
   }
 
@@ -321,6 +355,67 @@ export class OrchestrationController {
   }
 
   /**
+   * Multi-graph dispatch: advance EVERY registered graph under one shared
+   * concurrency budget and return dispatch instructions tagged with graphId.
+   *
+   * Reuses the single-graph request-building logic; only the scheduling pass is
+   * cross-graph. The active graph pointer is left unchanged.
+   */
+  getNextDispatchAll(): Array<DispatchResult & { graphId: string }> {
+    this.syncGraphRegistry();
+    const graphs = this.graphRegistry.list().filter((g) => g.status !== "completed" && g.status !== "failed" && g.status !== "cancelled");
+    if (graphs.length === 0) return [];
+
+    const { graphs: advanced, toDispatch } = this.scheduler.tickAll(graphs);
+    for (const graph of advanced) this.graphRegistry.update(graph);
+    // Keep this.graph consistent with the (possibly mutated) active graph.
+    this.graph = this.graphRegistry.getActive();
+
+    return toDispatch.map(({ graphId, node }) => {
+      this.nodeToGraphMap.set(node.id, graphId);
+      const request = buildAgentRequest(node, {
+        facts: getTopFacts(this.memory, 10),
+        constraints: getActiveConstraints(this.memory),
+        priorArtifacts: [],
+        skills: node.input.skills ?? [],
+      });
+      return {
+        graphId,
+        nodeId: node.id,
+        agent: node.agent,
+        prompt: formatAgentRequestAsPrompt(request),
+        skills: node.input.skills ?? [],
+        modelCategory: node.type === "research" ? "exploration" : node.type === "review" ? "deep" : "default",
+      };
+    });
+  }
+
+  /**
+   * Collect a sub-agent result into a SPECIFIC graph (multi-graph aware).
+   *
+   * Reuses collectResult by temporarily activating the owning graph, then
+   * restores the previous active graph so concurrent workstreams don't clobber
+   * each other's active pointer.
+   */
+  collectResultForGraph(graphId: string, nodeId: string, rawOutput: string): CollectResult {
+    this.syncGraphRegistry();
+    const previousActiveId = this.graph?.id ?? null;
+    if (!this.graphRegistry.switchActive(graphId)) {
+      throw new Error(`Unknown graph: ${graphId}`);
+    }
+    this.graph = this.graphRegistry.getActive();
+    try {
+      const result = this.collectResult(nodeId, rawOutput);
+      if (this.graph) this.graphRegistry.update(this.graph);
+      return result;
+    } finally {
+      if (previousActiveId && this.graphRegistry.switchActive(previousActiveId)) {
+        this.graph = this.graphRegistry.getActive();
+      }
+    }
+  }
+
+  /**
    * Map a dispatched node to a background task ID (for tracking).
    */
   mapNodeToTask(nodeId: string, taskId: string): void {
@@ -337,6 +432,78 @@ export class OrchestrationController {
     return undefined;
   }
 
+  /**
+   * Get the owning graphId for a node (multi-graph dispatch tracking).
+   * Returns undefined for nodes dispatched via the single-graph path.
+   */
+  getGraphForNode(nodeId: string): string | undefined {
+    return this.nodeToGraphMap.get(nodeId);
+  }
+
+  /**
+   * Create MULTIPLE concurrent plans (one graph per independent workstream).
+   *
+   * Unlike createPlan (which replaces the active graph), each goal becomes its
+   * own graph registered alongside the others so the multi-graph scheduler can
+   * advance them under one shared concurrency budget. The first plan becomes the
+   * active graph for backward-compatible single-graph callers.
+   *
+   * Returns the created graphs in input order.
+   */
+  createConcurrentPlans(goals: string[]): TaskGraph[] {
+    // Fresh batch: clear any prior/orphan graph (e.g. an approval-gate probe
+    // plan) and node maps so only these workstreams are scheduled.
+    this.graphRegistry.reset();
+    this.nodeToTaskMap.clear();
+    this.nodeToGraphMap.clear();
+    this.graph = null;
+    const created: TaskGraph[] = [];
+    for (let i = 0; i < goals.length; i += 1) {
+      const goal = goals[i].trim();
+      if (!goal) continue;
+      const intent = scoreIntent(goal);
+      const graph = createTaskGraph({
+        id: `graph-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        goal,
+        now: this.now(),
+        metadata: { concurrentWorkstream: true, workstreamIndex: i },
+      });
+      let built = graph;
+      const plan = this.planner.plan(intent, goal, this.memory);
+      for (const nodeInput of plan.nodes) {
+        built = addNode(built, nodeInput, this.now());
+      }
+      built = promoteReadyNodes(built, this.now());
+      built = updateGraphStatus(built, this.now());
+
+      // First workstream becomes the active graph; the rest are registered
+      // alongside it so tickAll can schedule them concurrently.
+      if (i === 0) {
+        this.graph = built;
+        this.currentIntent = intent;
+        this.graphRegistry.setActive(built);
+      } else {
+        this.graphRegistry.update(built);
+      }
+      created.push(built);
+    }
+
+    this.memory = addDecision(this.memory, {
+      description: `Concurrent plans created: ${created.length} workstream(s)`,
+      reasoning: goals.map((g) => g.trim()).filter(Boolean).join(" | ").slice(0, 240),
+    }, this.now());
+
+    this.events.push({
+      type: "graph.replanning",
+      timestamp: this.now(),
+      detail: `Created ${created.length} concurrent workstream graph(s).`,
+      metadata: { concurrent: true, graphIds: created.map((g) => g.id) },
+    });
+    if (this.events.length > 100) this.events = this.events.slice(-100);
+
+    return created;
+  }
+
   // ─── Collection & Completion ──────────────────────────────────────────────
 
   /**
@@ -345,7 +512,28 @@ export class OrchestrationController {
   collectResult(nodeId: string, rawOutput: string): CollectResult {
     if (!this.graph) throw new Error("No active graph.");
     const node = this.graph.nodes.get(nodeId);
-    if (!node) throw new Error(`Node not found: ${nodeId}`);
+    if (!node) {
+      // The node was removed by a replan, or belongs to a superseded graph
+      // whose task completed late. Treat as a benign no-op instead of throwing
+      // (a throw here would be turned into a spurious blocker by the caller).
+      this.nodeToTaskMap.delete(nodeId);
+      this.events.push({
+        type: "graph.replanning",
+        timestamp: this.now(),
+        detail: `Discarded late result for unknown node ${nodeId} (removed by replan or superseded graph).`,
+        metadata: { nodeId },
+      });
+      if (this.events.length > 100) this.events = this.events.slice(-100);
+      return {
+        nodeId,
+        status: "success",
+        summary: `Late/orphaned result for ${nodeId} ignored.`,
+        confidence: 0,
+        evidence: aggregateEvidence([]),
+        newFacts: [],
+        blockers: [],
+      };
+    }
 
     // Parse the raw output into structured result
     const request = buildAgentRequest(node, {
@@ -483,6 +671,7 @@ export class OrchestrationController {
    * Get the current orchestration status.
    */
   getStatus(): OrchestrationStatus {
+    this.syncGraphRegistry();
     const assessment = this.graph ? this.planner.assess(this.graph, this.memory) : null;
     return {
       graphId: this.graph?.id ?? null,
@@ -556,7 +745,25 @@ export class OrchestrationController {
    * Get the raw graph (for advanced inspection).
    */
   getGraph(): TaskGraph | null {
+    this.syncGraphRegistry();
     return this.graph;
+  }
+
+  getGraphRegistrySnapshot() {
+    this.syncGraphRegistry();
+    return this.graphRegistry.snapshot();
+  }
+
+  listGraphs(): TaskGraph[] {
+    this.syncGraphRegistry();
+    return this.graphRegistry.list();
+  }
+
+  switchActiveGraph(id: string): boolean {
+    this.syncGraphRegistry();
+    const switched = this.graphRegistry.switchActive(id);
+    if (switched) this.graph = this.graphRegistry.getActive();
+    return switched;
   }
 
   /**

@@ -106,6 +106,70 @@ describe("Scheduler", () => {
     });
   });
 
+  describe("tickAll (multi-graph shared budget)", () => {
+    test("shared global concurrency budget is not oversubscribed across graphs", () => {
+      timeCounter = 0;
+      const scheduler = new Scheduler({ maxConcurrency: 3, maxConcurrencyPerAgent: { self: 9, oracle: 9, "jce-researcher": 9, explorer: 9, frontend: 9, android: 9 } }, mockNow);
+      let g1 = createTaskGraph({ id: "g1", goal: "A", now: NOW });
+      g1 = addNode(g1, makeNode({ id: "a1", agent: "explorer" }), NOW);
+      g1 = addNode(g1, makeNode({ id: "a2", agent: "explorer" }), NOW);
+      g1 = promoteReadyNodes(g1, NOW);
+      let g2 = createTaskGraph({ id: "g2", goal: "B", now: NOW });
+      g2 = addNode(g2, makeNode({ id: "b1", agent: "explorer" }), NOW);
+      g2 = addNode(g2, makeNode({ id: "b2", agent: "explorer" }), NOW);
+      g2 = promoteReadyNodes(g2, NOW);
+
+      const result = scheduler.tickAll([g1, g2]);
+      // 4 candidates but global budget is 3.
+      expect(result.toDispatch).toHaveLength(3);
+    });
+
+    test("per-agent limit is enforced across ALL graphs combined", () => {
+      timeCounter = 0;
+      const scheduler = new Scheduler({ maxConcurrency: 10, maxConcurrencyPerAgent: { ...DEFAULT_SCHEDULER_CONFIG.maxConcurrencyPerAgent, self: 1 } }, mockNow);
+      let g1 = createTaskGraph({ id: "g1", goal: "A", now: NOW });
+      g1 = addNode(g1, makeNode({ id: "a1", agent: "self" }), NOW);
+      g1 = promoteReadyNodes(g1, NOW);
+      let g2 = createTaskGraph({ id: "g2", goal: "B", now: NOW });
+      g2 = addNode(g2, makeNode({ id: "b1", agent: "self" }), NOW);
+      g2 = promoteReadyNodes(g2, NOW);
+
+      const result = scheduler.tickAll([g1, g2]);
+      // self limit is 1 globally → only ONE self node across both graphs.
+      expect(result.toDispatch.filter((d) => d.node.agent === "self")).toHaveLength(1);
+    });
+
+    test("dispatches fairly (round-robin) so no graph starves", () => {
+      timeCounter = 0;
+      const scheduler = new Scheduler({ maxConcurrency: 2, maxConcurrencyPerAgent: { self: 9, oracle: 9, "jce-researcher": 9, explorer: 9, frontend: 9, android: 9 } }, mockNow);
+      let g1 = createTaskGraph({ id: "g1", goal: "A", now: NOW });
+      g1 = addNode(g1, makeNode({ id: "a1", agent: "explorer" }), NOW);
+      g1 = addNode(g1, makeNode({ id: "a2", agent: "explorer" }), NOW);
+      g1 = promoteReadyNodes(g1, NOW);
+      let g2 = createTaskGraph({ id: "g2", goal: "B", now: NOW });
+      g2 = addNode(g2, makeNode({ id: "b1", agent: "explorer" }), NOW);
+      g2 = promoteReadyNodes(g2, NOW);
+
+      const result = scheduler.tickAll([g1, g2]);
+      const graphIds = new Set(result.toDispatch.map((d) => d.graphId));
+      // With budget 2 and round-robin, each graph gets one slot — not both to g1.
+      expect(graphIds.has("g1")).toBe(true);
+      expect(graphIds.has("g2")).toBe(true);
+    });
+
+    test("tags each dispatch with its owning graphId and marks node running", () => {
+      timeCounter = 0;
+      const scheduler = new Scheduler({}, mockNow);
+      let g1 = createTaskGraph({ id: "g1", goal: "A", now: NOW });
+      g1 = addNode(g1, makeNode({ id: "a1", agent: "explorer" }), NOW);
+      g1 = promoteReadyNodes(g1, NOW);
+
+      const result = scheduler.tickAll([g1]);
+      expect(result.toDispatch[0].graphId).toBe("g1");
+      expect(result.graphs[0].nodes.get("a1")?.status).toBe("running");
+    });
+  });
+
   describe("onNodeComplete", () => {
     test("completes node and promotes downstream", () => {
       timeCounter = 0;

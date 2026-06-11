@@ -36,14 +36,19 @@ function buildDelegatedPrompt(prompt: string, description = "Delegated task", ag
 
 function stripDelegatedResultContract(prompt: string): string {
   const normalized = prompt.replace(/\r\n/g, "\n");
-  const contract = buildDelegatedResultContractInstructions().trim();
   const marker = "## Output Contract\n";
   const matches = [...normalized.matchAll(/## Output Contract\n/g)];
   for (let index = matches.length - 1; index >= 0; index -= 1) {
     const match = matches[index];
     if (match.index === undefined) continue;
     const contentStart = match.index + marker.length;
-    if (normalized.slice(contentStart).trim() === contract) return normalized.slice(0, match.index).trimEnd();
+    const tail = normalized.slice(contentStart).trim();
+    const looksLikeDelegatedContract = tail.includes("Return your final answer in this format:")
+      && tail.includes("## Summary")
+      && tail.includes("## Files")
+      && tail.includes("## Verification")
+      && tail.includes("## Risks");
+    if (looksLikeDelegatedContract) return normalized.slice(0, match.index).trimEnd();
   }
   return prompt.replace(`\n\n${buildDelegatedResultContractInstructions()}`, "");
 }

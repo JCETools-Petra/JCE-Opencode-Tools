@@ -381,6 +381,7 @@ export class BackgroundManager {
         resolved: task.reviewStatus === "accepted" || (Boolean(task.retryTaskId) && resolvedRetryRootIds.has(task.rootTaskId ?? task.id)),
       })),
       traceEvents: this.getTraceEvents(),
+      changedFiles: [],
       workflowRuns: [],
       wisdom: [...this.wisdom],
       taskLearnings: [...this.taskLearnings],

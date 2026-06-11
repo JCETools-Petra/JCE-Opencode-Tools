@@ -13,7 +13,8 @@ export interface DelegatedContractScore {
 export function scoreDelegatedContract(text: string): DelegatedContractScore {
   const lower = text.toLowerCase();
   const completeness = ["summary", "files", "verification", "risks"].filter((section) => lower.includes(section)).length / 4;
-  const verificationQuality = /pass|0 fail|verified|evidence/i.test(text) ? 1 : /not run|missing verification/i.test(text) ? 0.2 : 0.4;
+  const hasStructuredEvidence = /```jce-evidence\s*\n[\s\S]*?```/i.test(text);
+  const verificationQuality = hasStructuredEvidence ? 1 : /not run|missing verification/i.test(text) ? 0.2 : /pass|0 fail|verified|evidence/i.test(text) ? 0.7 : 0.4;
   const contradictionRisk = /but|however|contradict|not verified/i.test(lower) ? 0.4 : 0.9;
   const confidenceQuality = /confidence|high|medium|low/i.test(lower) ? 0.9 : 0.3;
   const relevance = text.length > 80 ? 0.8 : 0.4;

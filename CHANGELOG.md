@@ -6,6 +6,34 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.7.4] - 2026-06-11
+
+### Added
+- **Concurrent multi-graph orchestration**: new shared-budget scheduler (`Scheduler.tickAll`) advances multiple task graphs at once with cross-graph per-agent limits and round-robin fairness. Controller gains a `GraphRegistry` plus `createConcurrentPlans`, `getNextDispatchAll`, and `collectResultForGraph`; the bridge exposes `planAndDispatchConcurrent`.
+- **Conservative multi-workstream detector**: explicit numbered/bulleted action lists or "in parallel / secara paralel" framing spawn independent workstream graphs; plain sequential prose stays single (precision-first to avoid runaway spawning).
+- **Structured delegated evidence/result channels**: sub-agents may emit fenced `jce-evidence` and `jce-result` blocks for deterministic parsing of verification, files, facts, and risks, with the existing free-text path retained as fallback.
+- **Typed auto-activation decision** with confidence, reason, and signal telemetry, replacing the prior boolean-only gate.
+- **Pre-final completion guard** injected into the system prompt for active workflows, reducing reliance on post-generation gating.
+
+### Fixed
+- **Final review gate now receives real changed files**: write/edit/`apply_patch` and `git status`/`git diff` output feed actual edit scope instead of an empty list.
+- **Evidence confidence is gated**: failing runs and no-evidence results are capped, and evidence-required tasks without structured evidence are held to `partial` instead of `success`.
+- **Fact extraction precision**: project facts are derived only from execution output (bash/sub-agent), not file contents that merely mention tool names.
+- **Orchestration graph lifecycle**: stale `node→task` mappings are cleared on new plans and late/orphaned results are tolerated instead of injecting spurious blockers.
+- **Installer banner** now reports the correct skill count (74).
+
+### Changed
+- Release version synced to `3.7.4` across package metadata, installers, constants, MCP version, README badge, and version tests.
+
+### Verification
+- `tsc --noEmit` exit 0; full `bun test` suite green (CLI integration timeouts are transient under load and pass in isolation).
+
+### Known limitations
+- Pre-send hard blocking of completion claims remains impossible: the OpenCode SDK exposes no pre-generation cancel hook, so gates flag/append rather than cancel.
+- Concurrent workstream execution activates only on explicit multi-workstream signals; mixed prose stays single-graph by design.
+
+---
+
 ## [3.7.3] - 2026-06-11
 
 ### Fixed

@@ -60,7 +60,7 @@ describe("Orchestration Bridge — Full Loop", () => {
     const client = {
       session: {
         create: async () => ({ id: `child-${++sessionCreateCalls}` }),
-        prompt: async () => ({ parts: [{ type: "text", text: "## Summary\nFixed\n\n## Verification\n$ bun test\n61 pass, 0 fail\nexit code: 0\n\n## Files\n- src/auth.ts\n\n## Risks\n- none" }] }),
+        prompt: async () => ({ parts: [{ type: "text", text: "## Summary\nFixed\n\n## Verification\n$ bun test\n61 pass, 0 fail\nexit code: 0\n```jce-evidence\n[{\"type\":\"test_result\",\"command\":\"bun test\",\"exitCode\":0,\"passed\":61,\"failed\":0}]\n```\n\n## Files\n- src/auth.ts\n\n## Risks\n- none" }] }),
       },
     } as any;
 
@@ -249,5 +249,38 @@ describe("Orchestration Bridge — Full Loop", () => {
     expect(memory.constraints.length).toBe(1);
     expect(memory.constraints[0].description).toContain("database schema");
     expect(memory.constraints[0].active).toBe(true);
+  });
+
+  test("planAndDispatchConcurrent dispatches across multiple workstream graphs", async () => {
+    const root = tempRoot();
+    const orchestrator = new OrchestrationController({ projectRoot: root });
+
+    const manager = new BackgroundManager({ maxConcurrency: 5 });
+    let sessionCreateCalls = 0;
+    const client = {
+      session: {
+        create: async () => ({ id: `child-${++sessionCreateCalls}` }),
+        prompt: async () => ({ parts: [{ type: "text", text: "## Summary\nDone\n\n## Verification\nexit code: 0\n```jce-evidence\n[{\"type\":\"test_result\",\"command\":\"bun test\",\"exitCode\":0,\"passed\":1,\"failed\":0}]\n```\n\n## Files\n- none\n\n## Risks\n- none" }] }),
+      },
+    } as any;
+
+    const bridge = new OrchestrationBridge({ manager, client, orchestrator });
+    const result = await bridge.planAndDispatchConcurrent(
+      ["audit the security module", "refactor the frontend dashboard"],
+      "session-1",
+      "msg-1",
+    );
+
+    expect(result.dispatched.length).toBeGreaterThan(0);
+    expect(result.message).toContain("concurrent workstream");
+
+    // Dispatched nodes must span at least 2 distinct graphs.
+    const graphIds = new Set<string>();
+    for (const d of result.dispatched) {
+      const gid = orchestrator.getGraphForNode(d.nodeId);
+      if (gid) graphIds.add(gid);
+    }
+    expect(graphIds.size).toBeGreaterThanOrEqual(2);
+    expect(orchestrator.listGraphs().length).toBeGreaterThanOrEqual(2);
   });
 });
