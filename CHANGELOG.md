@@ -19,6 +19,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 - `3.7.2` unified installer/update payload verification on a single manifest.
 - `3.7.3` is immediate hotfix so installed users can complete self-update without reinstalling, including runs launched outside the repository directory.
 
+### Upgrade note for `3.7.2` users
+- `3.7.2` runs its old payload validator before the `3.7.3` source is swapped in. If `opencode-jce update` still reports `Missing CLI payload manifest: C:\Users\Joshhh\config\cli-payload.txt`, run the installer once or bootstrap the manifest into the current directory, then rerun `opencode-jce update`.
+- PowerShell bootstrap workaround:
+  ```powershell
+  New-Item -ItemType Directory -Force "$HOME\config"
+  irm "https://raw.githubusercontent.com/JCE-Joshhh77/JCE-Opencode-Tools/v3.7.3/config/cli-payload.txt" -OutFile "$HOME\config\cli-payload.txt"
+  opencode-jce update
+  Remove-Item -Recurse -Force "$HOME\config"
+  ```
+
 ### Verified
 - `bun test`
 - `bun test tests/unit/update-process-cleanup.test.ts tests/unit/install-payload-verification.test.ts`
