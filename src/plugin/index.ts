@@ -1,5 +1,5 @@
 import type { Plugin, Hooks } from "@opencode-ai/plugin";
-import { existsSync, writeFileSync } from "fs";
+import { existsSync, writeFileSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { BackgroundManager } from "./background/manager.js";
 import { extractPromptText } from "./background/spawner.js";
@@ -27,6 +27,7 @@ import { isRecord } from "./lib/shared-predicates.js";
 import { determineSkillsForMessage, explainSkillRouting, parseSkillCorrection, applySkillCorrection, applySkillHistoryAdjustments, applySubAgentTelemetryQuality, resolveSkills, type SkillCorrection } from "./lib/skill-loader.js";
 import { applyContextBudget } from "./lib/context-budget.js";
 import { POST_COMPACTION_NO_TASK_GUARD, shouldSuppressCompactionAutocontinue } from "./lib/compaction-loop-guard.js";
+import { resolveContextLimit, extractTokensUsed, computeUsage, crossedThreshold, buildCompactionPreservation, formatUsage, DEFAULT_COMPACTION_THRESHOLD } from "./lib/context-window-monitor.js";
 import { scoreIntent, toLegacyRoute } from "./lib/orchestration/intent-router.js";
 import { OrchestrationController } from "./lib/orchestration/controller.js";
 import { OrchestrationBridge } from "./lib/orchestration/bridge.js";
@@ -163,6 +164,10 @@ const jcePlugin: Plugin = async (input) => {
   let lastUserMessage = "";
   let workflowRuntimeActive = currentMemory.activeTasks.length > 0;
   let lastTodoState: TodoState | undefined;
+  // Auto-compaction context tracking. cachedContextLimit is captured from the
+  // model in chat.params/system.transform (the `event` hook has no model).
+  let cachedContextLimit = 0;
+  let lastUsagePercent = 0;
   let sessionSkillCorrection: SkillCorrection | null = currentMemory.skillCorrectionSession
     ? {
         forbid: currentMemory.skillCorrectionSession.forbidSkills,
@@ -357,6 +362,56 @@ const jcePlugin: Plugin = async (input) => {
               orchestrationLogger.log("warn", "node.timeout.periodic", `Periodic check: node ${node.id} timed out`);
             }
           }
+        }, undefined, orchestrationLogger);
+      }
+
+      // Auto-compaction monitor: on each assistant message update, compute how
+      // full the context window is. When usage first crosses the threshold
+      // (default 83%), write a durable checkpoint so workflow state survives the
+      // upcoming native compaction. Fires once per upward crossing.
+      if (event?.type === "message.updated") {
+        // Smoke-test diagnostic (opt-in via OPENCODE_JCE_DEBUG_CONTEXT=1).
+        // Captures EVERY assistant message.updated token observation — including
+        // empty/early fires — to a JSONL file so a real session can definitively
+        // answer: does info.tokens.input populate in the live event, and when?
+        if (process.env.OPENCODE_JCE_DEBUG_CONTEXT === "1") {
+          withErrorBoundary(() => {
+            const info = (event as any)?.properties?.info;
+            if (!info || info.role !== "assistant") return;
+            const t = info.tokens ?? {};
+            const record = {
+              at: new Date().toISOString(),
+              role: info.role,
+              completed: typeof info.time?.completed === "number",
+              input: typeof t.input === "number" ? t.input : null,
+              output: typeof t.output === "number" ? t.output : null,
+              cacheRead: typeof t.cache?.read === "number" ? t.cache.read : null,
+              tokensUsed: extractTokensUsed(info),
+              cachedContextLimit,
+            };
+            const dir = join(projectRoot, ".opencode-jce");
+            mkdirSync(dir, { recursive: true });
+            appendFileSync(join(dir, "context-debug.jsonl"), JSON.stringify(record) + "\n", "utf-8");
+          }, undefined, orchestrationLogger);
+        }
+
+        withErrorBoundary(() => {
+          const info = (event as any)?.properties?.info;
+          if (!info || info.role !== "assistant") return;
+          const tokensUsed = extractTokensUsed(info);
+          if (tokensUsed <= 0) return;
+          const usage = computeUsage(tokensUsed, cachedContextLimit || undefined);
+          const crossed = crossedThreshold(lastUsagePercent, usage.usagePercent, DEFAULT_COMPACTION_THRESHOLD);
+          lastUsagePercent = usage.usagePercent;
+          if (!crossed) return;
+          // Durable checkpoint: persist runtime + orchestration so a compaction
+          // (native or otherwise) cannot lose goal/files/blockers/verification.
+          persistCurrentMemory();
+          orchestrationLogger.log("warn", "context.autocompaction.checkpoint",
+            `${formatUsage(usage)} — crossed ${Math.round(DEFAULT_COMPACTION_THRESHOLD * 100)}% threshold; durable checkpoint written.`);
+          withErrorBoundary(() => {
+            appendTelemetry(projectRoot, { kind: "context_autocompaction", name: "checkpoint", metadata: { usagePercent: usage.usagePercent, tokensUsed: usage.tokensUsed, contextLimit: usage.contextLimit, knownLimit: usage.knownLimit } });
+          }, undefined, orchestrationLogger);
         }, undefined, orchestrationLogger);
       }
     },
@@ -582,6 +637,13 @@ const jcePlugin: Plugin = async (input) => {
     },
 
     "experimental.chat.system.transform": async (_input, output) => {
+      // Capture the model's context limit here (the `event` hook has no model).
+      // Used by the auto-compaction monitor to compute usage %.
+      withErrorBoundary(() => {
+        const modelLimit = (_input as any)?.model?.limit?.context;
+        const resolved = resolveContextLimit(modelLimit);
+        if (resolved.known) cachedContextLimit = resolved.limit;
+      }, undefined, orchestrationLogger);
       output.system.push(POST_COMPACTION_NO_TASK_GUARD);
       const preFinalGuard = buildPreFinalGuard(currentMemory);
       if (preFinalGuard) output.system.push(preFinalGuard);
@@ -608,6 +670,28 @@ const jcePlugin: Plugin = async (input) => {
         output.continue = false;
         output.reason = "JCE no-task compaction guard: idle greeting/awaiting-task summary must not auto-continue.";
       }
+    },
+
+    // Enrich the native compaction prompt so the summary never drops critical
+    // JCE-Worker state (goal, touched files, open blockers, verification status).
+    // We append to output.context rather than replacing output.prompt — we ride
+    // OpenCode's tested compaction, only ensuring durable facts survive it.
+    "experimental.session.compacting": async (_input: any, output: any) => {
+      withErrorBoundary(() => {
+        if (!output || typeof output !== "object" || !Array.isArray(output.context)) return;
+        const toStrings = (items: unknown[] | undefined): string[] =>
+          (items ?? []).map((i) => typeof i === "string" ? i : (i as any)?.message ?? (i as any)?.description ?? "").filter((s: string) => s && s.trim());
+        const preservation = buildCompactionPreservation({
+          goal: currentMemory.activeWorkflow?.goal,
+          changedFiles: currentMemory.changedFiles,
+          blockers: toStrings(currentMemory.blockers),
+          verification: toStrings(currentMemory.verificationEvidence),
+        });
+        if (preservation) {
+          output.context.push(preservation);
+          orchestrationLogger.log("info", "context.autocompaction.enrich", "Injected JCE state preservation into compaction prompt.");
+        }
+      }, undefined, orchestrationLogger);
     },
 
     // #3: Gate the FINAL assistant text — the real surface where a "done" claim

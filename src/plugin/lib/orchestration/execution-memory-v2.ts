@@ -241,9 +241,13 @@ export function pruneMemoryV2(memory: ExecutionMemoryV2, now?: string): Executio
   const ts = now ?? new Date().toISOString();
   const nowMs = Date.parse(ts);
 
-  // Prune facts by TTL and limit
+  // Prune facts by TTL and limit. An unparseable expiresAt is treated as
+  // expired so corrupt entries get pruned rather than living forever.
   let facts = memory.facts.filter((f) => {
-    if (f.expiresAt && Date.parse(f.expiresAt) < nowMs) return false;
+    if (f.expiresAt) {
+      const t = Date.parse(f.expiresAt);
+      if (Number.isNaN(t) || t < nowMs) return false;
+    }
     return true;
   });
   if (facts.length > PRUNE_LIMITS.maxFacts) {
@@ -255,7 +259,12 @@ export function pruneMemoryV2(memory: ExecutionMemoryV2, now?: string): Executio
   if (decisions.length > PRUNE_LIMITS.maxDecisions) {
     const active = decisions.filter((d) => d.status === "active");
     const inactive = decisions.filter((d) => d.status !== "active");
-    decisions = [...active, ...inactive.slice(-(PRUNE_LIMITS.maxDecisions - active.length))];
+    // Keep all active decisions; fill remaining budget with the most-recent
+    // inactive ones. Clamp so an over-budget active set never produces a
+    // negative slice (which would paradoxically keep MORE items).
+    const inactiveBudget = Math.max(0, PRUNE_LIMITS.maxDecisions - active.length);
+    const keptInactive = inactiveBudget > 0 ? inactive.slice(-inactiveBudget) : [];
+    decisions = [...active, ...keptInactive];
   }
 
   // Prune artifacts (keep latest per path)
@@ -270,10 +279,15 @@ export function pruneMemoryV2(memory: ExecutionMemoryV2, now?: string): Executio
     evidence = evidence.slice(-PRUNE_LIMITS.maxEvidence);
   }
 
-  // Prune wisdom by TTL and limit
+  // Prune wisdom by TTL and limit. Unparseable timestamps are treated as
+  // expired/old so corrupt entries get pruned rather than sticking forever.
   let wisdom = memory.wisdom.filter((w) => {
-    if (w.expiresAt && Date.parse(w.expiresAt) < nowMs) return false;
-    const age = nowMs - Date.parse(w.createdAt);
+    if (w.expiresAt) {
+      const exp = Date.parse(w.expiresAt);
+      if (Number.isNaN(exp) || exp < nowMs) return false;
+    }
+    const created = Date.parse(w.createdAt);
+    const age = Number.isNaN(created) ? Infinity : nowMs - created;
     if (age > PRUNE_LIMITS.wisdomTtlMs && w.usageCount === 0) return false;
     return true;
   });
@@ -361,8 +375,11 @@ export function mergeOrchestrationIntoMemory(
     },
     facts: deduplicateByKey(execMemory.facts, snapshot.facts, "key"),
     decisions: [...execMemory.decisions, ...snapshot.decisions.filter((d) => !execMemory.decisions.some((ed) => ed.id === d.id))],
-    artifacts: deduplicateByKey([...execMemory.artifacts, ...snapshot.artifacts], [], "path"),
-    evidence: deduplicateByKey([...execMemory.evidence, ...graphEvidence], [], "id"),
+    // Dedupe incoming against existing by stable id (previously the combined
+    // array was passed as `existing` with an empty `incoming`, so no dedup ran
+    // and the same artifact/evidence accumulated on every persist).
+    artifacts: deduplicateByKey(execMemory.artifacts, snapshot.artifacts, "id"),
+    evidence: deduplicateByKey(execMemory.evidence, graphEvidence, "id"),
     orchestration: {
       constraints: snapshot.constraints,
       signals: snapshot.signals.filter((s) => !s.consumed),

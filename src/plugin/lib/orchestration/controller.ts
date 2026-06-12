@@ -60,7 +60,7 @@ import type { ExecutionMemoryV2 } from "./types.js";
 import { buildFailureSignature } from "../failure-signature.js";
 import { recordFailurePattern, queryFailurePattern, formatFailureWarning } from "./failure-pattern-store.js";
 import { recordStrategyOutcome, selectStrategyWithTelemetry } from "./strategy-telemetry.js";
-import { buildRiskHeatmap } from "./risk-heatmap.js";
+import { buildRiskHeatmap, getFileRisk, formatRiskWarning } from "./risk-heatmap.js";
 import { withErrorBoundary } from "./reliability.js";
 import { assessAdaptiveComplexity, type ExecutionStrategy } from "./intelligence.js";
 import { GraphRegistry } from "./graph-registry.js";
@@ -216,6 +216,10 @@ export class OrchestrationController {
       if (this.events.length > 100) this.events = this.events.slice(-100);
     }
     this.nodeToTaskMap.clear();
+    // Clear node→graph mapping too (previously only cleared in the concurrent
+    // path), so stale nodeId→graphId entries don't accumulate across single-graph
+    // replans for the controller's lifetime.
+    this.nodeToGraphMap.clear();
   }
 
   /**
@@ -357,6 +361,11 @@ export class OrchestrationController {
     const { graph, toDispatch } = this.scheduler.tick(this.graph);
     this.graph = graph;
 
+    // Build the file-risk heatmap once for this dispatch batch (cheap; derived
+    // from persisted failure patterns). Nodes touching high-risk files get a
+    // pre-edit warning so the sub-agent proceeds carefully.
+    const riskHeatmap = buildRiskHeatmap(this.execMemory.failurePatterns);
+
     return toDispatch.map((node) => {
       const request = buildAgentRequest(node, {
         facts: getTopFacts(this.memory, 10),
@@ -374,6 +383,14 @@ export class OrchestrationController {
         const pattern = queryFailurePattern(this.execMemory.failurePatterns, this.failurePatternKey(node));
         const warning = formatFailureWarning(pattern);
         if (warning) prompt = `${warning}\n\n${prompt}`;
+      }
+
+      // Pre-edit risk warning: if this node targets a file with a bad failure
+      // history, surface it so the sub-agent is extra careful.
+      const nodeFile = typeof node.metadata?.file === "string" ? node.metadata.file : undefined;
+      if (nodeFile) {
+        const riskWarning = formatRiskWarning(getFileRisk(riskHeatmap, nodeFile));
+        if (riskWarning) prompt = `${riskWarning}\n\n${prompt}`;
       }
 
       return {
@@ -807,6 +824,35 @@ export class OrchestrationController {
       );
       this.strategyOutcomeRecorded.add(graph.id);
     }
+    // Bound the dedup set: drop ids no longer present in the registry so it
+    // cannot grow unbounded over a long-lived session.
+    if (this.strategyOutcomeRecorded.size > 200) {
+      const liveIds = new Set(this.graphRegistry.list().map((g) => g.id));
+      this.strategyOutcomeRecorded = new Set([...this.strategyOutcomeRecorded].filter((id) => liveIds.has(id)));
+    }
+  }
+
+  /**
+   * Public risk heatmap derived from persisted failure patterns. Lets external
+   * consumers (project brain, hooks, pre-edit checks) read which files are
+   * high-risk and surface warnings before editing them.
+   */
+  getRiskHeatmap() {
+    return buildRiskHeatmap(this.execMemory.failurePatterns);
+  }
+
+  /**
+   * Read-only view of recorded failure patterns (record → query round-trip).
+   */
+  getFailurePatterns() {
+    return this.execMemory.failurePatterns ?? [];
+  }
+
+  /**
+   * Convenience: pre-edit risk warning for a specific file, or "" if low/unknown.
+   */
+  getFileRiskWarning(file: string): string {
+    return formatRiskWarning(getFileRisk(this.getRiskHeatmap(), file));
   }
 
   /**

@@ -287,7 +287,8 @@ export function getRunningNodes(graph: TaskGraph): TaskNode[] {
 // ─── Cycle Detection ──────────────────────────────────────────────────────────
 
 function wouldCreateCycle(graph: TaskGraph, from: string, to: string): boolean {
-  // Check if there's already a path from `to` to `from` (which would make adding from→to a cycle)
+  // Adding edge from→to creates a cycle iff `to` can already reach `from`
+  // through existing edges. BFS forward from `to`.
   const visited = new Set<string>();
   const queue = [to];
   while (queue.length > 0) {
@@ -295,25 +296,9 @@ function wouldCreateCycle(graph: TaskGraph, from: string, to: string): boolean {
     if (current === from) return true;
     if (visited.has(current)) continue;
     visited.add(current);
-    // Follow edges from current
     for (const edge of graph.edges) {
       if (edge.from === current && !visited.has(edge.to)) {
         queue.push(edge.to);
-      }
-    }
-  }
-  // Also check: does `from` already reach `to` via existing path from `to`?
-  // Actually we need to check if `to` can reach `from` via existing edges
-  const visited2 = new Set<string>();
-  const queue2 = [from];
-  while (queue2.length > 0) {
-    const current = queue2.shift()!;
-    if (current === to) return false; // This is the edge we're adding, not a cycle
-    if (visited2.has(current)) continue;
-    visited2.add(current);
-    for (const edge of graph.edges) {
-      if (edge.to === current && !visited2.has(edge.from)) {
-        queue2.push(edge.from);
       }
     }
   }
@@ -374,6 +359,28 @@ export function deriveGraphStatus(graph: TaskGraph): GraphStatus {
 
   const anyReady = nodes.some((n) => n.status === "ready");
   if (anyReady) return "executing";
+
+  // Deadlock detection: no node is running/ready/verifying. If every remaining
+  // pending/intake node is permanently stranded behind a failed dependency (so
+  // it can never become ready), the graph cannot progress autonomously and
+  // would otherwise hang in "executing" forever. Mark it failed.
+  const waiting = nodes.filter((n) => n.status === "pending" || n.status === "intake");
+  if (waiting.length > 0 && anyFailed) {
+    const canEventuallyComplete = (nodeId: string, visiting: Set<string>): boolean => {
+      const node = graph.nodes.get(nodeId);
+      if (!node) return false;
+      if (node.status === "done" || node.status === "cancelled") return true;
+      if (node.status === "failed") return false;
+      if (visiting.has(nodeId)) return false; // dependency cycle → cannot complete
+      visiting.add(nodeId);
+      const deps = graph.edges.filter((e) => e.to === nodeId && e.type === "blocks").map((e) => e.from);
+      const ok = deps.every((depId) => canEventuallyComplete(depId, visiting));
+      visiting.delete(nodeId);
+      return ok;
+    };
+    const anyProgressPossible = waiting.some((node) => canEventuallyComplete(node.id, new Set()));
+    if (!anyProgressPossible) return "failed";
+  }
 
   return graph.status;
 }

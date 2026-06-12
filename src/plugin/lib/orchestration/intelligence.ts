@@ -174,7 +174,6 @@ export function formatCrossNodeContext(facts: Fact[]): string {
  */
 export function identifyParallelGroups(graph: TaskGraph): string[][] {
   const groups: string[][] = [];
-  const assigned = new Set<string>();
 
   // Find nodes at the same "depth" level that don't depend on each other
   const depths = computeNodeDepths(graph);
@@ -196,7 +195,6 @@ export function identifyParallelGroups(graph: TaskGraph): string[][] {
       });
       if (independent.length > 1) {
         groups.push(independent);
-        for (const id of independent) assigned.add(id);
       }
     }
   }
@@ -285,6 +283,12 @@ export function evaluateCompletionGate(graph: TaskGraph, minConfidence = 0.7): C
     blockers.push(`${incomplete.length} node(s) not completed: ${incomplete.map((n) => n.title).join(", ")}`);
   }
 
+  // All-cancelled (or empty-of-work) guard: a graph that has nodes but none
+  // actually completed must not "pass" the gate at 0% — nothing was done.
+  if (nodes.length > 0 && completedNodes.length === 0 && incomplete.length === 0) {
+    blockers.push("No work completed: all nodes were cancelled");
+  }
+
   // Aggregate evidence
   const evidenceScore = aggregateEvidence(allEvidence);
 
@@ -311,6 +315,14 @@ export function evaluateCompletionGate(graph: TaskGraph, minConfidence = 0.7): C
   // Check for type safety
   if (!evidenceScore.hasTypeCheck && completedNodes.some((n) => n.type === "code")) {
     warnings.push("No type check evidence found");
+  }
+
+  // Phase-gate enforcement: a later phase must not be "done" while an earlier
+  // phase with work is unsatisfied (e.g. STAGING complete but TESTING failed).
+  // Out-of-order phase violations block completion rather than only warning.
+  const phaseGate = evaluatePhaseGates(graph);
+  if (phaseGate.violations.length > 0) {
+    blockers.push(...phaseGate.violations.map((v) => `Phase-gate violation: ${v}`));
   }
 
   const canComplete = blockers.length === 0 && (!requiresEvidence || evidenceScore.overallConfidence >= minConfidence);

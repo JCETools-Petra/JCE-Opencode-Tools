@@ -16,7 +16,7 @@ export interface CapabilityRegistry { capabilities: Capability[] }
 export interface SkillCapability { routingMode: "auto" | "manual_or_keyword" | "internal_support"; intents: string[]; signals: string[]; files: string[]; verification: string[]; preferredAgents?: string[]; samplePrompts: string[] }
 export interface EvidenceRecord { id: string; taskId: string; type: "command" | "source" | "review" | "manual" | "file"; summary: string; command?: string; status: "pass" | "fail" | "blocked" | "unknown"; timestamp: string; workflowId?: string; files?: string[]; area?: string }
 export interface TelemetryEvent {
-  kind: "skill_selected" | "task_blocked" | "agent_retry" | "verification_used" | "delegation_accepted" | "delegation_rejected" | "skill_followup" | "skill_final_used" | "user_correction" | "verification_result" | "routing_decision" | "task_outcome";
+  kind: "skill_selected" | "task_blocked" | "agent_retry" | "verification_used" | "delegation_accepted" | "delegation_rejected" | "skill_followup" | "skill_final_used" | "user_correction" | "verification_result" | "routing_decision" | "task_outcome" | "context_autocompaction";
   name: string;
   at: string;
   metadata?: Record<string, unknown>;

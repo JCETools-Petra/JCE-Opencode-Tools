@@ -348,8 +348,11 @@ function detectContextSkills(text: string): string[] {
   if (/\b(testdebugunittest|connecteddebugandroidtest|androidtest|robolectric|compose test|migration test|instrumented)\b/i.test(lower)) skills.push("android-testing");
   if (/\b(bundlerelease|assemblerelease|aab|apk|r8|proguard|signingconfig|keystore|play console|versioncode|versionname|mapping\.txt)\b/i.test(lower)) skills.push("android-release");
   if (/\b(@composable|launchedeffect|remember|lazycolumn|collectasstatewithlifecycle|navigation compose|materialtheme)\b/i.test(lower)) skills.push("android-compose");
-  if (/\b(android:exported|permission|deep link|deeplink|network security config|cleartext|webview|biometric|backup rules)\b/i.test(lower)) skills.push("android-security");
-  else if (/\b(react[\s-]native|expo\s+(router|sdk|go))\b/i.test(lower)) skills.push("react-native");
+  if (/\b(android:exported|uses-permission|android\.permission|runtime permission|manifest permission|deep link|deeplink|network security config|cleartext|webview|biometric|backup rules)\b/i.test(lower)) skills.push("android-security");
+  // Framework detection (mutually exclusive — pick best match). Kept separate
+  // from the android domain checks above so an incidental Android keyword cannot
+  // suppress JS/other framework detection.
+  if (/\b(react[\s-]native|expo\s+(router|sdk|go))\b/i.test(lower)) skills.push("react-native");
   else if (/\b(next\.?js|app\s*router|server\s*actions|server\s*components|getServerSideProps|getStaticProps)\b/i.test(lower)) skills.push("nextjs");
   else if (/\b(react|jsx|tsx|hooks?|useState|useEffect|useRef|useMemo|useCallback|useReducer|useContext)\b/i.test(lower)) skills.push("react");
   else if (/\b(vue|nuxt|pinia|composition\s*api|defineComponent|defineModel|v-model|v-if)\b/i.test(lower)) skills.push("vue");

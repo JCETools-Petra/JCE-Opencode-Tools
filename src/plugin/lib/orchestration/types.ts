@@ -5,6 +5,14 @@
  * Replaces the old WorkflowRun with a real DAG-based task graph.
  */
 
+// Canonical structured-memory types live in their owning logic modules; this
+// file re-exposes them for ExecutionMemoryV2 via type-only imports (erased at
+// runtime, so no circular dependency is created).
+import type { FailurePattern } from "./failure-pattern-store.js";
+import type { StrategyTelemetryEntry } from "./strategy-telemetry.js";
+
+export type { FailurePattern, StrategyTelemetryEntry };
+
 // ─── Node Types ───────────────────────────────────────────────────────────────
 
 export type TaskNodeStatus = "intake" | "pending" | "ready" | "running" | "verifying" | "awaiting_approval" | "done" | "failed" | "blocked" | "cancelled" | "abandoned";
@@ -292,34 +300,14 @@ export interface ExecutionMemoryV2 {
   operatorPreferences?: OperatorPreferences;
   autonomyLevel?: AutonomyLevel;
   /** Structured failure patterns: error signature → root cause → fix category. */
-  failurePatterns?: FailurePatternV2[];
+  failurePatterns?: FailurePattern[];
   /** Strategy outcome telemetry: which strategy was chosen per intent and its result. */
-  strategyTelemetry?: StrategyTelemetryV2[];
+  strategyTelemetry?: StrategyTelemetryEntry[];
   /** Persisted orchestration coordination state (constraints/signals) that must survive reloads. */
   orchestration?: {
     constraints: Constraint[];
     signals: Signal[];
   };
-}
-
-export interface FailurePatternV2 {
-  signature: string;
-  errorClass?: string;
-  rootCause?: string;
-  fixCategory?: string;
-  badFixes: string[];
-  successCount: number;
-  failCount: number;
-  firstSeenAt: string;
-  lastSeenAt: string;
-}
-
-export interface StrategyTelemetryV2 {
-  intent: IntentType;
-  strategy: "direct" | "plan-then-exec" | "multi-phase" | "user-gate";
-  outcome: "success" | "partial" | "failed" | "abandoned";
-  retries?: number;
-  recordedAt: string;
 }
 
 export interface MemoryTierSnapshot {

@@ -19,12 +19,39 @@ import { addNode, removeNode, addEdge, type CreateNodeInput } from "./task-graph
 import type { OrchestrationMemory } from "./shared-memory.js";
 import { getTopFacts, getActiveConstraints } from "./shared-memory.js";
 import { matchWorkflowTemplate, instantiateWorkflowTemplate } from "./workflow-templates.js";
+import { assessTaskComplexity } from "./intelligence.js";
 
 const IMPLEMENTATION_SPLIT_VERBS = /\b(?:add|implement|create|build|update|refactor|extract|wire|support|improve)\b/i;
 const SEQUENCE_SIGNALS = /\b(?:first|then|after|before|finally|depends on|dependency|wire into|followed by)\b/i;
 
 function normalizeUnitLabel(text: string): string {
   return text.replace(/^[-*•\d.)\s]+/, "").replace(/\s+/g, " ").trim().replace(/[.;:,]+$/, "");
+}
+
+/**
+ * Order delta nodes so that, within the batch, a node never appears before a
+ * node it depends on. Dependencies that live outside the batch are ignored
+ * (they already exist in the graph). Stable + cycle-safe (falls back to input
+ * order for any nodes left after the topo pass).
+ */
+function orderByDependencies<T extends { id: string; dependencies?: string[] }>(nodes: T[]): T[] {
+  const inBatch = new Set(nodes.map((n) => n.id));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const ordered: T[] = [];
+  const placed = new Set<string>();
+
+  const visit = (node: T, stack: Set<string>): void => {
+    if (placed.has(node.id) || stack.has(node.id)) return; // skip placed or cyclic back-edge
+    stack.add(node.id);
+    for (const dep of node.dependencies ?? []) {
+      if (inBatch.has(dep) && !placed.has(dep)) visit(byId.get(dep)!, stack);
+    }
+    stack.delete(node.id);
+    if (!placed.has(node.id)) { placed.add(node.id); ordered.push(node); }
+  };
+
+  for (const node of nodes) visit(node, new Set());
+  return ordered;
 }
 
 function detectIndependentUnits(goal: string): { units: string[]; reason: string } {
@@ -321,8 +348,10 @@ export class AdaptivePlanner {
     const objective = this.scoreTradeoffs({}, intent.intent);
 
     // Workflow templates: high-specificity patterns (release, migration, security
-    // audit, large refactor, incident) take precedence over generic plans.
-    const workflowTemplate = matchWorkflowTemplate(goal);
+    // audit, large refactor, incident) take precedence over generic plans — but
+    // only when the goal is complex enough to justify a full multi-phase template.
+    const complexity = assessTaskComplexity(goal, intent);
+    const workflowTemplate = matchWorkflowTemplate(goal, complexity.score);
     if (workflowTemplate) {
       const instantiated = instantiateWorkflowTemplate(workflowTemplate.id, goal);
       if (instantiated) {
@@ -474,8 +503,10 @@ export class AdaptivePlanner {
       }
     }
 
-    // Add new nodes
-    for (const nodeInput of delta.addNodes) {
+    // Add new nodes. Order by dependency so a node never precedes a node it
+    // depends on, and guard each add so one bad node cannot abort the whole delta.
+    const ordered = orderByDependencies(delta.addNodes);
+    for (const nodeInput of ordered) {
       const createInput: CreateNodeInput = {
         id: nodeInput.id,
         type: nodeInput.type,
@@ -492,7 +523,11 @@ export class AdaptivePlanner {
         compensation: nodeInput.compensation,
         metadata: nodeInput.metadata,
       };
-      next = addNode(next, createInput, now);
+      try {
+        next = addNode(next, createInput, now);
+      } catch {
+        // Missing dependency or duplicate id — skip this node rather than abort.
+      }
     }
 
     // Add new edges
@@ -502,6 +537,15 @@ export class AdaptivePlanner {
       } catch {
         // Edge might create cycle — skip
       }
+    }
+
+    // Remove edges (previously unimplemented — delta.removeEdges was silently ignored)
+    for (const edge of delta.removeEdges) {
+      next = {
+        ...next,
+        edges: next.edges.filter((e) => !(e.from === edge.from && e.to === edge.to)),
+        updatedAt: now ?? new Date().toISOString(),
+      };
     }
 
     return next;

@@ -6,6 +6,34 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.7.6] - 2026-06-12
+
+### Added
+- **Auto-compaction monitor** (`context-window-monitor.ts`): provider-agnostic context-window tracking. Reads `model.limit.context` (with a conservative 128k fallback when unset) and assistant token usage; at **83%** usage it writes a durable checkpoint and, via the new `experimental.session.compacting` hook, enriches the native compaction prompt so goal/touched-files/blockers/verification are preserved across compaction. Fires once per upward threshold crossing.
+- **Context debug instrument** (opt-in `OPENCODE_JCE_DEBUG_CONTEXT=1`): logs every assistant `message.updated` token observation to `.opencode-jce/context-debug.jsonl` to confirm live token-usage timing in a real session.
+
+### Fixed
+- **Skill routing**: the literal word "permission" no longer misroutes non-Android prompts to Android; framework detection moved out of the android `else-if` chain so React/Vue/etc. are no longer suppressed.
+- **Stuck-graph deadlock**: `deriveGraphStatus` now detects when all remaining work is permanently stranded behind a failed dependency and marks the graph `failed` instead of hanging in `executing`.
+- **Workflow templates**: `minComplexity` is now enforced (real complexity score passed), so trivial single-word goals no longer trigger full multi-phase templates.
+- **Memory prune**: decision pruning can no longer exceed its limit via a negative slice; corrupt/NaN timestamps are now treated as expired instead of preventing pruning forever.
+- **Completion gate**: an all-cancelled graph no longer falsely passes the completion gate; phase-gate violations now block completion instead of only warning.
+- **Persistence dedup**: artifact/evidence dedup on persist was a no-op (duplicates accumulated each save); now correctly deduped by stable id.
+- **todo-enforcer**: markdown checklists and `"status":"pending"` JSON inside fenced/inline code blocks no longer trigger false continuation enforcement.
+- **Failure-pattern signatures** are now consistent across the record/query/success paths so the proactive retry warning actually fires and one failure maps to one pattern; recording is guarded so it cannot block the persist path.
+- **Unbounded growth**: `nodeToGraphMap` is cleared on new single-graph plans and the strategy-telemetry dedup set is bounded.
+- **applyDelta**: `removeEdges` is now applied (previously ignored); node adds are dependency-ordered and guarded so one bad node cannot abort the whole delta.
+
+### Changed
+- Removed dead code: redundant second BFS in `wouldCreateCycle` and an unused set in `identifyParallelGroups`.
+- Unified the structured `FailurePattern`/`StrategyTelemetry` types to a single source of truth via type-only re-exports.
+- Release version synced to `3.7.6` across package metadata, installers, constants, MCP version, config version, README badge, and version tests.
+
+### Verification
+- `tsc --noEmit` exit 0; full `bun test` suite green (1231 pass / 0 fail across 107 files).
+
+---
+
 ## [3.7.5] - 2026-06-12
 
 ### Added

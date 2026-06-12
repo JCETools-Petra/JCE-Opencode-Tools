@@ -6,6 +6,15 @@ interface MessageLike {
 const INCOMPLETE_TODO_PATTERN = /^[\s]*-\s*\[\s*\]/m;
 const TODO_TOOL_PATTERN = /"status"\s*:\s*"(pending|in_progress)"/;
 
+/** Remove fenced code blocks and inline code so example checklists / JSON inside
+ * code (e.g. when reviewing or explaining code) don't trigger false positives. */
+function stripCode(content: string): string {
+  if (typeof content !== "string") return "";
+  return content
+    .replace(/```[\s\S]*?```/g, "")  // fenced blocks
+    .replace(/`[^`]*`/g, "");         // inline code
+}
+
 /**
  * Check if the assistant has incomplete todos in recent messages.
  * Looks for both markdown checkboxes and TodoWrite pending/in_progress items.
@@ -17,8 +26,9 @@ export function shouldEnforceContinuation(messages: MessageLike[]): boolean {
     .slice(-5);
 
   for (const msg of recentAssistant) {
-    if (INCOMPLETE_TODO_PATTERN.test(msg.content)) return true;
-    if (TODO_TOOL_PATTERN.test(msg.content)) return true;
+    const content = stripCode(typeof msg.content === "string" ? msg.content : String(msg.content ?? ""));
+    if (INCOMPLETE_TODO_PATTERN.test(content)) return true;
+    if (TODO_TOOL_PATTERN.test(content)) return true;
   }
   return false;
 }
