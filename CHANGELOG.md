@@ -6,6 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.7.8] - 2026-06-12
+
+### Fixed
+- **opencode.json BOM recovery** (the real-world cause): a leading UTF-8 Byte Order Mark (`\uFEFF`, charCode 65279) — commonly prepended by PowerShell/Windows editors — made `JSON.parse` fail with "Unrecognized token", causing the updater to refuse. The lossless tidy-repair now strips a leading BOM (in addition to trailing commas), so the file parses, **all user settings are preserved**, the original is backed up, and the file is rewritten clean and pretty-printed (2-space) — easy to read again. Genuinely malformed files still trigger the safe refusal unchanged.
+- Corrects the v3.7.7 diagnosis, which addressed trailing commas; the actual failure for affected configs was a BOM.
+
+### Changed
+- Updater message now reports the recoverable cause as "BOM or trailing commas".
+- Release version synced to `3.7.8` across package metadata, installers, constants, MCP version, config version, README badge, and version tests.
+
+### Verification
+- `tsc --noEmit` exit 0; full `bun test` suite green (1235 pass / 0 fail across 107 files), including BOM-recovery regression tests.
+
+---
+
 ## [3.7.7] - 2026-06-12
 
 ### Added

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { ensureOpenCodeJsonEntries, ensureTuiJsonEntries, stripTrailingCommas } from "../../src/lib/opencode-config-merge.ts";
+import { ensureOpenCodeJsonEntries, ensureTuiJsonEntries, stripTrailingCommas, stripBom } from "../../src/lib/opencode-config-merge.ts";
 import { readdirSync } from "fs";
 
 function tempConfigDir(): string {
@@ -128,5 +128,38 @@ describe("opencode config merge", () => {
     expect(stripTrailingCommas('{"a":"x, y, z",}')).toBe('{"a":"x, y, z"}');
     // Escaped quotes inside strings handled correctly.
     expect(stripTrailingCommas('{"a":"say \\"hi\\",",}')).toBe('{"a":"say \\"hi\\","}');
+  });
+
+  test("stripBom removes a leading BOM only when present", () => {
+    expect(stripBom("\uFEFF{}")).toBe("{}");
+    expect(stripBom("{}")).toBe("{}");
+    // A BOM mid-string is not at index 0, so it is left untouched.
+    expect(stripBom('{"a":"x\uFEFFy"}')).toBe('{"a":"x\uFEFFy"}');
+  });
+
+  test("tidies a BOM-prefixed file (the real-world cause) and reformats it cleanly", () => {
+    const configDir = tempConfigDir();
+    const configPath = join(configDir, "opencode.json");
+    // A valid config preceded by a UTF-8 BOM — exactly what PowerShell editors
+    // produce, and what made the user's file fail to parse.
+    const valid = JSON.stringify({
+      model: "9router/kr/claude-opus-4.8",
+      provider: { "9router": { options: { baseURL: "http://127.0.0.1:20128/v1" } } },
+    });
+    writeFileSync(configPath, "\uFEFF" + valid, "utf8");
+
+    const result = ensureOpenCodeJsonEntries(configDir);
+    expect(result.tidied).toBe(true);
+    expect(result.backupPath).toBeTruthy();
+
+    // File now parses, settings preserved, and it is pretty-printed (2-space),
+    // so a previously cramped/BOM'd file becomes easy to read.
+    const text = readFileSync(configPath, "utf8");
+    expect(text.charCodeAt(0)).not.toBe(0xfeff); // BOM gone
+    expect(text).toContain("\n  "); // reformatted with indentation
+    const merged = JSON.parse(text);
+    expect(merged.model).toBe("9router/kr/claude-opus-4.8");
+    expect(merged.provider["9router"].options.baseURL).toBe("http://127.0.0.1:20128/v1");
+    expect(Array.isArray(merged.plugin)).toBe(true);
   });
 });

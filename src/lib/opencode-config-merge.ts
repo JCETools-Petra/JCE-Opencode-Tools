@@ -66,13 +66,30 @@ export function stripTrailingCommas(raw: string): string {
 }
 
 /**
+ * Strip a leading UTF-8/UTF-16 Byte Order Mark (\uFEFF) if present.
+ *
+ * A BOM is the single most common reason an otherwise-valid opencode.json fails
+ * to parse: editors (notably PowerShell's `Out-File`/`Set-Content` and some
+ * Windows tools) prepend it, and `JSON.parse` rejects it with
+ * "Unrecognized token '\uFEFF'". The BOM carries no data, so removing it is
+ * fully lossless.
+ */
+export function stripBom(raw: string): string {
+  return raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+}
+
+/**
  * Attempt to recover a malformed JSON object by tidying recoverable syntax.
  * Returns the parsed object on success, or null when the document is still
  * unparseable (genuinely malformed — caller should refuse rather than guess).
+ *
+ * Recoverable issues handled (all lossless — they carry no data):
+ *   1. Leading BOM (\uFEFF) — common from Windows/PowerShell editors.
+ *   2. Structural trailing commas before } or ].
  */
 function tryTidyParse(raw: string): Record<string, unknown> | null {
   try {
-    const tidied = stripTrailingCommas(raw);
+    const tidied = stripTrailingCommas(stripBom(raw));
     const parsed = JSON.parse(tidied);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
