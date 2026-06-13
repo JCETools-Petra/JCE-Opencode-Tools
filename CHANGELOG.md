@@ -6,6 +6,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/), versioned with 
 
 ---
 
+## [3.8.0] - 2026-06-13
+
+### Added
+- **Skill security scanner** (`skill-security.ts`): supply-chain defense against malicious skills. Skill `.md` files are now scanned for data-exfiltration and prompt-injection patterns before they are injected into the system prompt. Detection is **combination/score-based** (not naive keyword matching) across four signal families — suspicious egress (network calls to non-trusted hosts), secret-sourcing (reads of `.env`/keys/credentials/env dumps), prompt-injection/stealth directives (e.g. "ignore previous instructions", "don't tell the user", "send to my server"), and obfuscation (base64/eval decoded-and-executed payloads). A lone signal stays low-risk so legitimate security docs are not flagged; combinations such as *read secret + external egress*, or any injection/exfiltration directive, escalate toward the block threshold (60). Calibrated against all 80 bundled skills for **zero false positives**.
+- **Skill scanner enforcement at load** (`skill-loader.ts`): `resolveSkills()` now drops any skill whose content crosses the block threshold instead of injecting it, and records the block via `getLastBlockedSkills()`. The plugin's `system.transform` surfaces a visible **skill security alert** to the model (listing the blocked skill and reason) and emits a `skill_blocked` telemetry event. A blocked skill's instructions never reach the prompt.
+- **`skills audit-security` CLI command**: scans installed skills (user config dir by default, `--repo` for the repo's `config/skills`, or `--dir <path>`) and reports flagged/blocked skills with per-signal evidence. Backed by `auditSkillSecurity()` which supports both the new (`name/SKILL.md`) and legacy (`name.md`) layouts.
+- **New-session memory rehydration** (`index.ts`): the plugin factory runs once per OpenCode process, but many sessions can be created within it. Restored Project Memory injection now re-arms for each genuine **new top-level session** — the plugin rehydrates durable runtime + orchestration state from disk and resets transient per-session state, so session 2+ in the same project gets its memory injected (previously only the first session did, reading a stale process-init snapshot). New-session detection uses the `session.created` event (with a `sessionID` fallback in `system.transform`) and **explicitly skips sub-agent child sessions** (those carry a `parentID`) so a delegation never wipes parent memory.
+
+### Changed
+- Release version synced to `3.8.0` across package metadata, installers, constants, MCP version, config version, README badge, and version tests.
+
+### Verification
+- `tsc --noEmit` exit 0; full `bun test` suite green (1255 pass / 0 fail across 109 files), including new skill-security scanner tests (malicious-detection + no-false-positive regression over all bundled skills) and new-session memory rehydration regression tests.
+
+---
+
 ## [3.7.9] - 2026-06-12
 
 ### Added

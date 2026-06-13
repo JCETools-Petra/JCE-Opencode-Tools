@@ -1088,4 +1088,76 @@ describe("plugin integration", () => {
     expect(plannerTrace).toBeDefined();
     expect(plannerTrace?.message).toMatch(/Planner fan-out created|Planner kept linear plan/);
   });
+
+  test("system.transform re-injects restored project memory on a new top-level session", async () => {
+    const root = tempRoot();
+    // Seed durable restorable memory (changedFiles is a sufficient signal).
+    const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
+    memory.changedFiles = ["src/app.ts", "src/server.ts"];
+    saveRuntimeState(root, memory, "2026-05-06T00:01:00.000Z");
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root, worktree: root });
+
+    // First top-level session: memory injects from the process-init snapshot.
+    const out1 = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "s1" } as any, out1 as any);
+    expect(out1.system.join("\n")).toContain("Restored Project Memory");
+
+    // Same session again: must NOT re-inject (once-per-session latch holds).
+    const out1b = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "s1" } as any, out1b as any);
+    expect(out1b.system.join("\n")).not.toContain("Restored Project Memory");
+
+    // New top-level session: rehydrates from disk and re-injects memory.
+    const out2 = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "s2" } as any, out2 as any);
+    expect(out2.system.join("\n")).toContain("Restored Project Memory");
+  });
+
+  test("child sub-agent session.created does not reset parent memory injection", async () => {
+    const root = tempRoot();
+    const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
+    memory.changedFiles = ["src/app.ts"];
+    saveRuntimeState(root, memory, "2026-05-06T00:01:00.000Z");
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root, worktree: root });
+
+    // Establish the parent top-level session and consume its injection.
+    const out1 = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "parent" } as any, out1 as any);
+    expect(out1.system.join("\n")).toContain("Restored Project Memory");
+
+    // A sub-agent child session is created (carries parentID) — must be ignored.
+    await hooks.event!({ event: { type: "session.created", properties: { info: { id: "child", parentID: "parent" } } } } as any);
+
+    // Parent session keeps its latch: no spurious re-injection on the same id.
+    const out2 = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "parent" } as any, out2 as any);
+    expect(out2.system.join("\n")).not.toContain("Restored Project Memory");
+  });
+
+  test("session.created event re-arms project memory injection for a new top-level session", async () => {
+    const root = tempRoot();
+    const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
+    memory.changedFiles = ["src/app.ts"];
+    saveRuntimeState(root, memory, "2026-05-06T00:01:00.000Z");
+
+    const mod = await import("../../src/plugin/index.ts");
+    const hooks = await mod.default.server({ ...mockInput, directory: root, worktree: root });
+
+    // First session consumes the injection.
+    const out1 = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "s1" } as any, out1 as any);
+    expect(out1.system.join("\n")).toContain("Restored Project Memory");
+
+    // A genuine new top-level session is created via the event hook.
+    await hooks.event!({ event: { type: "session.created", properties: { info: { id: "s2" } } } } as any);
+
+    // The next system.transform for that new session re-injects memory.
+    const out2 = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "s2" } as any, out2 as any);
+    expect(out2.system.join("\n")).toContain("Restored Project Memory");
+  });
 });

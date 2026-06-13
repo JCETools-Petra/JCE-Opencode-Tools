@@ -3,6 +3,18 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import { getConfigDir } from "../../lib/config.js";
 import { scoreIntent, toLegacyRoute } from "./orchestration/intent-router.js";
+import { scanSkillContent } from "./skill-security.js";
+
+/**
+ * Records skills the security scanner blocked from injection during the last
+ * resolveSkills() call, so the plugin can surface a visible warning to the user.
+ * Reset at the start of each resolveSkills() call.
+ */
+export interface BlockedSkillNotice { name: string; riskScore: number; reason: string }
+let lastBlockedSkills: BlockedSkillNotice[] = [];
+export function getLastBlockedSkills(): BlockedSkillNotice[] {
+  return [...lastBlockedSkills];
+}
 
 /**
  * Map skill-router skill names to actual .md filenames in ~/.config/opencode/skills/
@@ -817,6 +829,7 @@ export async function resolveSkills(skillNames: string[]): Promise<string[]> {
   const loadedFiles = new Set<string>();
   const results: string[] = [];
   const MAX_SKILLS = 4;
+  lastBlockedSkills = [];
 
   for (const name of skillNames) {
     if (results.length >= MAX_SKILLS) break;
@@ -826,6 +839,18 @@ export async function resolveSkills(skillNames: string[]): Promise<string[]> {
 
     const content = await readSkillFile(name);
     if (content) {
+      // Supply-chain defense: never inject a skill whose content scores as a
+      // likely exfiltration / prompt-injection attack. A blocked skill is
+      // dropped from injection and recorded for a user-visible warning.
+      const scan = scanSkillContent(name, content);
+      if (scan.blocked) {
+        lastBlockedSkills.push({
+          name,
+          riskScore: scan.riskScore,
+          reason: scan.signals.map((s) => s.message).join(" "),
+        });
+        continue;
+      }
       loadedFiles.add(fileName);
       results.push(`<!-- Skill: ${fileName} -->\n${content}`);
     }

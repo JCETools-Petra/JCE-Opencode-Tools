@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { basename, dirname, join } from "path";
 import { INTENTIONAL_SKILL_ALIASES, SKILL_NAME_TO_FILE, SKILL_REGISTRY, explainSkillRouting } from "./skill-loader.js";
+import { scanSkills, type SkillSecurityReport } from "./skill-security.js";
 
 export type SkillTier = "framework" | "language" | "domain" | "workflow" | "generic";
 
@@ -16,7 +17,7 @@ export interface CapabilityRegistry { capabilities: Capability[] }
 export interface SkillCapability { routingMode: "auto" | "manual_or_keyword" | "internal_support"; intents: string[]; signals: string[]; files: string[]; verification: string[]; preferredAgents?: string[]; samplePrompts: string[] }
 export interface EvidenceRecord { id: string; taskId: string; type: "command" | "source" | "review" | "manual" | "file"; summary: string; command?: string; status: "pass" | "fail" | "blocked" | "unknown"; timestamp: string; workflowId?: string; files?: string[]; area?: string }
 export interface TelemetryEvent {
-  kind: "skill_selected" | "task_blocked" | "agent_retry" | "verification_used" | "delegation_accepted" | "delegation_rejected" | "skill_followup" | "skill_final_used" | "user_correction" | "verification_result" | "routing_decision" | "task_outcome" | "context_autocompaction";
+  kind: "skill_selected" | "task_blocked" | "agent_retry" | "verification_used" | "delegation_accepted" | "delegation_rejected" | "skill_followup" | "skill_final_used" | "skill_blocked" | "user_correction" | "verification_result" | "routing_decision" | "task_outcome" | "context_autocompaction";
   name: string;
   at: string;
   metadata?: Record<string, unknown>;
@@ -102,6 +103,31 @@ export function auditSkills(skillsDir: string): SkillAuditReport {
   const totalScore = results.reduce((sum, result) => sum + result.score, 0);
   return { total: results.length, averageScore: results.length ? Math.round(totalScore / results.length) : 0, results, errors: results.flatMap((r) => r.findings).filter((f) => f.severity === "error").length, warnings: results.flatMap((r) => r.findings).filter((f) => f.severity === "warning").length };
 }
+
+/**
+ * Security audit over every installed skill file in a directory. Supports both
+ * the new (name/SKILL.md) and legacy (name.md) layouts. Reads file content and
+ * delegates scoring to the combination-based scanner in skill-security.ts.
+ */
+export function auditSkillSecurity(skillsDir: string): SkillSecurityReport {
+  if (!existsSync(skillsDir)) return { total: 0, flagged: 0, blocked: 0, results: [] };
+  const entries: Array<{ name: string; text: string; path?: string }> = [];
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    let path: string | undefined;
+    let name = entry.name;
+    if (entry.isDirectory()) {
+      const candidate = join(skillsDir, entry.name, "SKILL.md");
+      if (existsSync(candidate)) path = candidate;
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      path = join(skillsDir, entry.name);
+      name = entry.name.replace(/\.md$/, "");
+    }
+    if (!path) continue;
+    try { entries.push({ name, text: readFileSync(path, "utf8"), path }); } catch { /* unreadable; skip */ }
+  }
+  return scanSkills(entries);
+}
+
 
 export function resolveSkillConflicts(skills: string[], max = 4): SkillConflictResolution {
   const unique = [...new Set(skills)];

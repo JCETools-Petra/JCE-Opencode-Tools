@@ -1,8 +1,9 @@
 import { Command } from "commander";
 import { join } from "path";
-import { auditSkills, buildSkillDoctorReport, hardenSkillDescriptions, resolveSkillConflicts, resolveSkillConflictsV2 } from "../plugin/lib/jce-intelligence.js";
+import { auditSkills, auditSkillSecurity, buildSkillDoctorReport, hardenSkillDescriptions, resolveSkillConflicts, resolveSkillConflictsV2 } from "../plugin/lib/jce-intelligence.js";
 import { explainSkillRouting } from "../plugin/lib/skill-loader.js";
-import { heading, info, success, warn } from "../lib/ui.js";
+import { getConfigDir } from "../lib/config.js";
+import { heading, info, success, warn, error } from "../lib/ui.js";
 
 export const skillsCommand = new Command("skills")
   .description("Audit and resolve JCE skill routing")
@@ -86,4 +87,33 @@ export const skillsCommand = new Command("skills")
       heading("Skill Description Hardening");
       info(`${report.checked} skills checked, ${report.changed} ${options.write ? "updated" : "would change"}.`);
       for (const change of report.changes.slice(0, 20)) warn(`${change.name}: ${change.description}`);
+    }))
+  .addCommand(new Command("audit-security")
+    .description("Scan installed skills for data-exfiltration / prompt-injection patterns")
+    .option("--dir <path>", "Skills directory to scan (defaults to the user config skills dir)")
+    .option("--repo", "Scan the repo's config/skills instead of the installed user skills")
+    .option("--json", "Print JSON")
+    .action((options) => {
+      const dir = options.dir
+        ? String(options.dir)
+        : options.repo
+          ? join(process.cwd(), "config", "skills")
+          : join(getConfigDir(), "skills");
+      const report = auditSkillSecurity(dir);
+      if (options.json) { console.log(JSON.stringify(report, null, 2)); return; }
+      heading("Skill Security Audit");
+      info(`Scanned ${report.total} skills in ${dir}`);
+      info(`${report.flagged} flagged, ${report.blocked} blocked (would NOT be injected).`);
+      if (report.total === 0) { warn("No skills found at that path."); return; }
+      if (report.flagged === 0) { success("No suspicious skills detected."); return; }
+      for (const result of report.results) {
+        if (result.signals.length === 0) continue;
+        const line = `${result.name}: risk ${result.riskScore}/100${result.blocked ? " [BLOCKED]" : ""}`;
+        result.blocked ? error(line) : warn(line);
+        for (const signal of result.signals) {
+          console.log(`      - ${signal.severity}: ${signal.message}`);
+          if (signal.evidence) console.log(`        evidence: ${signal.evidence}`);
+        }
+      }
+      if (report.blocked > 0) error(`\n${report.blocked} skill(s) crossed the block threshold and will be refused at load time.`);
     }));
