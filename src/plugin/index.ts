@@ -1,3 +1,6 @@
+// TODO(decompose): This module is 1100+ lines. Extract hook handlers into src/plugin/hooks/
+// modules (e.g. system-transform.ts, tool-execute-after.ts, compaction.ts) and keep this
+// file as a thin wiring layer. See audit-2026-06-13.
 import type { Plugin, Hooks } from "@opencode-ai/plugin";
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -24,7 +27,7 @@ import { buildWorkflowTool } from "./tools/workflow.js";
 import { buildAndroidLogcatTool } from "./tools/android-logcat.js";
 import { createWorkflowRun } from "./lib/workflow.js";
 import { isRecord } from "./lib/shared-predicates.js";
-import { determineSkillsForMessage, explainSkillRouting, parseSkillCorrection, applySkillCorrection, applySkillHistoryAdjustments, applySubAgentTelemetryQuality, resolveSkills, getLastBlockedSkills, type SkillCorrection } from "./lib/skill-loader.js";
+import { determineSkillsForMessage, shouldSkipSkillInjection, explainSkillRouting, parseSkillCorrection, applySkillCorrection, applySkillHistoryAdjustments, applySubAgentTelemetryQuality, resolveSkills, getLastBlockedSkills, type SkillCorrection } from "./lib/skill-loader.js";
 import { applyContextBudget } from "./lib/context-budget.js";
 import { POST_COMPACTION_NO_TASK_GUARD, shouldSuppressCompactionAutocontinue } from "./lib/compaction-loop-guard.js";
 import { resolveContextLimit, extractTokensUsed, computeUsage, crossedThreshold, buildCompactionPreservation, formatUsage, DEFAULT_COMPACTION_THRESHOLD } from "./lib/context-window-monitor.js";
@@ -112,8 +115,18 @@ function shouldInspectCompletionOutput(tool: string): boolean {
   return COMPLETION_INSPECTION_TOOLS.has(tool);
 }
 
+/** Tools whose output must NOT be compressed — model needs exact bytes for correctness. */
+const CONTEXT_BUDGET_EXCLUDED_TOOLS = new Set([
+  "write",       // confirmation only — already tiny
+  "edit",        // confirmation only — already tiny
+  "todowrite",   // parsed downstream for state extraction
+  "skill",       // skill content must be exact (instructions)
+]);
+
 function shouldApplyDirectContextBudget(tool: string): boolean {
-  return ["read", "grep", "glob", "ls", "bash"].includes(tool);
+  // Apply compression to all tools EXCEPT those requiring exact output.
+  // Short outputs (<100 chars) are auto-skipped by applyContextBudget itself.
+  return !CONTEXT_BUDGET_EXCLUDED_TOOLS.has(tool);
 }
 
 /** Single source of truth for tool-name normalization. */
@@ -187,6 +200,13 @@ const jcePlugin: Plugin = async (input) => {
   // system.transform), so the AI gets durable context without paying the token
   // cost on every message.
   let projectMemoryInjected = false;
+  // Context-pressure signal: inject once per threshold crossing, not on every
+  // system.transform while above threshold. Re-armed when usage drops below
+  // threshold (after compaction) or on new session.
+  let contextPressureSignalInjected = false;
+  // Skill dedup: track which skills were already injected this session to avoid
+  // re-injecting the same skill content on subsequent turns (~2-4K savings per dedup).
+  const sessionInjectedSkills = new Set<string>();
   let sessionSkillCorrection: SkillCorrection | null = currentMemory.skillCorrectionSession
     ? {
         forbid: currentMemory.skillCorrectionSession.forbidSkills,
@@ -260,7 +280,8 @@ const jcePlugin: Plugin = async (input) => {
 
   const recordDirectContextBudget = (tool: string, originalText: string, compressedText: string, budget: ReturnType<typeof applyContextBudget>) => {
     if (!budget.changed && budget.estimatedTokensSaved === 0) return;
-    const safe = (value: number) => !Number.isFinite(value) || value <= 0 ? 0 : Math.min(Math.trunc(value), Number.MAX_SAFE_INTEGER);
+    // Cap at 100M — anything beyond is corrupted accumulation
+    const safe = (value: number) => !Number.isFinite(value) || value <= 0 ? 0 : Math.min(Math.trunc(value), 100_000_000);
     const previous = currentMemory.contextBudgetSummary;
     const originalChars = safe((previous?.originalChars ?? 0) + safe(budget.originalChars));
     const compressedChars = safe((previous?.compressedChars ?? 0) + safe(budget.compressedChars));
@@ -370,6 +391,8 @@ const jcePlugin: Plugin = async (input) => {
       currentMemory = dropStaleWorkflowAtLoad(fresh.state.runtime);
       // Re-arm the once-per-session project-memory injection.
       projectMemoryInjected = false;
+      contextPressureSignalInjected = false;
+      sessionInjectedSkills.clear();
       // Reset transient per-session state so session N never bleeds into N+1.
       lastUserMessage = "";
       workflowRuntimeActive = currentMemory.activeTasks.length > 0;
@@ -747,38 +770,49 @@ const jcePlugin: Plugin = async (input) => {
       if (!projectMemoryInjected) {
         projectMemoryInjected = true;
         withErrorBoundary(() => {
-          const tiers = (loadedMemory.state.orchestration as any)?.memoryTiers;
+          const orchestration = loadedMemory.state.orchestration;
           const summary = buildProjectMemorySummary({
             projectRoot,
             changedFiles: currentMemory.changedFiles,
             activeWorkflow: currentMemory.activeWorkflow,
-            wisdom: currentMemory.wisdom as any,
-            taskLearnings: currentMemory.taskLearnings as any,
-            sessionHistory: (loadedMemory.state.orchestration as any)?.sessionHistory,
-            memoryTiers: tiers,
+            wisdom: currentMemory.wisdom,
+            taskLearnings: currentMemory.taskLearnings,
+            sessionHistory: orchestration.sessionHistory,
+            memoryTiers: orchestration.memoryTiers,
           });
           if (summary) output.system.push("\n\n" + summary);
         }, undefined, orchestrationLogger);
       }
-      // Context-pressure signal (hybrid #1): when usage is at/above the
-      // auto-compaction threshold, inject a notice into the system prompt so the
-      // model itself is told to preserve durable state and wrap up proactively.
-      // Unlike the TUI toast, this works in ALL modes (TUI + headless `run`).
-      // Self-clearing: it only injects while lastUsagePercent stays >= threshold.
+      // Context-pressure signal (hybrid #1): inject ONCE per threshold crossing,
+      // not on every system.transform while above threshold. Re-armed when usage
+      // drops below threshold (after compaction) or on new session.
       if (lastUsagePercent >= DEFAULT_COMPACTION_THRESHOLD) {
-        const pct = Math.round(lastUsagePercent * 100);
-        output.system.push([
-          "\n\n<!-- JCE Context-Pressure Signal -->",
-          `⚠️ CONTEXT ${pct}% FULL — auto-compaction is imminent.`,
-          "Before the context is compacted, proactively preserve durable state so nothing is lost:",
-          "- Restate the active goal and remaining steps explicitly.",
-          "- List touched files, open blockers, and current verification status.",
-          "- Prefer finishing or checkpointing the current unit of work over starting a large new one.",
-          "Do NOT claim completion unless verification evidence is present.",
-        ].join("\n"));
+        if (!contextPressureSignalInjected) {
+          contextPressureSignalInjected = true;
+          const pct = Math.round(lastUsagePercent * 100);
+          output.system.push([
+            "\n\n<!-- JCE Context-Pressure Signal -->",
+            `⚠️ CONTEXT ${pct}% FULL — auto-compaction is imminent.`,
+            "Before the context is compacted, proactively preserve durable state so nothing is lost:",
+            "- Restate the active goal and remaining steps explicitly.",
+            "- List touched files, open blockers, and current verification status.",
+            "- Prefer finishing or checkpointing the current unit of work over starting a large new one.",
+            "Do NOT claim completion unless verification evidence is present.",
+          ].join("\n"));
+        }
+      } else {
+        // Usage dropped below threshold (compaction happened) — re-arm for next crossing.
+        contextPressureSignalInjected = false;
       }
       if (!lastUserMessage) return;
-      const skillNames = applySkillCorrection(determineSkillsForMessage(lastUserMessage), sessionSkillCorrection);
+      // Skip skill injection entirely for low-confidence messages (greetings, ambiguous)
+      // to save ~4-8K tokens per turn on messages where skills add noise, not value.
+      if (shouldSkipSkillInjection(lastUserMessage)) return;
+      const allSkillNames = applySkillCorrection(determineSkillsForMessage(lastUserMessage), sessionSkillCorrection);
+      if (allSkillNames.length === 0) return;
+      // Skill dedup: skip skills already injected earlier in this session.
+      // Saves ~2-4K tokens per deduplicated skill on multi-turn conversations.
+      const skillNames = allSkillNames.filter((name) => !sessionInjectedSkills.has(name));
       if (skillNames.length === 0) return;
       const skillContents = await resolveSkills(skillNames);
       // Supply-chain defense: surface any skill the security scanner blocked from
@@ -799,6 +833,8 @@ const jcePlugin: Plugin = async (input) => {
         ].join("\n"));
       }
       if (skillContents.length > 0) {
+        // Record injected skills for session dedup
+        for (const skill of skillNames) sessionInjectedSkills.add(skill);
         withErrorBoundary(() => {
           for (const skill of skillNames) appendTelemetry(projectRoot, { kind: "skill_final_used", name: skill, metadata: { skill, source: "system_injection" } });
         }, undefined, orchestrationLogger);

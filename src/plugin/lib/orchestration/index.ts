@@ -236,6 +236,33 @@ export {
 } from "./delegation-scenarios.js";
 export type { DelegationScenario, ScenarioPreset } from "./delegation-scenarios.js";
 
+// Agent Fitness Scoring (Adaptive Delegation #6)
+export {
+  recordAgentPerformance,
+  computeAgentFitness,
+  recommendAgent,
+  selectAgentWithFitness,
+} from "./agent-fitness.js";
+export type { AgentPerformanceEntry, AgentFitnessScore, AgentRecommendation, AgentOutcome } from "./agent-fitness.js";
+
+// Bayesian Confidence Calibration (#5)
+export {
+  recordCalibrationEntry,
+  buildCalibrationProfile,
+  calibrateConfidence,
+  formatCalibrationProfiles,
+} from "./bayesian-calibration.js";
+export type { CalibrationEntry, CalibrationBucket, CalibrationProfile } from "./bayesian-calibration.js";
+
+// Autonomous Error Recovery Patterns (#11)
+export {
+  recordRecoveryOutcome,
+  computeRecoveryStats,
+  selectRecoveryStrategy,
+  formatRecoveryStats,
+} from "./recovery-strategies.js";
+export type { RecoveryStrategy, RecoveryStrategyEntry, RecoveryStrategyScore, RecoveryPlan } from "./recovery-strategies.js";
+
 // Reliability Layer
 export {
   withErrorBoundary,

@@ -5,13 +5,15 @@ import type { BackgroundTask, OpenCodeClient, TaskCategory } from "../background
 import { launchExistingBackgroundTask, spawnBackgroundTask } from "../background/spawner.js";
 import { resolveModelForCategory, detectTaskCategory } from "../background/types.js";
 import { buildDelegatedResultContractInstructions } from "../lib/contracts.js";
-import { applyContextBudget, estimateTokensFromChars } from "../lib/context-budget.js";
+import { applyContextBudget } from "../lib/context-budget.js";
 import { buildDelegationEnvelope, formatDelegationEnvelope } from "../lib/delegation-envelope.js";
 import { buildExecutionSummary } from "../lib/execution-summary.js";
 import { buildHandoffReport } from "../lib/handoff.js";
 import { filterChineseOutput, type ChineseTranslator } from "../lib/chinese-output-filter.js";
 import { appendResearchOutputWarning } from "../lib/research-output-guard.js";
 import { buildRetryPrompt, decideRecovery } from "../lib/recovery.js";
+import { selectRecoveryStrategy, type RecoveryStrategyEntry } from "../lib/orchestration/recovery-strategies.js";
+import { classifyJceWorkerError } from "../lib/error-taxonomy.js";
 import { classifyDelegatedReview } from "../lib/review.js";
 import { scoreDelegatedEvidence } from "../lib/evidence-scoring.js";
 import type { SkillRoute } from "../lib/skill-router.js";
@@ -84,32 +86,21 @@ function formatTaskResult(task: BackgroundTask): string {
  * This is where real token savings happen — sub-agent results often contain verbose
  * test output, file contents, and logs that can be compressed.
  *
- * Additionally, estimates delegation savings: the sub-agent's internal work (tool calls,
- * file reads, reasoning) stays in a separate context window. The prompt size represents
- * work offloaded from the main context — conservatively, the sub-agent consumed at least
- * the prompt tokens internally that never enter the main agent's context.
+ * Only counts actual compression savings (original result vs compressed result).
+ * The prompt sent to the sub-agent is NOT counted as "saved" — it was consumed
+ * in the sub-agent's context window regardless.
  */
 function compressAndRecordResultBudget(manager: BackgroundManager, task: BackgroundTask, resultText: string): string {
   const budgeted = applyContextBudget(resultText, { level: "aggressive" });
 
-  // Delegation savings: the prompt was offloaded to a separate context.
-  // The sub-agent processed the prompt + generated internal context (tool calls, reads, etc.)
-  // that never enters the main agent. Conservative estimate: prompt chars represent
-  // offloaded work that would have consumed equivalent context in the main agent.
-  const promptChars = task.prompt.length;
-  // The main agent only receives the compressed result instead of doing all the work inline.
-  // Savings = (prompt sent to sub-agent + full result) - compressed result returned
-  const delegationOriginalChars = promptChars + budgeted.originalChars;
-  const delegationCompressedChars = budgeted.compressedChars;
-  const delegationTokensSaved = Math.max(0, estimateTokensFromChars(delegationOriginalChars) - estimateTokensFromChars(delegationCompressedChars));
-  const delegationSavingsPercent = delegationOriginalChars === 0 ? 0 : Math.max(0, Math.round((1 - delegationCompressedChars / delegationOriginalChars) * 100));
-
+  // Only count real compression savings: original result text vs compressed result.
+  // The prompt was consumed by the sub-agent — it's not "saved" from anywhere.
   manager.recordContextBudget(task.id, {
-    originalChars: delegationOriginalChars,
-    compressedChars: delegationCompressedChars,
-    estimatedTokensSaved: delegationTokensSaved,
-    estimatedSavingsPercent: delegationSavingsPercent,
-    changed: budgeted.changed || delegationTokensSaved > 0,
+    originalChars: budgeted.originalChars,
+    compressedChars: budgeted.compressedChars,
+    estimatedTokensSaved: budgeted.estimatedTokensSaved,
+    estimatedSavingsPercent: budgeted.estimatedSavingsPercent,
+    changed: budgeted.changed,
     source: "bg_collect",
   });
 
@@ -134,6 +125,19 @@ async function handleRecovery(manager: BackgroundManager, client: OpenCodeClient
   });
 
   if (decision.action === "retry") {
+    // #11: Select a structurally different recovery strategy based on error + history.
+    // The legacy (non-orchestrated) path has no persistent recovery log access;
+    // the orchestrated path uses controller.handleFailure() which has the full log.
+    // Here we use defaults only (no learned data), which is still an improvement
+    // over the old "retry same prompt" behavior.
+    const errorClass = classifyJceWorkerError(errorText);
+    const recoveryPlan = selectRecoveryStrategy(
+      [] as RecoveryStrategyEntry[],
+      errorClass.category,
+      "general",
+      task.retryCount,
+      task.agent as "self" | "oracle" | "jce-researcher" | "explorer" | "frontend" | "android",
+    );
     const retryPrompt = buildRetryPrompt({
       originalPrompt: stripDelegatedResultContract(task.prompt),
       category: decision.category,
@@ -141,7 +145,7 @@ async function handleRecovery(manager: BackgroundManager, client: OpenCodeClient
       priorEvidence: evidence,
       retryCount: task.retryCount + 1,
       maxRetries: task.maxRetries,
-    });
+    }) + "\n\n" + recoveryPlan.promptModification;
     const result = manager.createRetryTaskResult(task.id, {
       prompt: buildDelegatedPrompt(retryPrompt, `${task.description} retry`, task.agent),
       failureReason: errorText,

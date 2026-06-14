@@ -1,6 +1,6 @@
 {
   "name": "opencode-jce",
-  "version": "3.8.0",
+  "version": "3.8.1",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -34,6 +34,12 @@
     "hono": "^4.12.21",
     "ip-address": "^10.1.1",
     "qs": "^6.15.2"
+  },
+  "_overridesRationale": {
+    "fast-uri": "AJV URI resolver — pin past ReDoS/parse-handling advisories in older versions",
+    "hono": "Transitive via @opencode-ai/* — pin past request-handling/path traversal advisories",
+    "ip-address": "Transitive proxy/socks dep — pin past ReDoS-prone 6.x-8.x (CVE-2024-29415)",
+    "qs": "Classic prototype-pollution/DoS history — pin past CVE-2022-24999 and related"
   },
   "engines": {
     "bun": ">=1.0.0"

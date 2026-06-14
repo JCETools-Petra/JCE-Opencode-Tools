@@ -1,4 +1,4 @@
-import type { RuntimeState } from "./runtime-state.js";
+import type { FailureMemoryEntry, RuntimeState } from "./runtime-state.js";
 import { formatDecisionRecommendation, recommendNextDecision } from "./decision-intelligence.js";
 import { getActiveBlockers, getAttemptedCommands, getLatestVerificationEvidence, getRetryHistoryFor, getStaleActiveTasks } from "./memory-query.js";
 import type { PolicyProfileSource } from "./policy-profile.js";
@@ -12,6 +12,8 @@ interface TraceFilter {
   limit?: number;
 }
 
+import { asArray, isRecord, text as textUtil } from "./shared-predicates.js";
+
 type RecordLike = Record<string, unknown>;
 
 interface PolicyProfileDisplay {
@@ -21,19 +23,7 @@ interface PolicyProfileDisplay {
 
 type OrchestrationMemoryState = LoadMemoryResult["memory"];
 
-function isRecord(value: unknown): value is RecordLike {
-  return typeof value === "object" && value !== null;
-}
-
-function asArray<T>(value: T[] | unknown): T[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function text(value: unknown, fallback = "none"): string {
-  if (typeof value === "string" && value.trim()) return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return fallback;
-}
+const text = textUtil;
 
 function lineList(items: string[]): string {
   return items.length ? items.map((item) => `- ${item}`).join("\n") : "- none";
@@ -96,15 +86,15 @@ function routeReportLines(workflow: RuntimeState["activeWorkflow"]): string[] {
 }
 
 function failureMemoryLines(memory: RuntimeState): string[] {
-  const entries = asArray(memory.failureMemories)
+  const entries = asArray<FailureMemoryEntry>(memory.failureMemories)
     .slice()
-    .sort((left, right) => timestampValue(text((right as any).createdAt, "")) - timestampValue(text((left as any).createdAt, "")))
+    .sort((left, right) => timestampValue(text(right.createdAt, "")) - timestampValue(text(left.createdAt, "")))
     .slice(0, 5)
     .map((entry) => {
-      const summary = text((entry as any).summary, "unknown failure");
-      const rootCause = text((entry as any).rootCause, "unknown root cause");
-      const fixNote = text((entry as any).fixNote, "no fix note");
-      const command = asArray<string>((entry as any).failedCommands)[0] ?? "no failed command";
+      const summary = text(entry.summary, "unknown failure");
+      const rootCause = text(entry.rootCause, "unknown root cause");
+      const fixNote = text(entry.fixNote, "no fix note");
+      const command = asArray<string>(entry.failedCommands)[0] ?? "no failed command";
       return `${summary} | root cause: ${rootCause} | fix: ${fixNote} | command: ${command}`;
     });
   return ["Failure Memory", lineList(entries)];

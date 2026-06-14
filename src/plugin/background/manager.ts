@@ -314,7 +314,7 @@ export class BackgroundManager {
   toRuntimeState(updatedAt = this.now()): RuntimeState {
     const tasks = this.listTasks();
     const budgets = tasks.map((task) => task.contextBudget).filter((budget): budget is NonNullable<BackgroundTask["contextBudget"]> => Boolean(budget));
-    const safe = (value: number) => !Number.isFinite(value) || value <= 0 ? 0 : Math.min(Math.trunc(value), Number.MAX_SAFE_INTEGER);
+    const safe = (value: number) => !Number.isFinite(value) || value <= 0 ? 0 : Math.min(Math.trunc(value), 100_000_000);
     const originalChars = safe(budgets.reduce((sum, budget) => sum + safe(budget.originalChars), 0));
     const compressedChars = safe(budgets.reduce((sum, budget) => sum + safe(budget.compressedChars), 0));
     const estimatedTokensSaved = safe(budgets.reduce((sum, budget) => sum + safe(budget.estimatedTokensSaved), 0));

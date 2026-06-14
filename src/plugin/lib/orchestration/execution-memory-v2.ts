@@ -6,6 +6,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "fs";
+import { isRecord } from "../shared-predicates.js";
 import { dirname, join } from "path";
 import type {
   ExecutionMemoryV2,
@@ -433,9 +434,7 @@ export function restoreOrchestrationFromMemory(execMemory: ExecutionMemoryV2, no
   return { memory, graph };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+
 
 // ─── Skill Cache ──────────────────────────────────────────────────────────────
 

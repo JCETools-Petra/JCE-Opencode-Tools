@@ -8,16 +8,14 @@
  * well-known patch/status formats, never arbitrary prose.
  */
 
+import { isRecord } from "./shared-predicates.js";
+
 const PATCH_FILE_HEADER = /^\*\*\*\s+(?:Add File|Update File|Delete File):\s+(.+)$/gm;
 const PATCH_MOVE_HEADER = /^\*\*\*\s+Move to:\s+(.+)$/gm;
 const GIT_STATUS_LINE = /^\s*(?:[MADRCU?!]{1,2}|[ MADRCU?!][ MADRCU?!])\s+(.+)$/gm;
 const DIFF_HEADER = /^diff --git a\/(.+?) b\/(.+)$/gm;
 const MUTATING_COMMAND_PATH = /\b(?:Set-Content|Add-Content|Out-File|Remove-Item|New-Item|Move-Item|Copy-Item)\b(?:[^\n;|]*?)(?:-LiteralPath|-Path|-Destination|-FilePath)?\s+["']?([^"'\s;|]+\.[A-Za-z0-9]+)["']?/gi;
 const SHELL_REDIRECT_PATH = /(?:>|>>|2>)\s*["']?([^"'\s;|]+\.[A-Za-z0-9]+)["']?/g;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function normalizePath(path: string): string | null {
   const trimmed = path.trim().replace(/^['"`]+|['"`]+$/g, "");

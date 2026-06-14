@@ -66,20 +66,29 @@ function clean(items: unknown[] | undefined, limit: number): string[] {
 
 /**
  * Whether there is enough durable memory to be worth injecting. Avoids adding a
- * near-empty "restored memory" block to brand-new projects (pure token waste).
+ * near-empty "Restored Project Memory" block to brand-new projects (pure token waste).
+ *
+ * Requires at least one HIGH-VALUE signal (goal, wisdom, conventions, dangerous
+ * areas) OR at least 2 low-value signals (changed files, session history, task
+ * learnings). A single changed file alone is not worth a 24-line injection.
  */
 export function hasRestorableMemory(input: ProjectMemoryInput): boolean {
   const tiers = input.memoryTiers;
-  return Boolean(
-    (input.changedFiles && input.changedFiles.length > 0) ||
-    (input.wisdom && input.wisdom.length > 0) ||
-    (input.taskLearnings && input.taskLearnings.length > 0) ||
-    (input.sessionHistory && input.sessionHistory.length > 0) ||
-    input.activeWorkflow?.goal ||
-    (tiers?.project?.conventions && tiers.project.conventions.length > 0) ||
-    (tiers?.project?.dangerousAreas && tiers.project.dangerousAreas.length > 0) ||
-    tiers?.session?.currentTask,
-  );
+
+  // High-value signals: any one of these justifies injection.
+  const hasGoal = Boolean(input.activeWorkflow?.goal || tiers?.session?.currentTask);
+  const hasWisdom = Boolean(input.wisdom && input.wisdom.length > 0);
+  const hasConventions = Boolean(tiers?.project?.conventions && tiers.project.conventions.length > 0);
+  const hasDangerAreas = Boolean(tiers?.project?.dangerousAreas && tiers.project.dangerousAreas.length > 0);
+  if (hasGoal || hasWisdom || hasConventions || hasDangerAreas) return true;
+
+  // Low-value signals: require at least 2 to justify injection.
+  let lowValueCount = 0;
+  if (input.changedFiles && input.changedFiles.length > 0) lowValueCount++;
+  if (input.taskLearnings && input.taskLearnings.length > 0) lowValueCount++;
+  if (input.sessionHistory && input.sessionHistory.length > 0) lowValueCount++;
+  if (tiers?.session?.blockers && tiers.session.blockers.length > 0) lowValueCount++;
+  return lowValueCount >= 2;
 }
 
 /**

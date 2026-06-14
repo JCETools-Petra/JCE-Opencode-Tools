@@ -45,7 +45,8 @@ export function scanWebProject(root: string): WebProjectScan {
   let hasForms = false;
   for (const path of paths) {
     const rel = relative(root, path).replace(/\\/g, "/");
-    const text = readFileSync(path, "utf8");
+    let text: string;
+    try { text = readFileSync(path, "utf8"); } catch { continue; }
     const isRoute = /(?:^|\/)(?:app|pages|src\/app|src\/pages|src\/routes)\/.*route\.(ts|js)$/.test(rel);
     const isPage = /(?:^|\/)(?:app|pages|src\/app|src\/pages)\/.*page\.(tsx|jsx|ts|js)$/.test(rel);
     const isLayout = /(?:^|\/)(?:app|pages|src\/app|src\/pages)\/.*layout\.(tsx|jsx|ts|js)$/.test(rel);

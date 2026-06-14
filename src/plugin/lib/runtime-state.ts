@@ -88,9 +88,19 @@ export interface ContextBudgetSummary {
   }>;
 }
 
+/**
+ * Reasonable upper bound for any single context budget metric.
+ * 100M characters (~25M tokens) is far beyond any real session.
+ * Values exceeding this are corrupted and must be reset to 0.
+ */
+const MAX_REASONABLE_BUDGET_VALUE = 100_000_000;
+
 function safeFiniteInt(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
-  return Math.min(Math.trunc(value), Number.MAX_SAFE_INTEGER);
+  const clamped = Math.trunc(value);
+  // Values exceeding reasonable bounds are corrupted — reset to 0
+  if (clamped > MAX_REASONABLE_BUDGET_VALUE) return 0;
+  return clamped;
 }
 
 function safePercent(value: number): number {
@@ -288,6 +298,36 @@ export function pruneRuntimeState(runtime: RuntimeState): RuntimeState {
   };
 }
 
+/**
+ * Deduplicate wisdom entries by normalized learning text. When duplicates exist,
+ * keep the one with higher confidence (or the newer one on tie).
+ */
+function deduplicateWisdom(entries: WisdomEntry[]): WisdomEntry[] {
+  const map = new Map<string, WisdomEntry>();
+  const confRank = (c?: string) => (c === "high" ? 3 : c === "medium" ? 2 : 1);
+  for (const entry of entries) {
+    const key = entry.learning.trim().toLowerCase();
+    const existing = map.get(key);
+    if (!existing || confRank(entry.confidence) > confRank(existing.confidence)) {
+      map.set(key, entry);
+    }
+  }
+  return [...map.values()];
+}
+
+/**
+ * Deduplicate task learnings by taskType + normalized trigger. When duplicates
+ * exist, keep the newer one (later in the array = more recent).
+ */
+function deduplicateTaskLearnings(entries: TaskLearning[]): TaskLearning[] {
+  const map = new Map<string, TaskLearning>();
+  for (const entry of entries) {
+    const key = `${entry.taskType}::${entry.trigger.trim().toLowerCase()}`;
+    map.set(key, entry); // later entry wins
+  }
+  return [...map.values()];
+}
+
 export function mergeRuntimeStateSnapshot(previous: RuntimeState, next: RuntimeState, options: MergeRuntimeStateOptions = {}): RuntimeState {
   if (!options.preserveWorkflowRuntime) return pruneRuntimeState(next);
 
@@ -299,7 +339,8 @@ export function mergeRuntimeStateSnapshot(previous: RuntimeState, next: RuntimeS
     activeWorkflow: options.clearWorkflowRuntime ? next.activeWorkflow : next.activeWorkflow ?? previous.activeWorkflow,
     workflowRuns: options.clearWorkflowRuntime ? next.workflowRuns : next.workflowRuns.length > 0 ? next.workflowRuns : previous.workflowRuns,
     contextBudgetSummary: mergeContextBudgetSummary(previous.contextBudgetSummary, next.contextBudgetSummary),
-    wisdom: [...(previous.wisdom ?? []), ...(next.wisdom ?? [])],
+    wisdom: deduplicateWisdom([...(previous.wisdom ?? []), ...(next.wisdom ?? [])]),
+    taskLearnings: deduplicateTaskLearnings([...(previous.taskLearnings ?? []), ...(next.taskLearnings ?? [])]),
     failureMemories: mergeById(previous.failureMemories ?? [], next.failureMemories ?? []) as FailureMemoryEntry[],
     autonomousExecutionSession: next.autonomousExecutionSession ?? previous.autonomousExecutionSession,
   });

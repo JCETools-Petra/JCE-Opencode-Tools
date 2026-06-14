@@ -18,6 +18,7 @@ import type { PolicyProfile } from "../plugin/lib/verification-gate.js";
 import { formatJceWorkerReport, formatJceWorkerStatus, formatJceWorkerTrace, formatPlannerExplain, getPlannerRationaleSummary } from "../plugin/lib/jce-worker-report.js";
 import { summarizeToolDiscipline } from "../plugin/lib/tool-discipline.js";
 import { buildProjectBrain } from "../plugin/lib/project-brain.js";
+import { isRecord } from "../plugin/lib/shared-predicates.js";
 import { formatEvalScenarios } from "../plugin/lib/phase3-eval.js";
 import { checkSkillSync, formatSkillSync } from "../plugin/lib/skill-sync.js";
 import { assessJceDoctor, buildPolicyEnforcementReport, getPolicyEnforcementReport } from "../plugin/lib/jce-intelligence.js";
@@ -25,6 +26,14 @@ import { buildFailureSignature } from "../plugin/lib/failure-signature.js";
 import { error, info, success, warn } from "../lib/ui.js";
 import { EXIT_ERROR, EXIT_SUCCESS } from "../types.js";
 import { buildSafeCommitPlan } from "../plugin/lib/workflow-assistant.js";
+
+function blockerReason(blocker: unknown): string {
+  if (!isRecord(blocker)) return "unknown";
+  return typeof blocker.failureReason === "string" ? blocker.failureReason
+    : typeof blocker.reason === "string" ? blocker.reason
+    : typeof blocker.id === "string" ? blocker.id
+    : "unknown";
+}
 
 interface CreateJceWorkerCommandOptions {
   exitProcess?: boolean;
@@ -90,35 +99,35 @@ function formatEval(memory: RuntimeState): string {
 
 function explainLast(memory: RuntimeState): string {
   const trace = memory.traceEvents.at(-1);
-  const blocker = memory.blockers.at(-1) as any;
+  const lastBlocker = memory.blockers.at(-1);
   return [
     "JCE-Worker Explain Last",
     `Last trace: ${trace ? `${trace.type} — ${trace.message}` : "none"}`,
-    `Last blocker: ${blocker ? (blocker.failureReason ?? blocker.reason ?? blocker.id ?? "unknown") : "none"}`,
+    `Last blocker: ${lastBlocker ? blockerReason(lastBlocker) : "none"}`,
     `Latest verification: ${memory.verificationEvidence.at(-1) ? JSON.stringify(memory.verificationEvidence.at(-1)) : "none"}`,
     `Latest failure memory: ${memory.failureMemories.at(-1)?.summary ?? "none"}`,
   ].join("\n");
 }
 
 function whyBlocked(memory: RuntimeState): string {
-  const blocker = memory.blockers.at(-1) as any;
+  const lastBlocker = memory.blockers.at(-1);
   return [
     "JCE-Worker Why Blocked",
-    blocker ? `Reason: ${blocker.failureReason ?? blocker.reason ?? blocker.id}` : "Reason: none",
+    lastBlocker ? `Reason: ${blockerReason(lastBlocker)}` : "Reason: none",
   ].join("\n");
 }
 
 function whyAsked(memory: RuntimeState): string {
-  const blocker = memory.blockers.at(-1) as any;
+  const lastBlocker = memory.blockers.at(-1);
   return [
     "JCE-Worker Why Asked",
-    blocker ? `Asked user because blocker remains: ${blocker.failureReason ?? blocker.reason ?? blocker.id}` : "Asked user reason: none recorded",
+    lastBlocker ? `Asked user because blocker remains: ${blockerReason(lastBlocker)}` : "Asked user reason: none recorded",
   ].join("\n");
 }
 
 function nextAction(memory: RuntimeState): string {
-  const blocker = memory.blockers.at(-1) as any;
-  if (blocker) return `JCE-Worker Next Action\nResolve blocker: ${blocker.failureReason ?? blocker.reason ?? blocker.id}`;
+  const lastBlocker = memory.blockers.at(-1);
+  if (lastBlocker) return `JCE-Worker Next Action\nResolve blocker: ${blockerReason(lastBlocker)}`;
    if (memory.failureMemories.length > 0) return `JCE-Worker Next Action\nCheck known failure memory before retrying: ${memory.failureMemories.at(-1)?.summary ?? "unknown failure"}`;
   if (memory.activeTasks.length > 0) return "JCE-Worker Next Action\nContinue active task execution.";
   return "JCE-Worker Next Action\nRun verification or start next planned task.";
@@ -165,7 +174,7 @@ export function createJceWorkerCommand(options: CreateJceWorkerCommandOptions = 
       if (opts.json) {
         const events = (loaded.state.runtime.traceEvents ?? [])
           .filter((event) => !opts.task || event.taskId === opts.task)
-          .filter((event) => !opts.workflow || ((event as any).metadata?.workflowId === opts.workflow))
+          .filter((event) => !opts.workflow || (event.metadata?.workflowId === opts.workflow))
           .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
           .slice(0, normalizeTraceLimit(opts.limit));
         write(JSON.stringify({ policy, planner: getPlannerRationaleSummary(loaded.state.orchestration), events }, null, 2));

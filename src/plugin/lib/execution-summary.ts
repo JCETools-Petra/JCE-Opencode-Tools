@@ -1,3 +1,5 @@
+import { listOrNone } from "./shared-predicates.js";
+
 export interface ExecutionSummaryInput {
   status: "completed" | "blocked" | "awaiting_user";
   files: string[];
@@ -6,10 +8,6 @@ export interface ExecutionSummaryInput {
   blockers: string[];
   retries: string[];
   traceHighlights: string[];
-}
-
-function listOrNone(items: string[]): string {
-  return items.length ? items.map((item) => `- ${item}`).join("\n") : "- none";
 }
 
 export function buildExecutionSummary(input: ExecutionSummaryInput): string {

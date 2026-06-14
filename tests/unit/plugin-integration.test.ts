@@ -1091,9 +1091,10 @@ describe("plugin integration", () => {
 
   test("system.transform re-injects restored project memory on a new top-level session", async () => {
     const root = tempRoot();
-    // Seed durable restorable memory (changedFiles is a sufficient signal).
+    // Seed durable restorable memory (needs a high-value signal like wisdom).
     const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
     memory.changedFiles = ["src/app.ts", "src/server.ts"];
+    memory.wisdom = [{ id: "w1", learning: "use bun test", source: "task", createdAt: "2026-05-06T00:00:00.000Z" }];
     saveRuntimeState(root, memory, "2026-05-06T00:01:00.000Z");
 
     const mod = await import("../../src/plugin/index.ts");
@@ -1119,6 +1120,7 @@ describe("plugin integration", () => {
     const root = tempRoot();
     const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
     memory.changedFiles = ["src/app.ts"];
+    memory.wisdom = [{ id: "w1", learning: "use bun test", source: "task", createdAt: "2026-05-06T00:00:00.000Z" }];
     saveRuntimeState(root, memory, "2026-05-06T00:01:00.000Z");
 
     const mod = await import("../../src/plugin/index.ts");
@@ -1142,6 +1144,7 @@ describe("plugin integration", () => {
     const root = tempRoot();
     const memory = createEmptyRuntimeState("2026-05-06T00:00:00.000Z");
     memory.changedFiles = ["src/app.ts"];
+    memory.wisdom = [{ id: "w1", learning: "use bun test", source: "task", createdAt: "2026-05-06T00:00:00.000Z" }];
     saveRuntimeState(root, memory, "2026-05-06T00:01:00.000Z");
 
     const mod = await import("../../src/plugin/index.ts");

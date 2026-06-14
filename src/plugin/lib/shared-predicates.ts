@@ -1,10 +1,24 @@
 /**
- * Shared predicate functions used across execution-policy and final-review-gate.
+ * Shared predicate and utility functions used across plugin modules.
  * Eliminates duplication and ensures consistent behavior.
  */
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function asArray<T>(value: T[] | unknown): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+export function text(value: unknown, fallback = "none"): string {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+export function listOrNone(items: string[]): string {
+  return items.length ? items.map((item) => `- ${item}`).join("\n") : "- none";
 }
 
 export function hasAcceptedReview(reviews: string[] = []): boolean {

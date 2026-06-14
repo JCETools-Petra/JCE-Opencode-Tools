@@ -303,6 +303,12 @@ export interface ExecutionMemoryV2 {
   failurePatterns?: FailurePattern[];
   /** Strategy outcome telemetry: which strategy was chosen per intent and its result. */
   strategyTelemetry?: StrategyTelemetryEntry[];
+  /** Per-agent performance log for adaptive delegation routing (#6). */
+  agentPerformanceLog?: import("./agent-fitness.js").AgentPerformanceEntry[];
+  /** Confidence calibration observations for Bayesian adjustment (#5). */
+  calibrationLog?: import("./bayesian-calibration.js").CalibrationEntry[];
+  /** Recovery strategy outcomes for autonomous error recovery (#11). */
+  recoveryLog?: import("./recovery-strategies.js").RecoveryStrategyEntry[];
   /** Persisted orchestration coordination state (constraints/signals) that must survive reloads. */
   orchestration?: {
     constraints: Constraint[];

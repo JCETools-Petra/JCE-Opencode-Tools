@@ -31,7 +31,10 @@ describe("Token Savings sidebar", () => {
 
       const line = renderContextBudgetLine({ state: { path: { directory: root } } });
       expect(line).not.toContain("e+");
+      expect(line).not.toContain("9,007,199,254,740,991");
       expect(line).toContain("token(s) saved");
+      // Corrupted values should display as 0 (healed on load)
+      expect(line).toMatch(/~0 token\(s\) saved/)
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

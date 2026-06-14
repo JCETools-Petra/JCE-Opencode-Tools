@@ -30,10 +30,13 @@ describe("runtime state auto-heal", () => {
 
       const loaded = loadRuntimeState(root, "2026-01-01T00:01:00.000Z");
       expect(loaded.healedContextBudget).toBe(true);
-      expect(loaded.runtime.contextBudgetSummary?.estimatedTokensSaved).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
+      // Corrupted MAX_VALUE should be healed to 0 (exceeds reasonable bounds)
+      expect(loaded.runtime.contextBudgetSummary?.estimatedTokensSaved).toBe(0);
+      expect(loaded.runtime.contextBudgetSummary?.tasks).toBe(0);
 
       const saved = JSON.parse(readFileSync(path, "utf-8"));
       expect(saved.contextBudgetSummary.estimatedSavingsPercent).toBeLessThanOrEqual(100);
+      expect(saved.contextBudgetSummary.estimatedTokensSaved).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

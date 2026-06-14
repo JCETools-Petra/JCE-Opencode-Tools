@@ -1,6 +1,7 @@
 import type { PolicyProfile } from "./verification-gate.js";
 import { evaluateWorkflowCompletionGate } from "./verification-gate.js";
 import type { WorkflowRun } from "./workflow.js";
+import { listOrNone } from "./shared-predicates.js";
 
 export interface CompletionCertificateInput {
   profile: PolicyProfile;
@@ -12,10 +13,6 @@ export interface CompletionCertificateInput {
 export interface CompletionCertificateResult {
   valid: boolean;
   certificate: string;
-}
-
-function listOrNone(items: string[]): string {
-  return items.length ? items.map((item) => `- ${item}`).join("\n") : "- none";
 }
 
 export function buildCompletionCertificate(run: WorkflowRun, input: CompletionCertificateInput): CompletionCertificateResult {

@@ -9,10 +9,21 @@ describe("project-memory-summary: hasRestorableMemory", () => {
     expect(hasRestorableMemory({ projectRoot: ROOT, changedFiles: [], wisdom: [], taskLearnings: [], sessionHistory: [] })).toBe(false);
   });
 
-  test("true when any durable signal exists", () => {
-    expect(hasRestorableMemory({ projectRoot: ROOT, changedFiles: ["a.ts"] })).toBe(true);
+  test("true when a high-value signal exists", () => {
     expect(hasRestorableMemory({ projectRoot: ROOT, activeWorkflow: { goal: "ship feature" } })).toBe(true);
     expect(hasRestorableMemory({ projectRoot: ROOT, memoryTiers: { project: { conventions: ["use bun"] } } })).toBe(true);
+    expect(hasRestorableMemory({ projectRoot: ROOT, wisdom: [{ learning: "use bun test" }] })).toBe(true);
+    expect(hasRestorableMemory({ projectRoot: ROOT, memoryTiers: { project: { dangerousAreas: ["install.ps1"] } } })).toBe(true);
+  });
+
+  test("false when only a single low-value signal exists", () => {
+    expect(hasRestorableMemory({ projectRoot: ROOT, changedFiles: ["a.ts"] })).toBe(false);
+    expect(hasRestorableMemory({ projectRoot: ROOT, sessionHistory: [{ intent: "bugfix" }] })).toBe(false);
+  });
+
+  test("true when at least 2 low-value signals exist", () => {
+    expect(hasRestorableMemory({ projectRoot: ROOT, changedFiles: ["a.ts"], sessionHistory: [{ intent: "bugfix" }] })).toBe(true);
+    expect(hasRestorableMemory({ projectRoot: ROOT, changedFiles: ["a.ts"], taskLearnings: [{ trigger: "test" }] })).toBe(true);
   });
 });
 
@@ -74,6 +85,7 @@ describe("project-memory-summary: buildProjectMemorySummary", () => {
     const out = buildProjectMemorySummary({
       projectRoot: ROOT,
       changedFiles: Array.from({ length: 30 }, (_, i) => `file${i}.ts`),
+      activeWorkflow: { goal: "test file cap" },
     });
     expect(out).toContain("file0.ts");
     expect(out).not.toContain("file20.ts"); // capped at 8

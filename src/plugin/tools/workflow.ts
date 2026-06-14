@@ -98,7 +98,7 @@ export function buildWorkflowTool(): ToolDefinition {
         });
       case "code_task_plan":
         return buildCodeTaskPlan({
-          taskType: args.taskType as any,
+          taskType: (args.taskType ?? "unknown") as import("../lib/workflow-assistant.js").CodeTaskType,
           scope: args.scope as string | undefined,
           changedFiles: statusFiles.map((file) => file.path),
         });

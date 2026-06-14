@@ -383,16 +383,38 @@ function compactWhitespace(lines: string[]): string[] {
 
 // ─── Main Entry Point ────────────────────────────────────────
 
+/** Minimum text length to bother compressing — below this, overhead exceeds savings */
+const MIN_COMPRESSIBLE_LENGTH = 100;
+
 export function applyContextBudget(text: string, options: ContextBudgetOptions = {}): ContextBudgetResult {
   const originalChars = text.length;
-  const protectedBlocks = extractProtectedBlocks(text);
   const level = options.level ?? "standard";
+
+  // Always normalize CRLF — cheap and prevents downstream dedup failures on Windows
+  const normalized = text.replace(/\r\n/g, "\n");
+
+  // For short text, only apply lightweight semantic passes (no heavy dedup/collapse)
+  if (originalChars < MIN_COMPRESSIBLE_LENGTH) {
+    let processed = normalized;
+    if (level !== "light") {
+      processed = compactEmptySections(processed);
+    }
+    if (level === "aggressive") {
+      processed = compactWhitespace(processed.split("\n")).join("\n");
+    }
+    const compressedChars = processed.length;
+    const estimatedTokensSaved = Math.max(0, estimateTokensFromChars(originalChars) - estimateTokensFromChars(compressedChars));
+    const estimatedSavingsPercent = originalChars === 0 ? 0 : Math.max(0, Math.round((1 - compressedChars / originalChars) * 100));
+    return { text: processed, originalChars, compressedChars, estimatedTokensSaved, estimatedSavingsPercent, changed: processed !== text };
+  }
+
+  const protectedBlocks = extractProtectedBlocks(normalized);
   const maxLines = options.maxLinesPerBlock ?? DEFAULT_MAX_LINES_PER_BLOCK;
   const minLength = options.minDuplicateLineLength ?? DEFAULT_MIN_DUPLICATE_LINE_LENGTH;
   const maxCodeLines = options.maxCodeBlockLines ?? DEFAULT_MAX_CODE_BLOCK_LINES;
   const maxStackLines = options.maxStackTraceLines ?? DEFAULT_MAX_STACK_TRACE_LINES;
 
-  let lines = protectedBlocks.text.replace(/\r\n/g, "\n").split("\n");
+  let lines = protectedBlocks.text.split("\n");
   let processed: string;
 
   if (level === "light") {

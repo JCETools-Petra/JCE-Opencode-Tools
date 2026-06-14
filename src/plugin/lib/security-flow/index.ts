@@ -33,7 +33,8 @@ export function scanSecurityProject(root: string): SecurityProjectScan {
   const add = (severity: SecurityFinding["severity"], file: string, type: string, evidence: string, remediation: string) => findings.push({ id: `SEC-${String(sequence++).padStart(3, "0")}`, severity, file, type, evidence, remediation });
   for (const path of paths) {
     const rel = relative(root, path).replace(/\\/g, "/");
-    const text = readFileSync(path, "utf8");
+    let text: string;
+    try { text = readFileSync(path, "utf8"); } catch { continue; }
     if (/api[_-]?key\s*[:=]\s*['"][^'"]{12,}/i.test(text) || /password\s*[:=]\s*['"][^'"]{8,}/i.test(text)) add("critical", rel, "secret", "Hardcoded credential-like value", "Move secrets to environment/secret manager and rotate exposed values.");
     if (/dangerouslySetInnerHTML|innerHTML\s*=/.test(text)) add("high", rel, "xss", "Raw HTML rendering sink", "Sanitize trusted HTML and prefer safe rendering APIs.");
     if (/exec\(|spawn\(|system\(/.test(text) && !/allowlist|sanitize|validate/i.test(text)) add("high", rel, "command-injection", "Shell execution without visible validation", "Validate against allowlists and avoid shell interpolation.");

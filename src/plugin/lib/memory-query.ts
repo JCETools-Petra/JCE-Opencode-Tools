@@ -1,17 +1,8 @@
 import type { RuntimeState } from "./runtime-state.js";
-
-type AnyRecord = Record<string, unknown>;
+import { asArray, isRecord } from "./shared-predicates.js";
 
 function last<T>(items: T[]): T | undefined {
   return items.length ? items[items.length - 1] : undefined;
-}
-
-function asArray<T>(value: T[] | unknown): T[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function isRecord(value: unknown): value is AnyRecord {
-  return typeof value === "object" && value !== null;
 }
 
 export function getLatestVerificationEvidence(memory: RuntimeState): unknown | undefined {

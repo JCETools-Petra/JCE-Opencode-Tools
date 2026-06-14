@@ -33,7 +33,8 @@ export function scanApiProject(root: string): ApiProjectScan {
   const schemaFiles: string[] = [];
   for (const path of paths) {
     const rel = relative(root, path).replace(/\\/g, "/");
-    const text = readFileSync(path, "utf8");
+    let text: string;
+    try { text = readFileSync(path, "utf8"); } catch { continue; }
     const methods = [...new Set([...text.matchAll(/\b(GET|POST|PUT|PATCH|DELETE)\b/g)].map((m) => m[1]!))];
     const isEndpoint = methods.length > 0 || /router\.|app\.(get|post|put|patch|delete)|@Controller|route\./i.test(text + rel);
     const authSignals = [...new Set([...text.matchAll(/\b(jwt|session|passport|oauth|auth|guard|middleware)\b/gi)].map((m) => m[1]!.toLowerCase()))];

@@ -33,7 +33,8 @@ export function scanDevopsProject(root: string): DevopsProjectScan {
   const findings: DevopsFinding[] = [];
   for (const path of paths) {
     const rel = relative(root, path).replace(/\\/g, "/");
-    const text = readFileSync(path, "utf8");
+    let text: string;
+    try { text = readFileSync(path, "utf8"); } catch { continue; }
     if (/dockerfile/i.test(rel)) {
       dockerfiles.push(rel);
       if (/FROM\s+[^\s:]+\s*(\n|$)/i.test(text)) findings.push({ severity: "medium", file: rel, message: "Base image is not pinned to an explicit tag.", remediation: "Pin image tags or digests for reproducible builds." });

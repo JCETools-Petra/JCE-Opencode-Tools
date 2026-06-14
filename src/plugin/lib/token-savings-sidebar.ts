@@ -3,9 +3,13 @@ import { loadSessionState } from "./session-store.js";
 
 export const TOKEN_SAVINGS_REFRESH_INTERVAL_MS = 2_000;
 
+/** Display cap — anything above this is clearly corrupted data */
+const MAX_DISPLAY_TOKENS = 10_000_000;
+
 function formatCompactInteger(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0";
-  const safe = Math.min(Math.trunc(value), Number.MAX_SAFE_INTEGER);
+  const safe = Math.min(Math.trunc(value), MAX_DISPLAY_TOKENS);
+  if (safe >= MAX_DISPLAY_TOKENS) return ">10M";
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(safe);
 }
 

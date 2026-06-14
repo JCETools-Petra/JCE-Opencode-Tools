@@ -1,6 +1,12 @@
 /**
  * Orchestration Controller — Bridge between new orchestration core and existing plugin tools
  * 
+ * TODO(decompose): This module is 1080+ lines. Consider splitting into:
+ * - controller-lifecycle.ts (init, reset, session management)
+ * - controller-dispatch.ts (dispatch/collect/replan loop)
+ * - controller-evaluation.ts (evidence evaluation, gate checks)
+ * See audit-2026-06-13.
+ *
  * This controller manages the lifecycle of a TaskGraph within a session,
  * integrating with the existing BackgroundManager for actual sub-agent dispatch
  * while using the new orchestration primitives for planning, scheduling, and evidence.
@@ -63,6 +69,10 @@ import { recordStrategyOutcome, selectStrategyWithTelemetry } from "./strategy-t
 import { buildRiskHeatmap, getFileRisk, formatRiskWarning } from "./risk-heatmap.js";
 import { withErrorBoundary } from "./reliability.js";
 import { assessAdaptiveComplexity, type ExecutionStrategy } from "./intelligence.js";
+import { recordAgentPerformance, selectAgentWithFitness, type AgentPerformanceEntry } from "./agent-fitness.js";
+import { recordCalibrationEntry, calibrateConfidence, type CalibrationEntry } from "./bayesian-calibration.js";
+import { recordRecoveryOutcome, selectRecoveryStrategy, type RecoveryStrategyEntry } from "./recovery-strategies.js";
+import { classifyJceWorkerError } from "../error-taxonomy.js";
 import { GraphRegistry } from "./graph-registry.js";
 import {
   assessTaskComplexity,
@@ -149,6 +159,9 @@ export class OrchestrationController {
   private nodeToTaskMap: Map<string, string> = new Map(); // nodeId → background taskId
   private nodeToGraphMap: Map<string, string> = new Map(); // nodeId → owning graphId (multi-graph)
   private strategyOutcomeRecorded: Set<string> = new Set(); // graphIds already recorded in telemetry
+  private agentPerformanceLog: AgentPerformanceEntry[] = [];
+  private calibrationLog: CalibrationEntry[] = [];
+  private recoveryLog: RecoveryStrategyEntry[] = [];
   private autonomyLevel: AutonomyLevel;
   private operatorPreferences: OperatorPreferences;
 
@@ -173,6 +186,10 @@ export class OrchestrationController {
     this.execMemory = startSession(loaded.memory, undefined, this.now());
     this.autonomyLevel = loaded.memory.autonomyLevel ?? "balanced";
     this.operatorPreferences = { ...DEFAULT_OPERATOR_PREFERENCES, ...(loaded.memory.operatorPreferences ?? {}) };
+    // Restore learning logs from persisted memory (#5, #6, #11)
+    this.agentPerformanceLog = loaded.memory.agentPerformanceLog ?? [];
+    this.calibrationLog = loaded.memory.calibrationLog ?? [];
+    this.recoveryLog = loaded.memory.recoveryLog ?? [];
 
     // Restore orchestration memory and graph from persisted state.
     // Stale/terminal graphs are dropped to prevent cross-session leakage (C1).
@@ -393,9 +410,14 @@ export class OrchestrationController {
         if (riskWarning) prompt = `${riskWarning}\n\n${prompt}`;
       }
 
+      // #6 Adaptive Delegation: override agent if fitness data shows a better performer
+      const intentForFitness = this.currentIntent?.intent ?? "general";
+      const fitnessSelection = selectAgentWithFitness(this.agentPerformanceLog, intentForFitness, node.agent);
+      const effectiveAgent = fitnessSelection.agent;
+
       return {
         nodeId: node.id,
-        agent: node.agent,
+        agent: effectiveAgent,
         prompt,
         skills: node.input.skills ?? [],
         modelCategory: node.type === "research" ? "exploration" : node.type === "review" ? "deep" : "default",
@@ -593,6 +615,14 @@ export class OrchestrationController {
     });
     const agentResult = parseAgentResult(rawOutput, request);
 
+    // #5 Bayesian post-calibration: adjust confidence using learned calibration data
+    if (this.calibrationLog.length >= 5) {
+      const bayesian = calibrateConfidence(this.calibrationLog, node.agent, agentResult.confidence);
+      if (bayesian.source === "learned") {
+        agentResult.confidence = bayesian.calibrated;
+      }
+    }
+
     // Convert to node output
     const output = resultToNodeOutput(agentResult);
 
@@ -608,6 +638,18 @@ export class OrchestrationController {
           { ...this.failurePatternKey(node), fixCategory: node.title, fixSucceeded: true },
           this.now(),
         );
+        // #11: Record that the recovery strategy succeeded
+        withErrorBoundary(() => {
+          const errorClass = classifyJceWorkerError(node.failureReason ?? "");
+          const intentForRecovery = this.currentIntent?.intent ?? "general";
+          const plan = selectRecoveryStrategy(this.recoveryLog, errorClass.category, intentForRecovery, node.retryPolicy.currentRetry - 1, node.agent);
+          this.recoveryLog = recordRecoveryOutcome(this.recoveryLog, {
+            errorCategory: errorClass.category,
+            intent: intentForRecovery,
+            strategy: plan.strategy,
+            succeeded: true,
+          });
+        }, undefined);
       }
     } else if (agentResult.status === "blocked") {
       this.graph = this.scheduler.onNodeBlocked(this.graph, nodeId, agentResult.blockers.join("; "));
@@ -615,6 +657,27 @@ export class OrchestrationController {
       const failResult = this.scheduler.onNodeFailed(this.graph, nodeId, agentResult.summary);
       this.graph = failResult.graph;
     }
+
+    // #6 + #5: Record agent performance and calibration data for learning
+    withErrorBoundary(() => {
+      const intentForRecord = this.currentIntent?.intent ?? "general";
+      const outcome = agentResult.status === "success" ? "success" as const
+        : agentResult.status === "partial" ? "partial" as const
+        : "failed" as const;
+      this.agentPerformanceLog = recordAgentPerformance(this.agentPerformanceLog, {
+        agent: node.agent,
+        intent: intentForRecord,
+        outcome,
+        claimedConfidence: agentResult.confidence,
+        retries: node.retryPolicy.currentRetry,
+      });
+      this.calibrationLog = recordCalibrationEntry(this.calibrationLog, {
+        agent: node.agent,
+        intent: intentForRecord,
+        claimedConfidence: agentResult.confidence,
+        succeeded: agentResult.status === "success",
+      });
+    }, undefined);
 
     // Propagate new facts to shared memory
     if (agentResult.newFacts.length > 0) {
@@ -684,13 +747,27 @@ export class OrchestrationController {
   /**
    * Handle a failed node (called when background task fails).
    */
-  handleFailure(nodeId: string, reason: string): { action: "retry" | "blocked" | "escalate"; retryStrategy?: string } {
+  handleFailure(nodeId: string, reason: string): { action: "retry" | "blocked" | "escalate"; retryStrategy?: string; recoveryPlan?: ReturnType<typeof selectRecoveryStrategy> } {
     if (!this.graph) throw new Error("No active graph.");
     const result = this.scheduler.onNodeFailed(this.graph, nodeId, reason);
     this.graph = result.graph;
 
     const node = this.graph.nodes.get(nodeId);
     const retryStrategy = node ? this.scheduler.getRetryStrategy(node) : undefined;
+
+    // #11 Autonomous Recovery: select a structurally different recovery strategy
+    let recoveryPlan: ReturnType<typeof selectRecoveryStrategy> | undefined;
+    if (node && result.action === "retry") {
+      const errorClass = classifyJceWorkerError(reason);
+      const intentForRecovery = this.currentIntent?.intent ?? "general";
+      recoveryPlan = selectRecoveryStrategy(
+        this.recoveryLog,
+        errorClass.category,
+        intentForRecovery,
+        node.retryPolicy.currentRetry,
+        node.agent,
+      );
+    }
     if (node) {
       // Legacy flat signature keeps rootPhrase for backward-compatible knownErrors.
       const signature = buildFailureSignature({
@@ -723,7 +800,7 @@ export class OrchestrationController {
       };
     }
 
-    return { action: result.action, retryStrategy };
+    return { action: result.action, retryStrategy, recoveryPlan };
   }
 
   // ─── Memory & Facts ───────────────────────────────────────────────────────
@@ -855,6 +932,21 @@ export class OrchestrationController {
     return formatRiskWarning(getFileRisk(this.getRiskHeatmap(), file));
   }
 
+  /** Read-only view of the recovery strategy log (#11). */
+  getRecoveryLog(): RecoveryStrategyEntry[] {
+    return this.recoveryLog;
+  }
+
+  /** Read-only view of the agent performance log (#6). */
+  getAgentPerformanceLog(): AgentPerformanceEntry[] {
+    return this.agentPerformanceLog;
+  }
+
+  /** Read-only view of the calibration log (#5). */
+  getCalibrationLog(): CalibrationEntry[] {
+    return this.calibrationLog;
+  }
+
   /**
    * Persist current state to disk.
    */
@@ -872,6 +964,10 @@ export class OrchestrationController {
     this.execMemory = mergeOrchestrationIntoMemory(this.execMemory, this.memory, this.graph ?? undefined, this.now());
     this.execMemory.autonomyLevel = this.autonomyLevel;
     this.execMemory.operatorPreferences = this.operatorPreferences;
+    // Persist learning logs (#5, #6, #11) so they survive process restarts
+    this.execMemory.agentPerformanceLog = this.agentPerformanceLog;
+    this.execMemory.calibrationLog = this.calibrationLog;
+    this.execMemory.recoveryLog = this.recoveryLog;
 
     // Populate the dangerousAreas tier from the failure-pattern risk heatmap
     // (previously this tier was always empty). High-risk files surface as

@@ -1,3 +1,5 @@
+import { listOrNone } from "./shared-predicates.js";
+
 const REQUIRED_HANDOFF_SECTIONS = ["Status", "Completed", "Blocker", "Evidence", "Next Options"] as const;
 
 export interface HandoffReportInput {
@@ -11,10 +13,6 @@ export interface HandoffReportInput {
 export interface HandoffValidation {
   valid: boolean;
   missing: string[];
-}
-
-function listOrNone(items: string[]): string {
-  return items.length ? items.map((item) => `- ${item}`).join("\n") : "- none";
 }
 
 export function buildHandoffReport(input: HandoffReportInput): string {

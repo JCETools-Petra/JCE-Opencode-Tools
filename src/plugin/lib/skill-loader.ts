@@ -792,8 +792,17 @@ function prioritizeSkills(skills: string[]): string[] {
 }
 
 /**
+ * Maximum lines to inject per skill file. Truncates long skills to save tokens.
+ * Most skill value is in the first 100-120 lines (frontmatter + decision trees +
+ * key patterns). Anti-patterns, verification checklists, and verbose examples
+ * beyond this limit are cut — the AI already has the core guidance.
+ */
+const MAX_SKILL_LINES = 120;
+
+/**
  * Read a skill file from the skills directory.
  * Supports both new structure (skills/name/SKILL.md) and legacy (skills/name.md).
+ * Truncates to MAX_SKILL_LINES to control token budget.
  * Returns null if the file doesn't exist.
  */
 async function readSkillFile(skillName: string): Promise<string | null> {
@@ -814,7 +823,10 @@ async function readSkillFile(skillName: string): Promise<string | null> {
   try {
     const content = await readFile(skillPath, "utf-8");
     if (!content.trim()) return null;
-    return content;
+    // Truncate to MAX_SKILL_LINES to save tokens (~2-4K savings per skill)
+    const lines = content.split("\n");
+    if (lines.length <= MAX_SKILL_LINES) return content;
+    return lines.slice(0, MAX_SKILL_LINES).join("\n") + "\n\n<!-- Skill truncated at " + MAX_SKILL_LINES + " lines to save tokens -->";
   } catch {
     return null;
   }
@@ -828,7 +840,7 @@ async function readSkillFile(skillName: string): Promise<string | null> {
 export async function resolveSkills(skillNames: string[]): Promise<string[]> {
   const loadedFiles = new Set<string>();
   const results: string[] = [];
-  const MAX_SKILLS = 4;
+  const MAX_SKILLS = 2;
   lastBlockedSkills = [];
 
   for (const name of skillNames) {
@@ -860,12 +872,31 @@ export async function resolveSkills(skillNames: string[]): Promise<string[]> {
 }
 
 /**
+ * Minimum confidence score required to inject skills into the system prompt.
+ * Below this threshold, no skills are injected — saving ~4-8K tokens on
+ * ambiguous/greeting messages where skill routing adds noise, not value.
+ */
+export const MIN_INJECTION_CONFIDENCE = 30;
+
+/**
  * Determine which skills to inject based on the latest user message.
  * Combines intent-based routing with context detection.
  * Always includes software-engineering.md for coding tasks.
  */
 export function determineSkillsForMessage(text: string): string[] {
   return explainSkillsForMessage(text).selected.map((item) => item.skill);
+}
+
+/**
+ * Check whether skill injection should be skipped for this message.
+ * Returns true when routing confidence is too low (greeting, ambiguous).
+ * Called at the injection point in index.ts, NOT in determineSkillsForMessage,
+ * so that audit/reachability checks are unaffected.
+ */
+export function shouldSkipSkillInjection(text: string): boolean {
+  const ranked = scoreSkillCandidates(text);
+  const confidence = computeRoutingConfidence(ranked);
+  return confidence < MIN_INJECTION_CONFIDENCE;
 }
 
 // ─── Sub-Agent Skill Injection ───────────────────────────────

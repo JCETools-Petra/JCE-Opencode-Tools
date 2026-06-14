@@ -1,3 +1,8 @@
+// TODO(decompose): This module is 1200+ lines. Consider splitting into:
+// - update-download.ts (fetch, verify, stage)
+// - update-install.ts (atomic swap, rollback, cleanup)
+// - update-config.ts (config merge, backup, migration)
+// See audit-2026-06-13.
 import { Command } from "commander";
 import { existsSync, readdirSync } from "fs";
 import { dirname, join } from "path";
